@@ -468,8 +468,8 @@ end
 Simulate from model A: the order of each stem is an exact draw from the banded permanent with log-propensities η (the
 full 2k + 1 vector, or η_1..η_k for a symmetric law), κ_s ~ LogNormal(logμκ, σκ) per stem, and the angles are
 y_p ~ vM(ϕ + o (σ[p] − 1) ψ + τ_s (p − 1), κ_s), replaced with probability `outlier` by a uniform angle; twist
-τ_s ~ Normal(torsion_mean, torsion_sd) degrees per stem position. Returns (; angles, orders, torsion, κ, outliers)
-(outliers: the positions whose angle is uniform).
+τ_s ~ Normal(torsion_mean, torsion_sd) degrees per stem position. Returns (; angles, orders, torsion, κ, outliers, ψ, o)
+(outliers: the positions whose angle is uniform; ψ, o: the spiral of each stem).
 """
 function simulate_stems(η::AbstractVector{<:Real}; plants::Int = 100, organs::Int = 50, logμκ::Real = 1.5, σκ::Real = 0.0, α::Real = 0.95,
         outlier::Real = 0.0, torsion_mean::Real = 0.0, torsion_sd::Real = 0.0, rng::AbstractRNG = Random.default_rng())
@@ -477,7 +477,7 @@ function simulate_stems(η::AbstractVector{<:Real}; plants::Int = 100, organs::I
     k = length(ηf) ÷ 2
     ws = PermanentWorkspace(Float64, k, organs; logspace = true)
     angles, orders, outs = Vector{Vector{Float64}}(undef, plants), Vector{Vector{Int}}(undef, plants), Vector{Vector{Int}}(undef, plants)
-    torsion, κs = zeros(plants), zeros(plants)
+    torsion, κs, ψs, os = zeros(plants), zeros(plants), zeros(plants), zeros(Int, plants)
     for s in 1:plants
         toeplitz_weights!(ws, ηf, organs)
         σ = copy(sample_permutation!(rng, ws, organs))
@@ -488,9 +488,9 @@ function simulate_stems(η::AbstractVector{<:Real}; plants::Int = 100, organs::I
         τ = torsion_mean + torsion_sd * randn(rng)
         bad = [rand(rng) < outlier for _ in 1:organs]
         angles[s] = [bad[p] ? 2π * rand(rng) : rand(rng, VonMises(mod2pi(ϕ + o * (σ[p] - 1) * ψ + deg2rad(τ) * (p - 1)), κ)) for p in 1:organs]
-        orders[s], torsion[s], κs[s], outs[s] = σ, τ, κ, findall(bad)
+        orders[s], torsion[s], κs[s], outs[s], ψs[s], os[s] = σ, τ, κ, findall(bad), ψ, o
     end
-    return (; angles, orders, torsion, κ = κs, outliers = outs)
+    return (; angles, orders, torsion, κ = κs, outliers = outs, ψ = ψs, o = os)
 end
 
 """

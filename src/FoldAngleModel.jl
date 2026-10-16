@@ -433,7 +433,7 @@ Simulate from the generative model: site i is ready at iγ and commits at τ_i =
 law of shape μ, standardised); the organ order is σ = sortperm(τ), and the angles are von Mises,
 y_p ~ vM(ϕ + o (σ[p] − 1) ψ + τ_s (p − 1), κ), with a twist τ_s ~ Normal(torsion_mean, torsion_sd) degrees per stem
 position. κ_s = κ e^{σκ z_s} per stem (z_s standard normal); with probability `outlier` an angle is replaced by a uniform
-one. Returns (; angles, orders, torsion, κ, outliers), as `simulate_stems(η; ...)` of model A.
+one. Returns (; angles, orders, torsion, κ, outliers, ψ, o), as `simulate_stems(η; ...)` of model A.
 
 `tempo`: a plastochron that changes along the stem, either a vector r (relative plastochron of organ i, the same for
 every stem) or a function s ↦ r. Organ i is then ready at γ Σ_{j ≤ i} r_j and its delay has sd r_i^(1 − β): its local
@@ -446,6 +446,7 @@ function simulate_stems(tab::PassageTable, μ::Real, γ::Real; plants::Int = 100
     orders = Vector{Vector{Int}}(undef, plants)
     angles = Vector{Vector{Float64}}(undef, plants)
     torsion, κs, outs = zeros(plants), zeros(plants), Vector{Vector{Int}}(undef, plants)
+    ψs, os = zeros(plants), zeros(Int, plants)
     twist = (torsion_sd > 0 || torsion_mean != 0)
     for s in 1:plants
         if tempo === nothing
@@ -465,9 +466,10 @@ function simulate_stems(tab::PassageTable, μ::Real, γ::Real; plants::Int = 100
         torsion[s] = τ
         κs[s] = κ_s
         outs[s] = findall(bad)
+        ψs[s], os[s] = ψ, o
         angles[s] = [bad[p] ? 2π * rand(rng) : rand(rng, VonMises(mod2pi(ϕ + o * (σ[p] - 1) * ψ + deg2rad(τ) * (p - 1)), κ_s)) for p in 1:organs]
     end
-    return (; angles, orders, torsion, κ = κs, outliers = outs)
+    return (; angles, orders, torsion, κ = κs, outliers = outs, ψ = ψs, o = os)
 end
 
 end # module FoldAngleModel

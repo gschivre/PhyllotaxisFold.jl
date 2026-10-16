@@ -433,6 +433,12 @@ end
     prob = TransformedLogDensityProblem(mA)
     @test angle_loglikelihood(prob, uA) ≈ angle_loglikelihood(mA, uA)
     @test LogDensityProblems.dimension(prob) == LogDensityProblems.dimension(mA) == length(uA)
+    # spiral of each stem: golden vs Lucas and the orientation, recovered from the angles
+    sp = simulate_stems(tab, 3.0, 1.5; plants = 30, organs = 30, κ = exp(1.8), α = 0.6, rng = Xoshiro(12))
+    m = FoldModel(sp.angles, ptab; ngrid_ϕ = 16, ngrid_κ = 6)
+    post = spiral_posterior(m, unconstrained_parameters(m; μ = 3.0, logγ = log(1.5), logμκ = 1.8, σκ = 0.1, α = 0.6))
+    @test mean((p.p_lucas > 0.5) == (ψ == PhyllotaxisFold.Lucas_angle) for (p, ψ) in zip(post, sp.ψ)) ≥ 0.9
+    @test mean((p.p_ccw > 0.5) == (o == 1) for (p, o) in zip(post, sp.o)) ≥ 0.9
 end
 
 end # testset PhyllotaxisFold

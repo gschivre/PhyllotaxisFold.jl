@@ -33,7 +33,7 @@ using ..Torsion: TorsionPrior, TorsionNodes, torsion_step, torsion_hyperprior, s
 
 export StemWorkspace, stem_loglik!, stem_value_grad, global_logprior, angle_model, stem_etas, angle_nuisance, stem_grid,
        angle_vgh, angle_fit_map, angle_update_torsion!, angle_torsion_nodes, torsion_vgh, angle_fit_map_torsion,
-       stem_loglik, angle_loglikelihood, decode_orders, order_posterior, simulate_stems, constrained_parameters,
+       stem_loglik, angle_loglikelihood, decode_orders, order_posterior, spiral_posterior, simulate_stems, constrained_parameters,
        unconstrained_parameters, prior_mean_parameters
 
 struct StemWorkspace{T}
@@ -576,6 +576,36 @@ function _joint_best(m, u, s::Int, τ::Real, lpτ::Real, fws::StemWorkspace; Δ:
         score > best.score && (best = (; score, σ, τ, cmb.ϕ, cmb.o, cmb.ψ, κ, candidate = c))
     end
     return best
+end
+
+"""
+    spiral_posterior(m, u)
+    spiral_posterior(m, tfit)
+
+Posterior of the spiral of each stem, summed over the order, ϕ, κ, the rank offsets and (from a `fit_map_torsion`
+result) the twist rate: one (; p_lucas, p_ccw) per stem, P(ψ = Lucas angle | angles) and P(o = +1 | angles) (o = +1:
+the site angles increase, a counter-clockwise spiral). Only forward passes (cheaper than `order_posterior`).
+"""
+function spiral_posterior(m, ut)
+    am = angle_model(m)
+    u, tfit = _model_u(m, ut), _tfit(ut)
+    S = length(am.data)
+    out = Vector{Any}(undef, S)
+    _per_stem(m) do s, fws
+        ω, lpω = _twist_rule(m, s, tfit)
+        L = fill(-Inf, 2, 2) # [ψ golden / Lucas, o = −1 / +1]
+        for j in eachindex(ω)
+            st = _stem_state(m, u, s, ω[j], fws)
+            for c in eachindex(st.etas), q in 1:st.grid.ngrid_κ, cb in axes(st.P[c], 1)
+                cmb = _combo(st.grid, cb, st.nu.α)
+                iψ, io = (cmb.ψ == Golden_angle ? 1 : 2), (cmb.o == -1 ? 1 : 2)
+                L[iψ, io] = logaddexp(L[iψ, io], lpω[j] + st.lc[c] + st.P[c][cb, q])
+            end
+        end
+        P = exp.(L .- logsumexp(L))
+        out[s] = (; p_lucas = P[2, 1] + P[2, 2], p_ccw = P[1, 2] + P[2, 2])
+    end
+    return [out[s] for s in 1:S]
 end
 
 """
