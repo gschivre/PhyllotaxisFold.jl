@@ -26,7 +26,7 @@ approximation.
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/<owner>/PhyllotaxisFold.jl")
+Pkg.add(url = "https://github.com/gschivre/PhyllotaxisFold.jl")
 ```
 
 ## Quick start
