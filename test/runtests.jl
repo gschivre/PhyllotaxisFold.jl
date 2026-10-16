@@ -320,7 +320,7 @@ end
     @test maximum(abs, τB .- sim.torsion) < 1.5 # degrees per position
     @test logdensity_and_gradient!(nothing, mB, u) > l0 # correcting the twist raises the likelihood
     mA = PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6)
-    τA = copy(update_torsion!(mA, prior_mean(mA)))
+    τA = copy(update_torsion!(mA, prior_mean_parameters(mA)))
     @test cor(τA, sim.torsion) > 0.95
 end
 
@@ -367,14 +367,72 @@ end
     @test issymmetric(round.(H; digits = 6)) && l0 ≈ fv(v)
     # fits: population law and rates recovered, models A and B agree
     rB = fit_map_torsion(mB; prior = tp, recenter = 0)
-    rA = fit_map_torsion(TransformedLogDensityProblem(PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6));
-        prior = tp, recenter = 0)
+    rA = fit_map_torsion(PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6); prior = tp, recenter = 0)
     conv = PhyllotaxisFold.FoldAngleModel.Optim.converged
     @test conv(rB.fit.result) && conv(rA.fit.result)
     @test abs(rB.m_ω - mean(sim.torsion)) < 1.0 && 0.4 < rB.s_ω / std(sim.torsion) < 2.5
     @test cor(rB.τ, sim.torsion) > 0.95 && cor(rA.τ, sim.torsion) > 0.95
     @test rB.m_ω ≈ rA.m_ω atol = 0.2
     @test all(rB.τ_sd .> 0)
+    # decoding with the twist: the joint MAP recovers the orders and the rates, the posterior agrees with the fit
+    dec = decode_orders(mB, rB; full = true)
+    @test mean(mean(d.σ .== σ) for (d, σ) in zip(dec, sim.orders)) > 0.9
+    @test cor([d.τ for d in dec], sim.torsion) > 0.95
+    post = order_posterior(mB, rB; nsamples = 400, rng = Xoshiro(4))
+    @test [p.τ_mean for p in post] ≈ rB.τ_mean rtol = 1e-6 # same nodes, same population law, same parameters
+    @test all(p -> all(sum(p.ρ; dims = 2) .≈ 1), post)
+    k = mB.k
+    emp = [mean(σ[i] - i == d for σ in post[1].samples) for i in 1:40, d in -k:k]
+    @test maximum(abs, emp .- post[1].ρ) < 0.1 # exact samples reproduce the marginals
+    # the same calls on model A
+    mA = PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6)
+    decA = decode_orders(mA, rA)
+    @test mean(mean(σ .== τ) for (σ, τ) in zip(decA, sim.orders)) > 0.9
+end
+
+@testset "Outlier angles: gradient, Hessian, limit and recovery (models A and B)" begin
+    (; tab, ptab) = load_tables(TABLES)
+    sim = simulate_stems(tab, 3.0, 1.5; plants = 3, organs = 25, κ = exp(1.8), outlier = 0.05, rng = Xoshiro(3))
+    fd(f, u) = [(f(u .+ 1e-5 .* (1:length(u) .== i)) - f(u .- 1e-5 .* (1:length(u) .== i))) / 2e-5 for i in eachindex(u)]
+    for m in (FoldModel(sim.angles, ptab; ngrid_ϕ = 8, ngrid_κ = 4, outlier = true),
+              PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 8, ngrid_κ = 4, outlier = true, symmetric = false))
+        u = prior_mean_parameters(m) .+ 0.1
+        l, g, H = angle_vgh(m, u, 2)
+        f(w) = angle_vgh(m, w, 0)[1]
+        @test g ≈ fd(f, u) rtol = 1e-5
+        @test H ≈ ForwardDiff.hessian(f, u) rtol = 1e-4
+    end
+    # π_o → 0 gives back the model without outliers
+    m0 = FoldModel(sim.angles, ptab; ngrid_ϕ = 8, ngrid_κ = 4)
+    m1 = FoldModel(sim.angles, ptab; ngrid_ϕ = 8, ngrid_κ = 4, outlier = true)
+    u0 = prior_mean_parameters(m0)
+    @test angle_loglikelihood(m1, [u0; -40.0]) ≈ angle_loglikelihood(m0, u0) atol = 1e-8
+    # recovery of π_o on simulated stems (model A, the law of the data)
+    η = [-3.5, -2.5, -1.2, 0.0, -1.2, -2.5, -3.5]
+    sA = simulate_stems(η; plants = 40, organs = 40, logμκ = 2.0, σκ = 0.2, outlier = 0.06, rng = Xoshiro(9))
+    μΔ, σΔ = η_prior((0.5, 1.25, 2.0), (0.1, 0.75, 2.0))
+    mA = PhyllotaxisModelAD(sA.angles, PhyllotaxisPrior(; μΔ, σΔ); ngrid_ϕ = 16, ngrid_κ = 6, outlier = true)
+    fA = fit_map(mA)
+    se = sqrt(-inv(fA.H)[end, end]) * fA.θ.outlier * (1 - fA.θ.outlier) # delta method on logit π_o
+    @test abs(fA.θ.outlier - 0.06) < 3 * se + 0.01
+end
+
+@testset "Models A and B share one API" begin
+    (; tab, ptab) = load_tables(TABLES)
+    sim = simulate_stems(tab, 3.0, 1.5; plants = 3, organs = 30, rng = Xoshiro(3))
+    mB = FoldModel(sim.angles, ptab; ngrid_ϕ = 16, ngrid_κ = 6)
+    mA = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 16, ngrid_κ = 6, symmetric = false)
+    uB = unconstrained_parameters(mB; μ = 3.13, logγ = log(1.5), logμκ = 1.8, σκ = 0.1, α = 0.95)
+    η = zeros(9); propensity!(η, nothing, ptab, 3.13, log(1.5))
+    uA = unconstrained_parameters(mA; η, logμκ = 1.8, σκ = 0.1, α = 0.95)
+    θA = constrained_parameters(mA, uA)
+    @test θA.η ≈ η && θA.σκ ≈ 0.1
+    @test [stem_loglik(mA, uA, s) for s in 1:3] ≈ [stem_loglik(mB, uB, s) for s in 1:3]
+    @test angle_loglikelihood(mA, uA) ≈ angle_loglikelihood(mB, uB)
+    @test decode_orders(mA, uA) == decode_orders(mB, uB)
+    prob = TransformedLogDensityProblem(mA)
+    @test angle_loglikelihood(prob, uA) ≈ angle_loglikelihood(mA, uA)
+    @test LogDensityProblems.dimension(prob) == LogDensityProblems.dimension(mA) == length(uA)
 end
 
 end # testset PhyllotaxisFold

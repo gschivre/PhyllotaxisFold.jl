@@ -54,7 +54,7 @@ parameters). Methods: `FoldModel` (u), `PhyllotaxisModelAD` (θ).
 function torsion_nodes end
 
 """
-    fit_map_torsion(model_or_problem; prior = TorsionPrior(), u0, recenter = 1, nodes_kw = (;), options)
+    fit_map_torsion(model; prior = TorsionPrior(), u0, recenter = 1, nodes_kw = (;), options)
 
 MAP of the global parameters and of the twist population (m_ω, log s_ω), with each stem's rate integrated out:
 1. fit without torsion; 2. nodes at that fit, rates set to each stem's best mode; 3. fit with these rates fixed;
@@ -63,7 +63,7 @@ Returns (; fit, m_ω, s_ω, τ, τ_mean, τ_sd, loglik, nodes) (loglik: Σ of th
 excluded): fit = (; θ, u, H, result) with u = [global u; m_ω; log s_ω] and H the
 Hessian of the log posterior in u (−inv(H): Laplace covariance); per stem, τ the most probable mode (used by
 `corrected_angles`), τ_mean and τ_sd the posterior mean and sd of the rate (aliases included). Methods: `FoldModel`,
-`TransformedLogDensityProblem` (model A).
+`PhyllotaxisModelAD` (model A, or its `TransformedLogDensityProblem`).
 """
 function fit_map_torsion end
 

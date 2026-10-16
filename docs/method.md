@@ -80,6 +80,11 @@ $$
   (`torsion_coordinate(ℓ)`; by default $x_p = p - 1$) and one rate $\omega_s$ per stem. The rates are a random effect,
   $\omega_s \sim \mathcal N(m_\omega, s_\omega^2)$, integrated out (§7). A twist rotates the organs with the same
   handedness for both spiral orientations, which separates it from a change of divergence.
+- **Outlier angles (option).** With `outlier = true` (both models), each angle is drawn from the von Mises of its site
+  with probability $1 - \pi_o$ and uniformly on the circle otherwise:
+  $y_p \sim (1-\pi_o)\,\mathrm{vM}(\cdot) + \pi_o/(2\pi)$, with $\pi_o$ fitted (prior Beta(1, 49), mean 2 %). A badly
+  measured angle (or an organ that is not where the site model puts it) is then explained as an outlier instead of a
+  long displacement. The mixture enters the edge weights of §3 only, so the sum over orders is unchanged.
 
 **The likelihood of one stem** sums over everything that is not observed:
 
@@ -188,6 +193,25 @@ true displacements. (a) Before seeing the angles. (b) Given the angles: most col
 crosses: the Viterbi order. Where the angles are ambiguous the probability is shared, and the single best order should
 not be trusted.*
 
+### 3.5 Decoding the order of a real stem [A]
+
+The angles of a stem do not fix the nuisance state (ϕ, o, ψ, κ, the twist rate $\omega_s$ and, with uncertain ranks,
+the offset), and a different state can give a different order: a different twist in particular, since the twist
+likelihood of a stem is often multimodal. Two decodings are provided, both from the likelihood of the fits.
+
+- **Posterior (`order_posterior`).** The posterior of the order is a mixture over the nuisance states,
+  $P(\sigma\mid y)=\sum_{\text{state}}P(\text{state}\mid y)\,P_W(\sigma)$, where $P(\text{state}\mid y)$ is the
+  forward weight of each grid node (and twist quadrature node, weighted by the fitted population law) and $P_W$ is the
+  banded permanent with that state's weights. Its marginals $\rho_{p,d}$ are the weighted mixture of the per-state
+  marginals; exact samples of $\sigma$ draw a state, then an order. This is the decoding to count events with.
+- **Joint MAP (`decode_orders`).** The most probable pair (order, state): Viterbi for each state of non-negligible
+  weight, the twist rate maximised as well (best quadrature node, then golden section within its mode), its prior the
+  fitted $\mathcal N(m_\omega, s_\omega^2)$. It returns one order per stem, with its twist, $\phi$, $o$, $\psi$ and
+  $\kappa$, for figures and for organ-by-organ inspection; where $\rho$ is spread, the single order should not be
+  trusted.
+
+Without a twist fit (plain parameters $u$), both use each stem's current rate.
+
 ### 3.4 Derivatives
 
 **Statement [A].** $\operatorname{perm}(W)$ is linear in each entry, so
@@ -242,8 +266,11 @@ $\eta_d = -(\Delta_1 + \dots + \Delta_d)$ with independent log-normal gaps $\Del
 **Limits.** $\eta$ is descriptive: it says how costly a displacement is, not why, and the rare large displacements are
 set mostly by the prior. Model B replaces the $k$ free costs by two numbers with a mechanistic meaning.
 
-**Code.** `PhyllotaxisModelAD(angles, PhyllotaxisPrior(); symmetric = true)`, `TransformedLogDensityProblem`,
-`fit_map`, `fit_map_torsion`, `decode_sequence!`.
+**Code.** `PhyllotaxisModelAD(angles, PhyllotaxisPrior(); symmetric = true, outlier = false)`, then the API shared with
+model B: `fit_map`, `fit_map_torsion`, `constrained_parameters` (η is the full vector of $2k + 1$ costs),
+`unconstrained_parameters`, `prior_mean_parameters`, `stem_loglik`, `angle_loglikelihood`, `decode_orders`,
+`order_posterior`, `simulate_stems(η; ...)` (orders drawn from the permanent). `TransformedLogDensityProblem(model)`
+remains for LogDensityProblems; `decode_sequence!` is the legacy decoder (raw angles, no twist).
 
 ---
 
@@ -389,8 +416,8 @@ $\log\gamma \sim \mathcal N(\log 2, 0.5^2)$, and the angle priors of model A. Th
 shape poorly: it depends on rare long displacements and on their direction.
 
 **Code.** `displacement_marginal`, `match_propensity`, `propensity_table` and `propensity!` (bicubic interpolation of
-$\eta$ and of its derivatives in shape and $\log\gamma$); `FoldModel(angles, ptab)`, `fit_map`, `fit_map_torsion`,
-`decode_orders`, `simulate_stems`.
+$\eta$ and of its derivatives in shape and $\log\gamma$); `FoldModel(angles, ptab; outlier = false)`, `fit_map`,
+`fit_map_torsion`, `decode_orders`, `order_posterior`, `simulate_stems`: the same API as model A.
 
 ---
 
@@ -580,7 +607,7 @@ the same `fit_map`,
 
 | assumption | status | what would break it |
 |---|---|---|
-| organ positions follow a regular spiral; noise acts on timing | [B] | outlier angles and missed organs are not modelled; they appear as long displacements |
+| organ positions follow a regular spiral; noise acts on timing | [B] | missed organs are not modelled; outlier angles only with `outlier = true` (otherwise they appear as long displacements) |
 | displacements bounded by $k = 4$ | [B] | posterior mass at $\lvert d\rvert = k$ (refit with a larger $k$) |
 | the switch has a fold; cells commit near it | [B] | the predicted covariation of mean and spread of the delay across perturbations |
 | sites commit independently, delays of one shape | [B] | cascades of permutations, a drifting timeline (internodes) |
@@ -589,7 +616,7 @@ the same `fit_map`,
 | flowers open at the pace they were initiated | [B] | a maturation delay that changes during flowering |
 | piecewise-linear opening rate with a per-plant change point and a finite arrest | [B] | a curved rise or decline; the plastochron of the last flowers before arrest is poorly determined |
 | one twist rate per stem, Normal across stems | [B] | a tapering stem makes the rate drift along the stem |
-| von Mises angular noise | [B] | a broad component (outliers) |
+| von Mises angular noise (+ uniform outliers, option) | [B] | a broad but not uniform component (e.g. angles off by a fraction of the divergence) |
 
 The angles alone confound angular noise and permutations (a lower $\kappa$ or more permutations), identify the shape of
 the delay poorly, and cannot separate a noisier readiness from a noisier commitment (only their sum enters the order).

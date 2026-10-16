@@ -22,7 +22,8 @@ const LOGFLOOR = -400.0
     fit_map(model; kwargs...)
 
 MAP estimate by Newton's method with trust region, analytic gradient and a Hessian from one dual pass over it.
-Methods: `fit_map(::FoldModel)` (model B) and `fit_map(::TransformedLogDensityProblem)` (model A).
+Methods: `fit_map(::FoldModel)` (model B) and `fit_map(::PhyllotaxisModelAD)` (model A, also its
+`TransformedLogDensityProblem`); both return (; θ, u, H, result), θ = `constrained_parameters(model, u)`.
 """
 function fit_map end
 

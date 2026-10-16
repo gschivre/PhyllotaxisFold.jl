@@ -48,9 +48,14 @@ r = fit_map_torsion(m)
 r.fit.θ            # (μ = shape, logγ, logμκ, σκ, α, β)
 r.m_ω, r.s_ω       # twist population (degrees per mm)
 
-# model A on the same stems
-prob = TransformedLogDensityProblem(PhyllotaxisModelAD(angles, PhyllotaxisPrior(); torsion_x = m.torsion.x))
-rA = fit_map_torsion(prob)
+# model A on the same stems: the same API (unconstrained u, `constrained_parameters`, fits, decoding)
+mA = PhyllotaxisModelAD(angles, PhyllotaxisPrior(); torsion_x = m.torsion.x)   # outlier = true: uniform outlier angles
+rA = fit_map_torsion(mA)
+rA.fit.θ.η          # the 2k + 1 log-propensities
+
+# decoding, the twist decoded or integrated out with the order
+dec = decode_orders(m, r; full = true)      # joint MAP: σ, twist rate, ϕ, o, ψ, κ per stem
+post = order_posterior(m, r; nsamples = 100) # exact posterior marginals ρ[p, d + k + 1] and samples of σ
 
 # model B with a tempo profile from daily open-flower counts (cumulative counts per plant, NaN = day not recorded)
 # fl = fit_flowering(counts)                  # piecewise-linear rate, per-plant change point, finite arrest

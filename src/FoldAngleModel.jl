@@ -20,7 +20,9 @@ The likelihood of a stem sums the banded permanent over the nuisance grid (ϕ, o
 gradient is analytic (expected displacement counts per row and expected cosines from forward–backward, chain rule
 through the bicubic η table); the Hessian is one ForwardDiff pass over that gradient; the MAP is Newton trust region
 (`fit_map`). Stem torsion: one rate per stem, ω_s ~ N(m_ω, s_ω²), integrated out by adaptive quadrature
-(`fit_map_torsion`).
+(`fit_map_torsion`). `outlier = true` adds outlier angles (probability π_o, uniform on the circle), as in model A.
+Decoding (`decode_orders`, `order_posterior`) and the log-likelihoods (`stem_loglik`, `angle_loglikelihood`) are the
+generic ones of `AngleLikelihood`, shared with model A.
 """
 module FoldAngleModel
 
@@ -30,19 +32,18 @@ using ForwardDiff, Optim
 using LogDensityProblems: LogDensityProblems
 using ..Common: Golden_angle, Lucas_angle, logbesseli, logpdf_halft, _scaled_logistic
 import ..Common: fit_map
-using ..Permanents: PermanentWorkspace, forward!, map_permutation
+using ..Permanents: PermanentWorkspace, forward!
 using ..PassageTime: PassageTable, passage_sampler
 using ..OrderStatistics: PropensityTable, propensity!
 using ..Torsion: StemTorsion, TorsionPrior, torsion_coordinate, torsion_corrected
 using ..AngleLikelihood: StemWorkspace, stem_loglik!, angle_vgh, angle_fit_map, angle_update_torsion!, angle_torsion_nodes,
     angle_fit_map_torsion
-import ..AngleLikelihood: stem_value_grad, global_logprior, angle_model
+import ..AngleLikelihood: stem_value_grad, global_logprior, angle_model, stem_etas, angle_nuisance, stem_grid, simulate_stems,
+    constrained_parameters, unconstrained_parameters, prior_mean_parameters, angle_loglikelihood
 import ..Torsion: corrected_angles, update_torsion!, torsion_nodes, fit_map_torsion
 
-export FoldPrior, FoldModel, has_tempo, constrained_parameters, unconstrained_parameters, prior_mean_parameters,
-       fold_logprior, fold_loglikelihood, logdensity_and_gradient!, fold_eta, offset_posterior, decode_orders, simulate_stems,
-       with_logspace,
-       fold_plant_loglik
+export FoldPrior, FoldModel, has_tempo, fold_logprior, fold_loglikelihood, logdensity_and_gradient!, fold_eta, offset_posterior,
+       with_logspace, fold_plant_loglik
 
 Base.@kwdef struct FoldPrior
     # shape: plateau margin μ (noise units) or ramp log ν; Normal prior truncated to the table range
@@ -68,6 +69,10 @@ Base.@kwdef struct FoldPrior
     # tempo exponent β ~ Normal (used only with a tempo profile): neutral between β = 0 and β = 1
     mβ::Float64 = 0.5
     sβ::Float64 = 1.0
+
+    # Beta prior on the outlier probability π_o (used only with `outlier = true`): mean 2 %
+    aπ::Float64 = 1.0
+    bπ::Float64 = 49.0
 end
 
 struct FoldModel{T}
@@ -87,10 +92,12 @@ struct FoldModel{T}
     logr::Union{Nothing, Vector{Vector{Vector{Float64}}}} # per stem, per candidate offset: log r of each organ (or nothing)
     logw::Union{Nothing, Vector{Vector{Float64}}} # per stem: log prior weight of each candidate offset
     offsets::Union{Nothing, Vector{Vector{Int}}} # per stem: the candidate offsets (nothing with `tempo` or no tempo)
+    outlier::Bool # angles are a mixture with uniform outliers (parameter π_o, last in u)
 end
 
 """
-    FoldModel(data, ptab, prior = FoldPrior(); ngrid_ϕ = 32, ngrid_κ = 16, logspace = false, torsion_x = nothing, tempo = nothing)
+    FoldModel(data, ptab, prior = FoldPrior(); ngrid_ϕ = 32, ngrid_κ = 16, logspace = false, torsion_x = nothing, tempo = nothing,
+        plastochron = nothing, offsets = 0, offset_prior = nothing, outlier = false)
 
 `data`: absolute azimuths (radians), one vector per stem, bottom to top. k = ptab.k. `torsion_x`: the torsion coordinate
 of each stem (`torsion_coordinate(ℓ)` from its internodes, in mm, or `torsion_coordinate(n)`, per position, the
@@ -102,9 +109,13 @@ or one per stem (`plant_plastochron`), with `offsets`, the number
 of organs below the first measured one that were counted as flowers: one integer for all stems, one set of candidates
 for all stems (e.g. `0:2`), or one set per stem. With several candidates the stem likelihood is summed over them, with
 prior weights `offset_prior` (uniform by default); `offset_posterior` gives each stem's posterior.
+
+`outlier`: each angle is an outlier (uniform on the circle) with probability π_o, fitted (prior Beta(aπ, bπ)); adds the
+last parameter of u.
 """
 function FoldModel(data::Vector{Vector{T}}, ptab::PropensityTable, prior::FoldPrior = FoldPrior(); ngrid_ϕ::Int = 32, ngrid_κ::Int = 16,
-        logspace::Bool = false, torsion_x = nothing, tempo = nothing, plastochron = nothing, offsets = 0, offset_prior = nothing) where {T}
+        logspace::Bool = false, torsion_x = nothing, tempo = nothing, plastochron = nothing, offsets = 0, offset_prior = nothing,
+        outlier::Bool = false) where {T}
     k = ptab.k
     tx = (torsion_x === nothing ? [torsion_coordinate(length(y)) for y in data] : torsion_x)
     @assert length(tx) == length(data) && all(length.(tx) .== length.(data)) "torsion_x: one coordinate per organ of each stem"
@@ -125,7 +136,7 @@ function FoldModel(data::Vector{Vector{T}}, ptab::PropensityTable, prior::FoldPr
         logr, logw, offs = _offset_profiles(plastochron, length.(data), offsets, offset_prior)
     end
     return FoldModel{T}(data, k, ngrid_ϕ, ngrid_κ, ϕ_grid, κ_nodes, log.(κ_weights), ptab, prior, extrema(ptab.μ_grid),
-        extrema(ptab.logγ_grid), logspace, StemTorsion(tx), logr, logw, offs)
+        extrema(ptab.logγ_grid), logspace, StemTorsion(tx), logr, logw, offs, outlier)
 end
 
 # candidate tempo profiles: organ i of stem s with offset o has flower rank i + o and r = T_P(i + o) / T̄, T̄ the mean over
@@ -154,12 +165,12 @@ has_tempo(model::FoldModel) = model.logr !== nothing
 
 corrected_angles(model::FoldModel, s::Int; τ::Real = model.torsion.τ[s]) = torsion_corrected(model.data[s], model.torsion.x[s], τ)
 
-LogDensityProblems.dimension(model::FoldModel) = 5 + has_tempo(model)
+LogDensityProblems.dimension(model::FoldModel) = 5 + has_tempo(model) + model.outlier
 LogDensityProblems.capabilities(::Type{<:FoldModel}) = LogDensityProblems.LogDensityOrder{2}()
 
 "the same model evaluated in log-space"
 with_logspace(m::FoldModel{T}) where {T} = FoldModel{T}(m.data, m.k, m.ngrid_ϕ, m.ngrid_κ, m.ϕ_grid, m.κ_nodes, m.κ_logweights, m.ptab,
-    m.prior, m.μ_bounds, m.logγ_bounds, true, m.torsion, m.logr, m.logw, m.offsets)
+    m.prior, m.μ_bounds, m.logγ_bounds, true, m.torsion, m.logr, m.logw, m.offsets, m.outlier)
 
 #################################################################################################################
 # parameters and prior
@@ -168,17 +179,22 @@ with_logspace(m::FoldModel{T}) where {T} = FoldModel{T}(m.data, m.k, m.ngrid_ϕ,
 """
     constrained_parameters(model, u)
 
-(; μ, logγ, logμκ, σκ, α, β) from the unconstrained u: μ (the shape) and log γ through a scaled logistic onto the table
-ranges, σκ = exp, α = logistic, β = u[6] (0 without tempo).
+(; μ, logγ, logμκ, σκ, α, β, outlier) from the unconstrained u: μ (the shape) and log γ through a scaled logistic onto
+the table ranges, σκ = exp, α = logistic, β = u[6] (0 without tempo), outlier = π_o = logistic(u[end]) (0 without).
 """
 function constrained_parameters(model::FoldModel, u::AbstractVector)
+    z = zero(eltype(u))
     return (; μ = _scaled_logistic(u[1], model.μ_bounds), logγ = _scaled_logistic(u[2], model.logγ_bounds),
-        logμκ = u[3], σκ = exp(u[4]), α = logistic(u[5]), β = (has_tempo(model) ? u[6] : zero(eltype(u))))
+        logμκ = u[3], σκ = exp(u[4]), α = logistic(u[5]), β = (has_tempo(model) ? u[6] : z),
+        outlier = (model.outlier ? logistic(u[end]) : z))
 end
-function unconstrained_parameters(model::FoldModel; μ, logγ, logμκ, σκ, α, β = model.prior.mβ)
+function unconstrained_parameters(model::FoldModel; μ, logγ, logμκ, σκ, α, β = model.prior.mβ,
+        outlier = mean(Beta(model.prior.aπ, model.prior.bπ)))
     _inv(x, (lo, hi)) = logit((x - lo) / (hi - lo))
     u = [_inv(μ, model.μ_bounds), _inv(logγ, model.logγ_bounds), logμκ, log(σκ), logit(α)]
-    return (has_tempo(model) ? vcat(u, β) : u)
+    has_tempo(model) && push!(u, β)
+    model.outlier && push!(u, logit(outlier))
+    return u
 end
 function prior_mean_parameters(model::FoldModel)
     (; mμ, mγ, mκ, νκ, τκ, aα, bα, mβ) = model.prior
@@ -189,13 +205,14 @@ end
 
 "log prior on the constrained parameters plus the log-Jacobian of the transform u ↦ θ (generic in the number type)"
 function fold_logprior(model::FoldModel, u::AbstractVector)
-    (; mμ, sμ, mγ, sγ, mκ, sκ, νκ, τκ, aα, bα, mβ, sβ) = model.prior
-    (; μ, logγ, logμκ, σκ, α, β) = constrained_parameters(model, u)
+    (; mμ, sμ, mγ, sγ, mκ, sκ, νκ, τκ, aα, bα, mβ, sβ, aπ, bπ) = model.prior
+    (; μ, logγ, logμκ, σκ, α, β, outlier) = constrained_parameters(model, u)
     sμ_u, sγ_u = logistic(u[1]), logistic(u[2])
     lp = logpdf(Normal(mμ, sμ), μ) + logpdf(Normal(mγ, sγ), logγ) + logpdf(Normal(mκ, sκ), logμκ) + logpdf_halft(σκ, νκ, τκ) + logpdf(Beta(aα, bα), α)
     lp += log((model.μ_bounds[2] - model.μ_bounds[1]) * sμ_u * (1 - sμ_u)) + log((model.logγ_bounds[2] - model.logγ_bounds[1]) * sγ_u * (1 - sγ_u))
     lp += u[4] + log(α) + log1p(-α)
     has_tempo(model) && (lp += -0.5 * ((β - mβ) / sβ)^2 - log(sβ * sqrt(2π)))
+    model.outlier && (lp += logpdf(Beta(aπ, bπ), outlier) + log(outlier) + log1p(-outlier))
     return lp
 end
 
@@ -267,14 +284,25 @@ _workspace(model::FoldModel, ::Type{T}, n::Int) where {T} = StemWorkspace(T, mod
 
 # AngleLikelihood interface
 angle_model(model::FoldModel) = model
+stem_grid(model::FoldModel) = model
 global_logprior(model::FoldModel, u::AbstractVector) = fold_logprior(model, u)
+function stem_etas(model::FoldModel, u::AbstractVector, s::Int)
+    θ = constrained_parameters(model, u)
+    C = _ncandidates(model, s)
+    return [first(fold_eta(model, θ, s; c)) for c in 1:C], (C == 1 ? [0.0] : copy(model.logw[s]))
+end
+function angle_nuisance(model::FoldModel, u::AbstractVector)
+    θ = constrained_parameters(model, u)
+    return (; θ.logμκ, θ.σκ, θ.α, outlier = (model.outlier ? θ.outlier : nothing))
+end
 # log-likelihood of stem s for candidate offset c, and its gradient in u
 function _stem_candidate(model::FoldModel, u::AbstractVector, s::Int, c::Int, y, with_grad::Bool, fws::StemWorkspace)
     θ = constrained_parameters(model, u)
     (; σκ, α) = θ
     η, ∂ = fold_eta(model, θ, s; with_grad, c)
     fill!(fws.grad, 0)
-    ℓ = stem_loglik!(fws, model, y, η, θ.logμκ, σκ, α, with_grad)
+    πo = θ.outlier
+    ℓ = stem_loglik!(fws, model, y, η, θ.logμκ, σκ, α, with_grad; outlier = (model.outlier ? πo : nothing))
     with_grad || return ℓ, nothing
     K = 2 * model.k + 1
     g = fws.grad
@@ -282,7 +310,9 @@ function _stem_candidate(model::FoldModel, u::AbstractVector, s::Int, c::Int, y,
     sμ_u, sγ_u = logistic(u[1]), logistic(u[2])
     grad = [gμ * (model.μ_bounds[2] - model.μ_bounds[1]) * sμ_u * (1 - sμ_u), gγ * (model.logγ_bounds[2] - model.logγ_bounds[1]) * sγ_u * (1 - sγ_u),
         g[K + 1], g[K + 2] * σκ, g[K + 3] * α * (1 - α)]
-    return ℓ, (has_tempo(model) ? push!(grad, gβ) : grad)
+    has_tempo(model) && push!(grad, gβ)
+    model.outlier && push!(grad, g[K + 4] * πo * (1 - πo))
+    return ℓ, grad
 end
 
 _ncandidates(model::FoldModel, s::Int) = (has_tempo(model) ? length(model.logr[s]) : 1)
@@ -332,8 +362,8 @@ function logdensity_and_gradient!(∇::Union{AbstractVector, Nothing}, model::Fo
     return l
 end
 
-"log-likelihood alone (no prior), e.g. to compare models at their MAP"
-fold_loglikelihood(model::FoldModel, u::AbstractVector) = logdensity_and_gradient!(nothing, model, u) - fold_logprior(model, u)
+"log-likelihood alone (no prior), e.g. to compare models at their MAP (= `angle_loglikelihood(model, u)`)"
+fold_loglikelihood(model::FoldModel, u::AbstractVector) = angle_loglikelihood(model, u)
 
 LogDensityProblems.logdensity(model::FoldModel, u) = logdensity_and_gradient!(nothing, model, u)
 function LogDensityProblems.logdensity_and_gradient(model::FoldModel, u)
@@ -397,65 +427,25 @@ end
 #################################################################################################################
 
 """
-    decode_orders(model, u)
-
-Most likely organ order of each stem at the parameters u: the nuisance combination (ϕ, o, ψ, κ node) with the largest
-posterior weight (and, with candidate offsets, the most probable offset) is selected, then the MAP permutation is found
-by Viterbi on the log edge weights
-η_pd + κ (cos(y_p − ϕ − o (p + d − 1) ψ) − 1). Used for posterior predictive checks of order statistics.
-"""
-function decode_orders(model::FoldModel, u::AbstractVector)
-    (; k, ngrid_κ, ϕ_grid, κ_nodes, κ_logweights, data) = model
-    θ = constrained_parameters(model, map(Float64, u))
-    (; logμκ, σκ, α) = θ
-    cbest = (has_tempo(model) && any(s -> _ncandidates(model, s) > 1, eachindex(data)) ? argmax.(offset_posterior(model, u)) : ones(Int, length(data)))
-    combos = [(o, ψ, lp, ϕ) for (o, (ψ, lp)) in Iterators.product((-1, 1), ((Golden_angle, log(α)), (Lucas_angle, log1p(-α)))) for ϕ in ϕ_grid]
-    out = Vector{Vector{Int}}(undef, length(data))
-    Threads.@threads for s in eachindex(data)
-        y = corrected_angles(model, s)
-        n = length(y)
-        η = first(fold_eta(model, θ, s; c = cbest[s]))
-        ηrow(i, j) = (η isa AbstractMatrix ? η[i, j] : η[j])
-        ws = PermanentWorkspace(k, n; logspace = true)
-        L = fill(-Inf, n, 2k + 1)
-        fill_L! = (o, ψ, ϕ, κ) -> begin
-            fill!(L, -Inf)
-            for d in -k:k, i in max(1, 1 - d):min(n, n - d)
-                L[i, d + k + 1] = ηrow(i, d + k + 1) + κ * (cos(y[i] - ϕ - o * (i + d - 1) * ψ) - 1)
-            end
-        end
-        best, arg = -Inf, (1, Golden_angle, 0.0, 1.0)
-        for q in 1:ngrid_κ, (o, ψ, lp, ϕ) in combos
-            κ = exp(logμκ + σκ * κ_nodes[q])
-            fill_L!(o, ψ, ϕ, κ)
-            ws.w .= L
-            v = forward!(ws, n) + n * κ - n * logbesseli(0, κ) + lp + κ_logweights[q]
-            (v > best) && (best = v; arg = (o, ψ, ϕ, κ))
-        end
-        fill_L!(arg...)
-        out[s] = map_permutation(ws.g, L, n)
-    end
-    return out
-end
-
-"""
-    simulate_stems(tab, μ, γ; plants, organs, κ, α, torsion_mean, torsion_sd, tempo, β, rng)
+    simulate_stems(tab, μ, γ; plants, organs, κ, σκ = 0, α, outlier = 0, torsion_mean, torsion_sd, tempo, β, rng)
 
 Simulate from the generative model: site i is ready at iγ and commits at τ_i = iγ + z_i (z_i i.i.d. from the passage
 law of shape μ, standardised); the organ order is σ = sortperm(τ), and the angles are von Mises,
 y_p ~ vM(ϕ + o (σ[p] − 1) ψ + τ_s (p − 1), κ), with a twist τ_s ~ Normal(torsion_mean, torsion_sd) degrees per stem
-position. Returns (; angles, orders, torsion).
+position. κ_s = κ e^{σκ z_s} per stem (z_s standard normal); with probability `outlier` an angle is replaced by a uniform
+one. Returns (; angles, orders, torsion, κ, outliers), as `simulate_stems(η; ...)` of model A.
 
 `tempo`: a plastochron that changes along the stem, either a vector r (relative plastochron of organ i, the same for
 every stem) or a function s ↦ r. Organ i is then ready at γ Σ_{j ≤ i} r_j and its delay has sd r_i^(1 − β): its local
 readiness spacing is γ r_i^β (the model `FoldModel(...; tempo)`).
 """
-function simulate_stems(tab::PassageTable, μ::Real, γ::Real; plants::Int = 100, organs::Int = 50, κ::Real = exp(1.5), α::Real = 0.95,
-        torsion_mean::Real = 0.0, torsion_sd::Real = 0.0, tempo = nothing, β::Real = 0.0, rng::AbstractRNG = Random.default_rng())
+function simulate_stems(tab::PassageTable, μ::Real, γ::Real; plants::Int = 100, organs::Int = 50, κ::Real = exp(1.5), σκ::Real = 0.0,
+        α::Real = 0.95, outlier::Real = 0.0, torsion_mean::Real = 0.0, torsion_sd::Real = 0.0, tempo = nothing, β::Real = 0.0,
+        rng::AbstractRNG = Random.default_rng())
     smp = passage_sampler(tab, μ)
     orders = Vector{Vector{Int}}(undef, plants)
     angles = Vector{Vector{Float64}}(undef, plants)
-    torsion = zeros(plants)
+    torsion, κs, outs = zeros(plants), zeros(plants), Vector{Vector{Int}}(undef, plants)
     twist = (torsion_sd > 0 || torsion_mean != 0)
     for s in 1:plants
         if tempo === nothing
@@ -469,11 +459,15 @@ function simulate_stems(tab::PassageTable, μ::Real, γ::Real; plants::Int = 100
         ϕ = 2π * rand(rng)
         o = (rand(rng) < 0.5 ? 1 : -1)
         τ = (twist ? torsion_mean + torsion_sd * randn(rng) : 0.0)
+        κ_s = (σκ > 0 ? κ * exp(σκ * randn(rng)) : κ)
+        bad = (outlier > 0 ? [rand(rng) < outlier for _ in 1:organs] : falses(organs))
         orders[s] = σ
         torsion[s] = τ
-        angles[s] = [rand(rng, VonMises(mod2pi(ϕ + o * (σ[p] - 1) * ψ + deg2rad(τ) * (p - 1)), κ)) for p in 1:organs]
+        κs[s] = κ_s
+        outs[s] = findall(bad)
+        angles[s] = [bad[p] ? 2π * rand(rng) : rand(rng, VonMises(mod2pi(ϕ + o * (σ[p] - 1) * ψ + deg2rad(τ) * (p - 1)), κ_s)) for p in 1:organs]
     end
-    return (; angles, orders, torsion)
+    return (; angles, orders, torsion, κ = κs, outliers = outs)
 end
 
 end # module FoldAngleModel
