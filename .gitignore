@@ -1,0 +1,17 @@
+# environments are resolved by the user
+Manifest.toml
+Manifest-v*.toml
+**/Manifest.toml
+**/Manifest-v*.toml
+
+# never commit data or fitted results
+*.json
+*.tsv
+*.csv
+*.jls
+!tables/*.jls
+
+# editors and OS
+.vscode/
+.DS_Store
+*.swp
