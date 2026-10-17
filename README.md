@@ -79,6 +79,23 @@ throughout. It is written in [`docs/src`](docs/src):
 
 Earlier versions included a "fold-commitment" model of the order (tag `with-model-B`).
 
+## Authorship and AI assistance
+
+PhyllotaxisFold.jl is developed by Geoffrey Schivre. The reconstruction of the orders from the angles (step 1: the
+angle model, the propensity model and the exact sum over orders) is the author's work. It is the starting point of the
+commitment-timing approach of step 2.
+
+Claude (Opus 5.5, Anthropic), an AI model used as a coding and analysis agent through Claude Code, contributed under
+the author's direction:
+
+- the commitment-timing approach: scoring a delay law on the orders reconstructed in step 1, with the exact order
+  likelihood and the re-weighting identity;
+- its implementation (`CommitmentTiming`), its tests and its validation on simulated stems;
+- the code review and cleanup of version 0.3, and the manual.
+
+The author chose the questions, reviewed the results and the code, made the modelling decisions, and is responsible
+for the package and for its use in publications.
+
 ## Licence
 
 MIT, see [`LICENSE`](LICENSE).
