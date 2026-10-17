@@ -360,12 +360,21 @@ Base.maximum(::FoldPassageTime) = Inf
 Distributions.insupport(::FoldPassageTime, x::Real) = x > 0
 Bijectors.bijector(::FoldPassageTime) = Bijectors.elementwise(log)
 
-# cubic (Keys) interpolation in μ of a per-margin value v(iμ)
+# cubic (Keys) combination of four values at consecutive shape nodes, linear on the central cell when the stencil
+# spans a cliff (a value at the floor, or a jump of more than 50 log units): there the negative Keys weights overshoot
+# (plateau table, μ < 0.4: a log density 25 units too high, a total mass of 1.7e9 at μ = −0.66)
+@inline function _μcombine(v1, v2, v3, v4, tμ)
+    lo, hi = min(v1, v2, v3, v4), max(v1, v2, v3, v4)
+    (lo < -300 || hi - lo > 50) && return (1 - tμ) * v2 + tμ * v3
+    w = _keys_w(tμ)
+    return w[1] * v1 + w[2] * v2 + w[3] * v3 + w[4] * v4
+end
+
+# interpolation in μ of a per-margin value v(iμ) (cubic, linear across cliffs)
 function _μinterp(v, tab::PassageTable, μ)
     iμ, tμ, _ = _keys_index(tab.μ_grid, μ)
-    w = _keys_w(tμ)
     nμ = length(tab.μ_grid)
-    return sum(w[a] * v(clamp(iμ + a - 1, 1, nμ)) for a in 1:4)
+    return _μcombine((v(clamp(iμ + a - 1, 1, nμ)) for a in 1:4)..., tμ)
 end
 # passage-time mean and sd in noise units (interpolated on the log scale)
 _fold_mean(d::FoldPassageTime) = exp(_μinterp(i -> log(d.tab.mean[i]), d.tab, d.μ))
@@ -408,18 +417,13 @@ function Distributions.quantile(d::FoldPassageTime, p::Real)
 end
 Base.rand(rng::AbstractRNG, d::FoldPassageTime) = quantile(d, rand(rng))
 
-"cubic (Keys) interpolation of a table field (default the log density) in μ: the whole z column at an arbitrary μ"
+"interpolation of a table field (default the log density) in μ: the whole z column at an arbitrary μ (cubic, linear across cliffs)"
 function passage_column(tab::PassageTable, μ::Real; field::Symbol = :logg)
     M = getfield(tab, field)
     iμ, tμ, _ = _keys_index(tab.μ_grid, μ)
-    w = _keys_w(tμ)
     nμ = length(tab.μ_grid)
-    col = zeros(size(M, 1))
-    for a in 1:4
-        ia = clamp(iμ + a - 1, 1, nμ)
-        col .+= w[a] .* view(M, :, ia)
-    end
-    return col
+    ia = ntuple(a -> clamp(iμ + a - 1, 1, nμ), 4)
+    return [_μcombine(M[iz, ia[1]], M[iz, ia[2]], M[iz, ia[3]], M[iz, ia[4]], tμ) for iz in axes(M, 1)]
 end
 
 "inverse-CDF sampler of the standardised passage time z at shape μ: returns a function rng ↦ z"

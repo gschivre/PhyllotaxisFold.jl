@@ -270,7 +270,10 @@ end
     loglik_order_exact(σ, logg, z_grid, γ)
 
 Exact Level-0 log P(σ) for sites 1..n with readiness iγ and i.i.d. standardised passage density g:
-P(σ) = ∫_{τ_1 < … < τ_n} ∏_p g(τ_p - σ[p] γ) dτ, by a forward recursion on a time grid with step Δz.
+P(σ) = ∫_{τ_1 < … < τ_n} ∏_p g(τ_p - σ[p] γ) dτ, by a forward recursion on a time grid with step Δz. Two times in the
+same grid cell are ordered with probability ½ (midpoint rule): counting such ties as ordered biased log P(σ) upwards at
+first order in Δz (Gaussian delays of sd 0.43 on a 0.05 grid: +0.025 for the identity of 6 sites, +0.28 for an order
+with three displacements); the error is now second order (≤ 0.01 there).
 """
 function loglik_order_exact(σ::AbstractVector{Int}, logg::AbstractVector, z_grid, γ::Real)
     n = length(σ)
@@ -294,8 +297,9 @@ function loglik_order_exact(σ::AbstractVector{Int}, logg::AbstractVector, z_gri
         ll += log(c)
         acc = 0.0
         @inbounds for kk in 1:L
-            acc += α[kk] * Δz / c
-            A[kk] = acc
+            a = α[kk] * Δz / c
+            A[kk] = acc + a / 2 # P(previous time < a time in cell kk): the cells before, half of cell kk
+            acc += a
         end
     end
     return ll

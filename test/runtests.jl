@@ -116,6 +116,16 @@ end
     end
 end
 
+@testset "loglik_order_exact: Gaussian delays" begin
+    s, zg = 0.43, range(-12.0, 30.0; step = 0.05)
+    lg = [-(z / s)^2 / 2 - log(s * sqrt(2π)) for z in zg]
+    # two sites: P(in order) = Φ(1 / (s √2))
+    @test exp(loglik_order_exact([1, 2], lg, zg, 1.0)) ≈ cdf(Normal(), 1 / (s * sqrt(2))) atol = 5e-4
+    # the probabilities of all orders of 4 sites sum to 1 (ties counted as ordered made them sum above 1)
+    perms = [[a, b, c, d] for a in 1:4 for b in 1:4 for c in 1:4 for d in 1:4 if allunique((a, b, c, d))]
+    @test sum(exp(loglik_order_exact(σ, lg, zg, 1.0)) for σ in perms) ≈ 1 atol = 2e-3
+end
+
 if isfile(TABLES)
     tabs = load_tables(TABLES)
     (; tab, ptab) = tabs
@@ -133,6 +143,11 @@ if isfile(TABLES)
         zs = collect(tab.z_grid)
         @test sum(col .* zs) * step(tab.z_grid) ≈ 0 atol = 1e-2
         @test sum(col .* zs .^ 2) * step(tab.z_grid) ≈ 1 atol = 2e-2
+        # between shape nodes too, also next to the left-edge floor (the cubic overshot there: mass 1.7e9 at μ = −0.66)
+        masses = [sum(exp.(passage_column(tab, μ))) * step(tab.z_grid) for μ in range(first(tab.μ_grid), last(tab.μ_grid); step = 0.01)]
+        @test maximum(abs.(masses .- 1)) < 0.02
+        @test cdf(FoldPassageTime(tab, -0.66), quantile(FoldPassageTime(tab, -0.66), 0.5)) ≈ 0.5 atol = 1e-3
+        @test all(isfinite, logpdf.(FoldPassageTime(tab, -0.66), range(0.1, 10; length = 50)))
     end
 
     @testset "OrderStatistics" begin
