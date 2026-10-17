@@ -1,7 +1,7 @@
 """
     Plastochron
 
-The plastochron along the stem, from daily counts of open flowers: the input of the tempo option of `FoldModel`.
+The plastochron along the stem, from daily counts of open flowers (to express commitment delays in hours).
 
 **Rate of one plant.** With t in days from the start of the first day of observation, plant i opens flowers at the rate
 (flowers per day)
@@ -158,7 +158,7 @@ end
 r = T_P(rank) / T̄_P for every organ of every stem. `TP`: one plastochron-by-rank vector for all stems
 (`plastochron_by_rank`) or one per stem (`plant_plastochron`); `ranks`: one vector of flower ranks per stem (rank of
 the organ at stem position p; ranks beyond `length(TP)` use the last value). T̄_P is the mean over all the organs given
-(or `Tref`), so that r averages to 1 and γ of `FoldModel(...; tempo = r)` is the precision at the mean tempo.
+(or `Tref`), so that r averages to 1.
 Returns (; r, T̄).
 """
 function relative_plastochron(TP::AbstractVector, ranks::AbstractVector{<:AbstractVector{<:Integer}}; Tref = nothing)

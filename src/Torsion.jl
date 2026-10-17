@@ -31,7 +31,7 @@ export StemTorsion, TorsionPrior, TorsionNodes, torsion_coordinate, torsion_corr
 """
     corrected_angles(model, s; τ)
 
-Angles of plant s with its twist removed (rate τ, the fitted one by default). Methods for `FoldModel` and
+Angles of plant s with its twist removed (rate τ, the fitted one by default). Methods for
 `PhyllotaxisModelAD`.
 """
 function corrected_angles end
@@ -40,8 +40,8 @@ function corrected_angles end
     update_torsion!(model, θ_or_u; scan = -25:0.5:25)
 
 Set each plant's twist rate to the value maximising its own log-likelihood at the global parameters (scan in degrees per
-mean step of the coordinate, then golden section). Methods: `FoldModel` (unconstrained u), `PhyllotaxisModelAD`
-(constrained θ).
+mean step of the coordinate, then golden section). Methods: `PhyllotaxisModelAD`
+(unconstrained u).
 """
 function update_torsion! end
 
@@ -49,7 +49,7 @@ function update_torsion! end
     torsion_nodes(model, θ_or_u; kwargs...)
 
 Quadrature nodes of every stem's twist rate (`stem_nodes` applied to each stem's log-likelihood at the given global
-parameters). Methods: `FoldModel` (u), `PhyllotaxisModelAD` (θ).
+parameters). Methods: `PhyllotaxisModelAD` (θ or u).
 """
 function torsion_nodes end
 
@@ -62,7 +62,7 @@ MAP of the global parameters and of the twist population (m_ω, log s_ω), with 
 Returns (; fit, m_ω, s_ω, τ, τ_mean, τ_sd, loglik, nodes) (loglik: Σ of the integrated stem log-likelihoods, priors
 excluded): fit = (; θ, u, H, result) with u = [global u; m_ω; log s_ω] and H the
 Hessian of the log posterior in u (−inv(H): Laplace covariance); per stem, τ the most probable mode (used by
-`corrected_angles`), τ_mean and τ_sd the posterior mean and sd of the rate (aliases included). Methods: `FoldModel`,
+`corrected_angles`), τ_mean and τ_sd the posterior mean and sd of the rate (aliases included). Methods:
 `PhyllotaxisModelAD` (model A, or its `TransformedLogDensityProblem`).
 """
 function fit_map_torsion end

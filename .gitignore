@@ -9,7 +9,6 @@ Manifest-v*.toml
 *.tsv
 *.csv
 *.jls
-!tables/*.jls
 
 # editors and OS
 .vscode/

@@ -207,7 +207,7 @@ end
     stem_value_grad(m, u, s; τ, with_grad, fws)
 
 Log-likelihood of stem s (prior excluded) at the unconstrained parameters u with twist rate τ, and its gradient in u
-(`nothing` without `with_grad`); `fws` a `StemWorkspace` of eltype(u) large enough for the stem. Methods: `FoldModel`,
+(`nothing` without `with_grad`); `fws` a `StemWorkspace` of eltype(u) large enough for the stem. Methods:
 `PhyllotaxisModelAD` (model A, or its `TransformedLogDensityProblem`).
 """
 function stem_value_grad end
@@ -236,7 +236,7 @@ function stem_grid end
     constrained_parameters(model, u)
 
 The model's parameters in their natural space, as a NamedTuple, from the unconstrained vector u. Both models carry the
-nuisance fields (logμκ, σκ, α, outlier); model A adds η (the full 2k + 1 log-propensities), model B (μ, logγ, β).
+nuisance fields (logμκ, σκ, α, outlier); the propensity model adds η (the full 2k + 1 log-propensities).
 """
 function constrained_parameters end
 
@@ -249,8 +249,8 @@ function prior_mean_parameters end
 """
     simulate_stems(...)
 
-Simulated stems (angles, true orders, twist rates). Methods: `simulate_stems(tab, μ, γ; ...)` (model B, delays from the
-passage law) and `simulate_stems(η; ...)` (model A, orders from the banded permanent with propensities η).
+Simulated stems (angles, true orders, twist rates). Methods: `simulate_stems(η; ...)` (orders from the banded permanent
+with propensities η) and `simulate_stems(f::DelayLaw; ...)` (orders from Level-0 fold commitment with delay law f).
 """
 function simulate_stems end
 

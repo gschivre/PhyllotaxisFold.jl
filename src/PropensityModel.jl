@@ -9,13 +9,13 @@ Parameters (constrained space)
 
 (π_o: probability of an outlier angle, with `outlier = true`.)
 
-The per-stem likelihood is the one of model B (`AngleLikelihood.stem_loglik!`) with η free: the gradient in η is
+The per-stem likelihood is `AngleLikelihood.stem_loglik!` with η free: the gradient in η is
 analytic (∂ℓ/∂η_d = E_post[N_d] − E_η[N_d]), as are those in log μκ, σκ and α. `TransformedLogDensityProblem` maps to
 ℝ^dim with the Stacked bijector (softplus gaps for η, identity, log, logit); `fit_map` is Newton trust region with the
 analytic gradient (chain rule through the bijector Jacobian) and the Hessian from one dual pass over it. The log density
 stays generic in the number type (ForwardDiff works on it).
 
-The API is that of model B (`FoldModel`): the model itself is passed to `fit_map`, `fit_map_torsion`, `update_torsion!`,
+The model itself is passed to `fit_map`, `fit_map_torsion`, `update_torsion!`,
 `torsion_nodes`, `stem_loglik`, `angle_loglikelihood`, `decode_orders` and `order_posterior`, always with the
 unconstrained parameters u (`constrained_parameters`, `unconstrained_parameters`, `prior_mean_parameters` convert);
 `TransformedLogDensityProblem(model)` remains for LogDensityProblems users and is accepted wherever the model is.
@@ -346,7 +346,7 @@ prior_mean_parameters(prob::TransformedLogDensityProblem) = prior_mean_parameter
 
 Log-likelihood of stem s alone (prior excluded) at the *constrained* parameter vector θ, with twist rate τ (degrees per
 unit of x). Generic in the number types of θ and τ (ForwardDiff, nested duals). `stem_loglik(model, u, s; τ)` is the
-same on the unconstrained u, as for model B.
+same on the unconstrained u.
 """
 function propensity_plant_loglik(model::PhyllotaxisModelAD, θ::AbstractVector, s::Int; τ::Real = model.torsion.τ[s])
     (; k, ngrid_ϕ, ngrid_κ, logspace) = model
@@ -357,16 +357,16 @@ function propensity_plant_loglik(model::PhyllotaxisModelAD, θ::AbstractVector, 
     return stem_loglik!(fws, stem_grid(model), y, full_eta(model, θ), logμκ, σκ, α, false; outlier = πo)
 end
 
-"each stem's rate set to the maximum of its own log-likelihood at the unconstrained u (as for model B)"
+"each stem's rate set to the maximum of its own log-likelihood at the unconstrained u"
 update_torsion!(model::PhyllotaxisModelAD, u::AbstractVector; scan = -25.0:0.5:25.0) = angle_update_torsion!(model, u; scan)
-"twist quadrature nodes of every stem at the unconstrained u (as for model B)"
+"twist quadrature nodes of every stem at the unconstrained u"
 torsion_nodes(model::PhyllotaxisModelAD, u::AbstractVector; kw...) = angle_torsion_nodes(model, u; kw...)
 
 """
     fit_map_torsion(model::PhyllotaxisModelAD; prior, u0, recenter, nodes_kw, options)
 
 MAP with the twist rates integrated out (ω_s ~ N(m_ω, s_ω²), hyperprior `prior`). Returns (; fit, m_ω, s_ω, τ, τ_mean,
-τ_sd, loglik, nodes); fit = (; θ, u, H, result), fit.u = [model parameters; m_ω; log s_ω]. Same as for `FoldModel`.
+τ_sd, loglik, nodes); fit = (; θ, u, H, result), fit.u = [model parameters; m_ω; log s_ω].
 """
 function fit_map_torsion(model::PhyllotaxisModelAD; prior::TorsionPrior = TorsionPrior(), u0 = prior_mean_parameters(model), recenter::Int = 1,
         nodes_kw = (;), options = Optim.Options(g_tol = 1e-5, iterations = 100))

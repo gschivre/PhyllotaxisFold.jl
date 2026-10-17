@@ -3,24 +3,31 @@
 Statistical models of the **order of organs along a plant stem**, read from the absolute azimuths of the organs
 (flowers, fruits). In *Arabidopsis* the organs follow a spiral with a divergence close to the golden angle, but two
 organs initiated close in time often end up in the inverted order. These permutations are a readout of the timing
-noise of organ initiation. The package estimates that timing noise, and interprets it through a cellular switch that
-commits a group of cells to become an organ.
+of organ commitment. The package decodes the orders from the angles, then estimates the law of the commitment delay
+of each site.
 
-The method is described in [`docs/method.md`](docs/method.md), from the biology to the equations and the code.
+The method is described in [`docs/method.md`](docs/method.md), from the biology to the equations and the code. The
+validation on simulated stems is in its §6.
 
-## Models
+## Two steps
 
-| model | constructor | how the order of organs is described | timing parameters |
-|---|---|---|---|
-| **A** | `PhyllotaxisModelAD` | free log-propensity η_d of each displacement d | η_1 … η_k |
-| **B** | `FoldModel` | η derived from a commitment switch near a fold (saddle-node) bifurcation, with sites made ready at a regular pace | shape of the delay law, precision γ = plastochron / sd(delay) |
-| **B with tempo** | `FoldModel(...; tempo = r)` | as B, with a precision that follows the plastochron along the stem, γ_p = γ r_p^β | shape, γ, β |
+| step | what | main functions |
+|---|---|---|
+| **1. Propensity model** | the angles given an order (spiral offset, orientation, golden or Lucas divergence, per-stem precision, stem twist, optional outlier angles), summed over every order within a band with a free log-propensity η_d for each displacement d | `PhyllotaxisModelAD`, `fit_map`, `fit_map_torsion`, `decode_orders`, `order_posterior`, `spiral_posterior` |
+| **2. Fold-commit timing** | site i is ready at time i (plastochrons) and commits after a random delay eᵢ, so σ = sortperm(i + eᵢ). The delay law (a Gaussian core plus early and late tails) is fitted by re-weighting the propensity model's posterior orders with the exact order likelihood | `DelayLaw`, `order_samples`, `relative_loglik`, `fit_delay_law`, `delay_law_inference`, `tail_masses` |
 
-All models share the same angle likelihood: an exact sum over every order of the organs within a band (a banded
-permanent computed by dynamic programming), over the unknown spiral offset, orientation and divergence (golden or
-Lucas), over a per-stem angular precision, and over a per-stem twist of the stem (integrated out). Estimation is by
-maximum a posteriori with Newton's method (analytic gradient, Hessian from one dual-number pass) and a Laplace
-approximation.
+Step 1 uses an exact sum over the orders (a banded permanent computed by dynamic programming) and is fitted by maximum
+a posteriori with Newton's method (analytic gradient, Hessian from one dual-number pass). The stem twist is a random
+effect per stem, integrated by adaptive quadrature. Step 2 rests on an identity: both models share the angle
+likelihood, so
+
+    p(y | f) / p(y | A) = E over the propensity model's posterior orders of P_f(σ) / P_A(σ).
+
+Any delay law f is thereby scored against the propensity model in seconds, without refitting the angles.
+
+The fold-commitment model (costs derived from the passage law of a switch near its fold), its variants (B-mix,
+B-tempo) and the Level-1 simulator were removed in version 0.2. They are in the tag
+[`with-model-B`](../../tree/with-model-B).
 
 ## Installation
 
@@ -34,41 +41,30 @@ Pkg.add(url = "https://github.com/gschivre/PhyllotaxisFold.jl")
 ```julia
 using PhyllotaxisFold
 
-# precomputed passage-time and propensity tables (plateau family; tables_ramp_k4.jls for the ramp family)
-(; tab, ptab) = load_tables(joinpath(pkgdir(PhyllotaxisFold), "tables", "tables_k4.jls"))
+# angles: one vector of absolute azimuths (radians, bottom to top) per stem; the twist coordinate in mm per organ
+# here: 60 simulated stems of 45 organs, 200 mm long
+x = [collect(range(0.0, 200.0; length = 45)) for _ in 1:60]
+law = DelayLaw(0.42; πL = 0.05, mL = 1.5, πE = 0.05, mE = 1.0)  # core sd and tails, in plastochrons
+angles = simulate_stems(law; plants = 60, organs = 45, x, logμκ = 1.8, torsion_mean = 0.2, torsion_sd = 0.15).angles
 
-# angles: one vector of absolute azimuths (radians, bottom to top) per stem; internodes in mm (for the twist)
-sim = simulate_stems(tab, 2.0, 1.7; plants = 50, organs = 45)      # 50 simulated stems
-angles = sim.angles
-internodes = [fill(6.0, 44) for _ in angles]
+# 1. the propensity model, twist integrated out (TorsionPrior in degrees per unit of x)
+m = PhyllotaxisModelAD(angles; symmetric = true, torsion_x = x)          # outlier = true: uniform outlier angles
+r = fit_map_torsion(m; prior = TorsionPrior(m0 = 0.0, sm = 2.0, νs = 4.0, τs = 1.0))
+θ = constrained_parameters(m, r.fit.u[1:(end - 2)])                      # η (2k + 1 costs), logμκ, σκ, α
+r.m_ω, r.s_ω                                                             # twist population (degrees per mm)
+dec = decode_orders(m, r; full = true)       # joint MAP per stem: σ, twist rate, ϕ, o, ψ, κ
+post = order_posterior(m, r; nsamples = 200) # exact posterior marginals ρ[p, d + k + 1] and samples of σ
 
-# model B, stem twist integrated out
-m = FoldModel(angles, ptab; torsion_x = [torsion_coordinate(ℓ) for ℓ in internodes])
-r = fit_map_torsion(m)
-r.fit.θ            # (μ = shape, logγ, logμκ, σκ, α, β)
-r.m_ω, r.s_ω       # twist population (degrees per mm)
-
-# model A on the same stems: the same API (unconstrained u, `constrained_parameters`, fits, decoding)
-mA = PhyllotaxisModelAD(angles, PhyllotaxisPrior(); torsion_x = m.torsion.x)   # outlier = true: uniform outlier angles
-rA = fit_map_torsion(mA)
-rA.fit.θ.η          # the 2k + 1 log-propensities
-
-# decoding, the twist decoded or integrated out with the order
-dec = decode_orders(m, r; full = true)      # joint MAP: σ, twist rate, ϕ, o, ψ, κ per stem
-post = order_posterior(m, r; nsamples = 100) # exact posterior marginals ρ[p, d + k + 1] and samples of σ
-
-# model B with a tempo profile from daily open-flower counts (cumulative counts per plant, NaN = day not recorded)
-# fl = fit_flowering(counts)                  # piecewise-linear rate, per-plant change point, finite arrest
-# TP = plastochron_by_rank(fl, 80)             # typical plant, by flower rank (days); or, one curve per stem:
-# TP = [plant_plastochron(fl, counts_of_plant(s), 80) for s in stems]
-# known ranks: the organ at stem position p is flower p + offset
-# mt = FoldModel(angles, ptab; torsion_x = m.torsion.x, plastochron = TP, offsets = 1)
-# uncertain ranks (0 to 2 basal organs missed): the likelihood of each stem is summed over the offsets
-# mt = FoldModel(angles, ptab; torsion_x = m.torsion.x, plastochron = TP, offsets = 0:2)
-# fit_map_torsion(mt).fit.θ.β
+# 2. the commitment delay law through the posterior orders
+smp = order_samples(post, θ.η)
+fit = fit_delay_law(smp, :both)              # :core, :late or :both
+fit.law, fit.rel_ll                          # the law, and log p(y | f) − log p(y | A)
+inf = delay_law_inference(smp, fit)          # s, P(e > 1), P(e < −1), P(|e| > 1) with robust (stem-clustered) se
+inf.estimate, inf.se
 ```
 
-Tables can be rebuilt with `build_tables` and `build_ramp_tables` (about a minute on 18 threads).
+Mutant against wild type: fit each group, then compare `inf.estimate` with the standard errors (independent groups),
+or the summed `relative_loglik` of separate and shared laws (a likelihood-ratio test).
 
 ## Tests and figures
 
@@ -76,7 +72,14 @@ Tables can be rebuilt with `build_tables` and `build_ramp_tables` (about a minut
 ] test PhyllotaxisFold
 ```
 
-The figures of the method description are made from simulations only: `julia --project=docs docs/make_figures.jl`.
+The tests cover the dynamic programming against enumeration, the analytic gradients and Hessians, the twist
+quadrature, the decoding and posterior sampling on simulated stems, the exact order likelihood against Monte Carlo,
+the re-weighting identity, and the recovery of a delay law from angles alone.
+
+Figures (simulated data only, GLMakie in the `docs` environment):
+
+- `docs/make_figures.jl`: the illustrations of the method;
+- `docs/make_validation_figures.jl`: fitting, decoding and timing recovered on simulated stems (method §6).
 
 ## Licence
 

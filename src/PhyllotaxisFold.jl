@@ -1,25 +1,24 @@
 """
     PhyllotaxisFold
 
-Statistical models of the order of organs along a plant stem, from the absolute azimuths of the organs, with the order
-explained by a commitment switch near its fold. Submodules, in dependency order:
+Statistical models of the order of organs along a plant stem, from the absolute azimuths of the organs: the propensity
+model (free log-propensity of each displacement) decodes the orders, and the fold-commit timing law (each site commits
+after a random delay) is fitted through its posterior orders. Submodules, in dependency order:
 
 | submodule          | content                                                                                     |
 |--------------------|---------------------------------------------------------------------------------------------|
-| `Common`           | canonical angles, log I₀ and Bessel ratio (dual-safe), half-t, Keys interpolation weights    |
+| `Common`           | canonical angles, log I₀ and Bessel ratio (dual-safe), half-t                                |
 | `Torsion`          | stem torsion: coordinates, corrected angles, per-stem rate scan, quadrature, Newton MAP       |
 | `Permanents`       | banded permanent: graph, forward / backward (marginals), exact sampling, Viterbi             |
-| `AngleLikelihood`  | the angle likelihood of one stem and its analytic gradient, shared by all models             |
+| `AngleLikelihood`  | the angle likelihood of one stem and its analytic gradient; decoding and order posterior     |
 | `PropensityPriors` | log-normal softplus prior on free log-propensities η and its bijectors                        |
-| `PassageTime`      | fold passage law (plateau, ramp): Fokker–Planck tables, `FoldPassageTime`                     |
-| `OrderStatistics`  | order law of a paced meristem, propensity map (shape, γ) ↦ η, exact order likelihood, tables |
-| `MixturePassage`   | B-mix: a margin that varies between sites, mixture passage law and 3-D propensity table       |
-| `PropensityModel`  | model A: free log-propensities η, `PhyllotaxisModelAD`                                        |
-| `FoldAngleModel`   | model B: η from the passage law, optional tempo along the stem, `FoldModel`                   |
-| `Plastochron`      | plastochron by flower rank from daily open-flower counts (input of the tempo option)          |
-| `Level1`           | commitment-paced readiness (Level 1): simulator and the statistics that separate it from Level 0 |
+| `PropensityModel`  | the propensity model: free log-propensities η, `PhyllotaxisModelAD`                           |
+| `CommitmentTiming` | fold-commit delay laws, exact Level-0 order likelihood, re-weighting of the posterior orders  |
+| `Plastochron`      | plastochron by flower rank from daily open-flower counts (delays in hours)                    |
 
-Every submodule's exported names are re-exported here. The method is described in `docs/method.md`.
+Every submodule's exported names are re-exported here. The method is described in `docs/method.md`. Model B (the
+fold-commitment model: costs from the passage law of a switch near its fold), B-mix, B-tempo and the Level-1 simulator
+are in the tagged version `with-model-B`.
 """
 module PhyllotaxisFold
 
@@ -30,25 +29,17 @@ include("Torsion.jl")
 include("Permanents.jl")
 include("AngleLikelihood.jl")
 include("PropensityPriors.jl")
-include("PassageTime.jl")
-include("OrderStatistics.jl")
-include("MixturePassage.jl")
 include("PropensityModel.jl")
-include("FoldAngleModel.jl")
+include("CommitmentTiming.jl")
 include("Plastochron.jl")
-include("Level1.jl")
 
 @reexport using .Common
 @reexport using .Torsion
 @reexport using .Permanents
 @reexport using .AngleLikelihood
 @reexport using .PropensityPriors
-@reexport using .PassageTime
-@reexport using .OrderStatistics
-@reexport using .MixturePassage
 @reexport using .PropensityModel
-@reexport using .FoldAngleModel
+@reexport using .CommitmentTiming
 @reexport using .Plastochron
-@reexport using .Level1
 
 end # module PhyllotaxisFold

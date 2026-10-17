@@ -3,27 +3,23 @@
 
 Constants and small numerical tools shared by every block of the model: the two canonical divergence angles, log I₀ and
 the Bessel ratio (generic in the number type, so that they work with nested ForwardDiff duals), the half-t density, the
--Inf-safe logaddexp, the scaled logistic map used for bounded parameters, and the cubic (Keys) interpolation weights
-used by the passage and propensity tables.
+-Inf-safe logaddexp and the scaled logistic map used for bounded parameters.
 """
 module Common
 
 using ForwardDiff, SpecialFunctions, Distributions, LogExpFunctions
 
-export Golden_angle, Lucas_angle, LOGFLOOR, logbesseli, besseliratio, logpdf_halft, dlogpdf_halft, fit_map
+export Golden_angle, Lucas_angle, logbesseli, besseliratio, logpdf_halft, dlogpdf_halft, fit_map
 
 const Golden_angle = π * (3 - sqrt(5)) # rad2deg(Golden_angle) ≈ 137.5
 const Lucas_angle = π * (1 - inv(sqrt(5))) # rad2deg(Lucas_angle) ≈ 99.5
-
-# floor of the tabulated log densities (log 0 replaced by a finite value that keeps the interpolation smooth)
-const LOGFLOOR = -400.0
 
 """
     fit_map(model; kwargs...)
 
 MAP estimate by Newton's method with trust region, analytic gradient and a Hessian from one dual pass over it.
-Methods: `fit_map(::FoldModel)` (model B) and `fit_map(::PhyllotaxisModelAD)` (model A, also its
-`TransformedLogDensityProblem`); both return (; θ, u, H, result), θ = `constrained_parameters(model, u)`.
+Methods: `fit_map(::PhyllotaxisModelAD)` and its `TransformedLogDensityProblem`; returns (; θ, u, H, result),
+θ = `constrained_parameters(model, u)`.
 """
 function fit_map end
 
@@ -104,24 +100,5 @@ end
 # half-t density (location 0, scale τ) and its derivative in x
 logpdf_halft(x, ν, τ) = log(2) + logpdf(TDist(ν), x / τ) - log(τ)
 dlogpdf_halft(x, ν, τ) = -(ν + 1) * x / (ν * τ ^ 2 + x ^ 2)
-
-# cubic convolution (Keys, a = −1/2) weights, their derivatives, and the cell of x on a uniform grid
-@inline function _keys_w(t)
-    w1 = ((-0.5 * t + 1.0) * t - 0.5) * t
-    w2 = (1.5 * t - 2.5) * t * t + 1.0
-    w3 = ((-1.5 * t + 2.0) * t + 0.5) * t
-    w4 = (0.5 * t - 0.5) * t * t
-    return (w1, w2, w3, w4)
-end
-@inline function _keys_dw(t)
-    return ((-1.5 * t + 2.0) * t - 0.5, (4.5 * t - 5.0) * t, (-4.5 * t + 4.0) * t + 0.5, (1.5 * t - 1.0) * t)
-end
-@inline function _keys_index(grid, x)
-    h = grid[2] - grid[1]
-    n = length(grid)
-    u = clamp((x - grid[1]) / h, 0.0, n - 1.0)
-    i = clamp(floor(Int, u), 0, n - 2) # 0-based cell
-    return (i, u - i, h)
-end
 
 end # module Common
