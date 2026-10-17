@@ -26,7 +26,7 @@ using ..Common: logpdf_halft
 
 export StemTorsion, TorsionPrior, TorsionNodes, torsion_coordinate, torsion_corrected, torsion_step, torsion_hyperprior,
        scan_rate, stem_nodes, node_logterms, node_posterior, newton_map, corrected_angles, update_torsion!,
-       torsion_nodes, fit_map_torsion
+       torsion_nodes, fit_map_torsion!, golden_section_max
 
 """
     corrected_angles(model, s; τ)
@@ -54,7 +54,7 @@ parameters). Methods: `PhyllotaxisModelAD` (θ or u).
 function torsion_nodes end
 
 """
-    fit_map_torsion(model; prior = TorsionPrior(), u0, recenter = 1, nodes_kw = (;), options)
+    fit_map_torsion!(model; prior = TorsionPrior(), u0, recenter = 1, nodes_kw = (;), options)
 
 MAP of the global parameters and of the twist population (m_ω, log s_ω), with each stem's rate integrated out:
 1. fit without torsion; 2. nodes at that fit, rates set to each stem's best mode; 3. fit with these rates fixed;
@@ -63,9 +63,12 @@ Returns (; fit, m_ω, s_ω, τ, τ_mean, τ_sd, loglik, nodes) (loglik: Σ of th
 excluded): fit = (; θ, u, H, result) with u = [global u; m_ω; log s_ω] and H the
 Hessian of the log posterior in u (−inv(H): Laplace covariance); per stem, τ the most probable mode (used by
 `corrected_angles`), τ_mean and τ_sd the posterior mean and sd of the rate (aliases included). Methods:
-`PhyllotaxisModelAD` (model A, or its `TransformedLogDensityProblem`).
+`PhyllotaxisModelAD` (or its `TransformedLogDensityProblem`).
+
+The model's stored twist rates (`model.torsion.τ`, the default rate of `stem_loglik`, `corrected_angles` and of the
+decoding functions given plain parameters u) are overwritten: by each stem's most probable mode at the end.
 """
-function fit_map_torsion end
+function fit_map_torsion! end
 
 "torsion coordinates (one vector per stem) and rates (degrees per unit of the coordinate, one per stem, start at 0)"
 struct StemTorsion
@@ -110,18 +113,32 @@ function scan_rate(f, step::Real; scan = -25.0:0.5:25.0, tol::Real = 0.01)
     g(t) = f(t / step)
     v = [g(t) for t in scan]
     i = argmax(v)
-    a, b = scan[max(i - 1, 1)], scan[min(i + 1, length(scan))]
+    t, _ = golden_section_max(g, scan[max(i - 1, 1)], scan[min(i + 1, length(scan))]; tol)
+    return t / step
+end
+
+"""
+    golden_section_max(f, a, b; tol = 1e-3, score = identity)
+
+Maximum of a unimodal f on [a, b] by golden-section search, to an interval narrower than `tol`. `score(f(x))` is the
+number compared (for an f that returns a richer object). Returns (x, f(x)) of the best point evaluated.
+"""
+function golden_section_max(f, a::Real, b::Real; tol::Real = 1e-3, score = identity)
     c = (sqrt(5) - 1) / 2
     x1, x2 = b - c * (b - a), a + c * (b - a)
-    f1, f2 = g(x1), g(x2)
+    f1, f2 = f(x1), f(x2)
     while b - a > tol
-        if f1 > f2
-            b, x2, f2 = x2, x1, f1; x1 = b - c * (b - a); f1 = g(x1)
+        if score(f1) > score(f2)
+            b, x2, f2 = x2, x1, f1
+            x1 = b - c * (b - a)
+            f1 = f(x1)
         else
-            a, x1, f1 = x1, x2, f2; x2 = a + c * (b - a); f2 = g(x2)
+            a, x1, f1 = x1, x2, f2
+            x2 = a + c * (b - a)
+            f2 = f(x2)
         end
     end
-    return (a + b) / 2 / step
+    return score(f1) > score(f2) ? (x1, f1) : (x2, f2)
 end
 
 
@@ -157,8 +174,8 @@ function stem_nodes(f, step::Real; scan = -25.0:0.5:25.0, Δ::Real = 8.0, maxmod
         t = scan_rate(g, 1.0; scan = range(a, b; length = 5), tol = 0.002) # golden section on [a, b]
         gt = g(t)
         any(m -> abs(m[1] - t) < 0.25, modes) && continue
-        h = 0.05
-        c2 = (g(t + h) - 2gt + g(t - h)) / h^2
+        δ = 0.05
+        c2 = (g(t + δ) - 2gt + g(t - δ)) / δ^2
         sd = inflate * min(1 / sqrt(max(-c2, 1e-3)), 2.0)
         push!(modes, (t, sd, gt))
     end
@@ -186,11 +203,11 @@ node_logterms(ω, logw, ℓ, m, s) = [logw[j] + ℓ[j] - 0.5 * ((ω[j] - m) / s)
 
 "posterior of one stem's rate from its node terms a (Float64): (mean, sd, most probable mode centre)"
 function node_posterior(ω, a, modes)
-    π = exp.(a .- logsumexp(a))
-    μ = sum(π .* ω)
-    sd = sqrt(max(sum(π .* (ω .- μ) .^ 2), 0.0))
+    pw = exp.(a .- logsumexp(a))
+    μ = sum(pw .* ω)
+    sd = sqrt(max(sum(pw .* (ω .- μ) .^ 2), 0.0))
     nn = length(ω) ÷ length(modes)
-    mass = [sum(π[((r - 1) * nn + 1):(r * nn)]) for r in eachindex(modes)]
+    mass = [sum(pw[((r - 1) * nn + 1):(r * nn)]) for r in eachindex(modes)]
     return μ, sd, modes[argmax(mass)][1]
 end
 

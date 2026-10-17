@@ -30,7 +30,6 @@ function Distributions._rand!(rng::AbstractRNG, d::LogNormalSoftPlus, x::Abstrac
 end
 function Distributions._logpdf(d::LogNormalSoftPlus, η::AbstractVector{T}) where {T <: Real}
     k = length(d)
-    @assert length(η) == k
     Δ₁ = -η[1]
     (Δ₁ > 0) || return -Inf
     logp = logpdf(LogNormal(d.μΔ[1], d.σΔ[1]), Δ₁)
@@ -62,7 +61,6 @@ function Distributions._rand!(rng::AbstractRNG, d::ReverseLogNormalSoftPlus, x::
 end
 function Distributions._logpdf(d::ReverseLogNormalSoftPlus, η::AbstractVector{<:Real})
     k = length(d)
-    @assert length(η) == k
     Δₖ = -η[k]
     (Δₖ > 0) || return -Inf
     logp = logpdf(LogNormal(d.μΔ[k], d.σΔ[k]), Δₖ)

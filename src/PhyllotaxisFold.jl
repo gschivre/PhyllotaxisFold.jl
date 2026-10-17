@@ -16,7 +16,7 @@ after a random delay) is fitted through its posterior orders. Submodules, in dep
 | `CommitmentTiming` | fold-commit delay laws, exact Level-0 order likelihood, re-weighting of the posterior orders  |
 | `Plastochron`      | plastochron by flower rank from daily open-flower counts (delays in hours)                    |
 
-Every submodule's exported names are re-exported here. The method is described in `docs/method.md`. Model B (the
+Every submodule's exported names are re-exported here. The method is described in the manual (`docs/src`). Model B (the
 fold-commitment model: costs from the passage law of a switch near its fold), B-mix, B-tempo and the Level-1 simulator
 are in the tagged version `with-model-B`.
 """

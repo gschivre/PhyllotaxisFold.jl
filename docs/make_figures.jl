@@ -1,4 +1,4 @@
-# Figures of docs/method.md (the method illustrations). Every figure is computed from simulated stems only; the
+# Figures of the manual (docs/src, the method illustrations). Every figure is computed from simulated stems only; the
 # validation figures on simulated data are made by docs/make_validation_figures.jl.
 # Run from the docs environment (GLMakie):
 #   julia --project=docs -e 'using Pkg; Pkg.instantiate(); include("docs/make_figures.jl")'
@@ -8,7 +8,7 @@ using PhyllotaxisFold, Random, Statistics, Distributions, LogExpFunctions, Seria
 using SpecialFunctions: loggamma
 using GLMakie
 
-const FIG = joinpath(@__DIR__, "figures")
+const FIG = joinpath(@__DIR__, "src", "figures")
 mkpath(FIG)
 const PF = PhyllotaxisFold
 
@@ -171,35 +171,6 @@ let ns = 2:60
 end
 
 #################################################################################################################
-# m3. what the forward–backward pass returns: marginal posterior of the displacements, prior vs given the angles
-#################################################################################################################
-let rng = Xoshiro(11), n = 30, k = 4, κ = 2.0
-    law = DelayLaw(0.45; πL = 0.08, mL = 1.2, πE = 0.08, mE = 1.0) # fold commitment with two tails (Level 0)
-    σ = sortperm([i + rand(rng, law) for i in 1:n])
-    ψ, o, ϕ = Golden_angle, 1, 0.7
-    y = [mod2pi(rand(rng, VonMises(ϕ + o * (σ[p] - 1) * ψ, κ))) for p in 1:n]
-    η = [-3.1, -2.5, -1.9, -0.8, 0.0, -0.8, -1.9, -2.5, -3.1] # propensity-model costs of the order of hda9 WT
-    ws = PermanentWorkspace(k, n)
-    toeplitz_weights!(ws, η, n); forward!(ws, n); ρ0 = copy(backward!(ws, n))
-    for d in -k:k, i in max(1, 1 - d):min(n, n - d)
-        ws.w[i, d + k + 1] = η[d + k + 1] + κ * (cos(y[i] - ϕ - o * (i + d - 1) * ψ) - 1)
-    end
-    forward!(ws, n); ρ1 = copy(backward!(ws, n))
-    σmap = map_permutation(ws.g, ws.w[1:n, :], n)
-    fig = Figure(size = (1300, 470))
-    for (c, (ρ, ttl)) in enumerate(((ρ0, "(a) Before seeing the angles: P(σ(p) = p + d | η)"), (ρ1, "(b) Given the angles: P(σ(p) = p + d | y, η, ϕ, o, ψ, κ)")))
-        ax = Axis(fig[1, c]; title = ttl, xlabel = "stem position p", ylabel = "displacement d", yticks = -k:k, titlesize = 15)
-        hm = heatmap!(ax, 1:n, -k:k, ρ; colormap = :Blues, colorrange = (0, 1))
-        scatter!(ax, 1:n, σ .- (1:n); color = :transparent, strokecolor = C_PATH, strokewidth = 2, markersize = 14, label = "true d")
-        c == 2 && scatter!(ax, 1:n, σmap .- (1:n); color = :black, marker = :xcross, markersize = 9, label = "Viterbi (MAP order)")
-        c == 2 && Colorbar(fig[1, 3], hm; label = "probability")
-        axislegend(ax; position = :rb, framevisible = true, backgroundcolor = (:white, 0.8))
-    end
-    save(joinpath(FIG, "m3_dp_marginals.png"), fig)
-end
-
-
-#################################################################################################################
 #################################################################################################################
 # m9. a swap seen in the timeline, the internodes and the angles (hand-made Level-0 stem, plateau-like late organ)
 #################################################################################################################
@@ -235,3 +206,166 @@ let n = 12
     save(joinpath(FIG, "m9_swap_signature.png"), fig)
 end
 
+#################################################################################################################
+#################################################################################################################
+# e1–e5. the running example: 40 simulated stems of 35 organs (WT-like delay law, twist in mm), one of them followed
+# through the whole manual. The fit (≈ 5 min on 18 threads) is cached in docs/example.jls.
+#################################################################################################################
+const EX_CACHE = joinpath(@__DIR__, "example.jls")
+const EX_LAW = DelayLaw(0.42; πL = 0.06, mL = 1.5, πE = 0.06, mE = 1.0)
+const EX_TPRIOR = TorsionPrior(m0 = 0.0, sm = 2.0, νs = 4.0, τs = 1.0) # °/mm
+
+function example_data()
+    rng = Xoshiro(2024)
+    S, n = 40, 35
+    x = map(1:S) do _
+        ℓ = [exp(log(9.0 - 6.0 * (p - 1) / (n - 2)) + 0.35 * randn(rng)) for p in 1:(n - 1)] # internodes 9 → 3 mm
+        [0.0; cumsum(ℓ)]
+    end
+    sim = simulate_stems(EX_LAW; plants = S, organs = n, x, logμκ = 1.85, σκ = 0.15, torsion_mean = 1.0, torsion_sd = 0.7, rng)
+    return x, sim, PhyllotaxisModelAD(sim.angles; torsion_x = x)
+end
+
+function example_fit()
+    x, sim, m = example_data()
+    isfile(EX_CACHE) && return (; deserialize(EX_CACHE)..., m)
+    r = fit_map_torsion!(m; prior = EX_TPRIOR)
+    dec = decode_orders(m, r; full = true)
+    post = order_posterior(m, r; nsamples = 200, rng = Xoshiro(7))
+    ex = (; x, sim, θ = r.fit.θ, r.m_ω, r.s_ω, r.τ, dec, post)
+    serialize(EX_CACHE, ex)
+    return (; ex..., m)
+end
+
+# the example stem: a few displaced organs, of both kinds (late and early), and a clear twist
+function example_stem(ex)
+    score(s) = (σ = ex.sim.orders[s]; nd = count(σ .!= eachindex(σ));
+        (4 ≤ nd ≤ 9) * (any(σ .- eachindex(σ) .≤ -2) || any(σ .- eachindex(σ) .≥ 2)) * abs(ex.sim.torsion[s]))
+    return argmax(score, eachindex(ex.sim.orders))
+end
+
+circdeg(a) = rad2deg(mod(a + π, 2π) - π) # angle in (−180°, 180°]
+
+function fig_examples(ex = example_fit())
+    s = example_stem(ex)
+    σ, y, x, e = ex.sim.orders[s], ex.sim.angles[s], ex.x[s], ex.sim.delays[s]
+    n, k = length(σ), (length(ex.θ.η) - 1) ÷ 2
+    d = σ .- (1:n)
+    off = d .!= 0
+    dec = ex.dec[s]
+    ψ, o, ϕ = dec.ψ, dec.o, dec.ϕ
+    ω = ex.sim.torsion[s]
+
+    # e1. the stem, its divergences and the timeline behind them
+    let fig = Figure(size = (1500, 470))
+        ax = Axis(fig[1, 1]; title = "(a) The organs: azimuth against height", xlabel = "stem length below the organ (mm)",
+            ylabel = "azimuth (°)", yticks = 0:90:360, titlesize = 15)
+        scatter!(ax, x, mod.(rad2deg.(ϕ .+ o .* (0:(n - 1)) .* ψ .+ deg2rad(dec.τ) .* x), 360); color = :white,
+            strokecolor = :gray50, strokewidth = 1.2, markersize = 13, label = "site of the spiral at this height")
+        scatter!(ax, x, mod.(rad2deg.(y), 360); color = [off[p] ? C_PATH : :black for p in 1:n], markersize = 8, label = "organ")
+        axislegend(ax; position = :rt, framevisible = true, backgroundcolor = (:white, 0.85), labelsize = 11)
+        ylims!(ax, 0, 400)
+        ax2 = Axis(fig[1, 2]; title = "(b) Divergence between consecutive organs", xlabel = "height p (between p and p + 1)",
+            ylabel = "divergence (°)", yticks = 0:45:360, titlesize = 15)
+        dv = [mod(o * rad2deg(y[p + 1] - y[p]), 360) for p in 1:(n - 1)]
+        hlines!(ax2, [rad2deg(ψ)]; color = :gray, linestyle = :dash)
+        scatterlines!(ax2, 1:(n - 1), dv; color = [(off[p] || off[p + 1]) ? C_PATH : :black for p in 1:(n - 1)], markersize = 9,
+            linewidth = 0.8)
+        ylims!(ax2, 0, 360)
+        ax3 = Axis(fig[1, 3]; title = "(c) Hidden: ready at j (○), commits at j + eⱼ (★)", xlabel = "time (plastochrons)",
+            ylabel = "site j", titlesize = 15)
+        for j in 1:n
+            lines!(ax3, [j, j + e[j]], [j, j]; color = :gray)
+        end
+        late = Set(σ[p] for p in 1:n if d[p] != 0)
+        scatter!(ax3, 1:n, 1:n; color = :white, strokecolor = :black, strokewidth = 1, markersize = 8)
+        scatter!(ax3, (1:n) .+ e, 1:n; color = [j in late ? C_PATH : :seagreen for j in 1:n], marker = :star5, markersize = 12)
+        save(joinpath(FIG, "e1_example_stem.png"), fig)
+    end
+
+    # e2. the twist: errors against the true sites, before and after removing the stem's rate
+    let fig = Figure(size = (1100, 400))
+        r = [circdeg(y[p] - ϕ - o * (σ[p] - 1) * ψ) for p in 1:n]
+        r .-= circdeg(atan(mean(sin.(deg2rad.(r .- ω .* x))), mean(cos.(deg2rad.(r .- ω .* x))))) # centre
+        r = circdeg.(deg2rad.(r .- ω .* x)) .+ ω .* x # unwrapped around the twist line
+        ax = Axis(fig[1, 1]; title = "(a) Error of each angle with respect to its true site", xlabel = "stem length below the organ (mm)",
+            ylabel = "error (°)", titlesize = 15)
+        scatter!(ax, x, r; color = :black, markersize = 8)
+        lines!(ax, [0, x[end]], [0, ω * x[end]]; color = C_PATH, linewidth = 2, label = "twist: $(round(ω; digits = 2)) °/mm")
+        axislegend(ax; position = :lt, framevisible = false)
+        ax2 = Axis(fig[1, 2]; title = "(b) The same once the twist is removed", xlabel = "stem length below the organ (mm)",
+            ylabel = "error (°)", titlesize = 15)
+        scatter!(ax2, x, circdeg.(deg2rad.(r .- ω .* x)); color = :black, markersize = 8)
+        hlines!(ax2, [0.0]; color = :gray, linestyle = :dash)
+        linkyaxes!(ax, ax2)
+        save(joinpath(FIG, "e2_example_twist.png"), fig)
+    end
+
+    # e3. the posterior of the order, before and given the angles
+    let fig = Figure(size = (1300, 470))
+        ws = PermanentWorkspace(k, n)
+        toeplitz_weights!(ws, ex.θ.η, n); forward!(ws, n); ρ0 = copy(backward!(ws, n))
+        ρ1 = ex.post[s].ρ
+        for (c, (ρ, ttl)) in enumerate(((ρ0, "(a) Before seeing the angles"), (ρ1, "(b) Given the angles")))
+            ax = Axis(fig[1, c]; title = ttl, xlabel = "height p", ylabel = "displacement d = σ(p) − p", yticks = -k:k, titlesize = 15)
+            hm = heatmap!(ax, 1:n, -k:k, ρ; colormap = :Blues, colorrange = (0, 1))
+            scatter!(ax, 1:n, d; color = :transparent, strokecolor = C_PATH, strokewidth = 2, markersize = 14, label = "true d")
+            c == 2 && scatter!(ax, 1:n, dec.σ .- (1:n); color = :white, strokecolor = :black, strokewidth = 0.5, marker = :xcross,
+                markersize = 10, label = "most probable order")
+            c == 2 && Colorbar(fig[1, 3], hm; label = "probability")
+            axislegend(ax; position = :rb, framevisible = true, backgroundcolor = (:white, 0.8))
+        end
+        save(joinpath(FIG, "e3_example_posterior.png"), fig)
+    end
+
+    # e4. the propensity model on the 40 stems
+    let fig = Figure(size = (1400, 420))
+        ax = Axis(fig[1, 1]; title = "(a) Fitted costs η_d", xlabel = "displacement d", ylabel = "η_d", xticks = -k:k, titlesize = 15)
+        barplot!(ax, -k:k, ex.θ.η; color = :steelblue, strokewidth = 0, gap = 0.25)
+        fd, _ = estimate_displacement_frequencies(ex.m, [ex.θ]; N = 1, n)
+        tr = [mean(count(abs.(σs .- (1:n)) .== a) / n for σs in ex.sim.orders) for a in 0:k]
+        ax2 = Axis(fig[1, 2]; title = "(b) Frequency of |d|: model vs truth", xlabel = "|d|", ylabel = "fraction of organs",
+            yscale = log10, xticks = 0:k, titlesize = 15)
+        scatterlines!(ax2, 0:k, max.(fd, 1e-5); label = "fitted model", color = :steelblue, markersize = 12)
+        scatterlines!(ax2, 0:k, max.(tr, 1e-5); label = "true orders", color = C_PATH, markersize = 12)
+        axislegend(ax2; position = :rt, framevisible = false)
+        acc = sort([mean(dd.σ .== σs) for (dd, σs) in zip(ex.dec, ex.sim.orders)])
+        ax3 = Axis(fig[1, 3]; title = "(c) Organs on their correct site, per stem", xlabel = "stems (sorted)",
+            ylabel = "fraction correct", titlesize = 15)
+        barplot!(ax3, 1:length(acc), acc; color = :steelblue, strokewidth = 0, gap = 0.2)
+        ylims!(ax3, 0, 1.02)
+        save(joinpath(FIG, "e4_example_propensity.png"), fig)
+    end
+
+    # e5. re-weighting the posterior orders of the example stem
+    let fig = Figure(size = (1500, 440))
+        smp = order_samples(ex.post, ex.θ.η)
+        ss = smp[s]
+        ordr = sortperm(ss.w; rev = true)
+        ax = Axis(fig[1, 1]; title = "(a) Distinct posterior orders of the stem", xlabel = "order (by frequency)",
+            ylabel = "frequency among 200 samples", titlesize = 15, xticks = 1:length(ordr))
+        barplot!(ax, 1:length(ordr), ss.w[ordr]; color = [ss.orders[j] == σ ? C_PATH : :steelblue for j in ordr], strokewidth = 0)
+        lw = [loglik_order_exact(ss.orders[j], EX_LAW) - ss.logA[j] for j in ordr]
+        ax2 = Axis(fig[1, 2]; title = "(b) log P_f(σ) − log P_A(σ), true delay law", xlabel = "order (by frequency)",
+            ylabel = "log weight", titlesize = 15, xticks = 1:length(ordr))
+        barplot!(ax2, 1:length(ordr), lw; color = [ss.orders[j] == σ ? C_PATH : :steelblue for j in ordr], strokewidth = 0)
+        sgrid = range(0.2, 0.8; length = 25)
+        withs(sd) = DelayLaw(sd; πL = EX_LAW.πL, mL = EX_LAW.mL, πE = EX_LAW.πE, mE = EX_LAW.mE)
+        tot = [relative_loglik(smp, withs(sd)) for sd in sgrid]
+        one = [stem_terms([ss], withs(sd))[1] for sd in sgrid]
+        ax3 = Axis(fig[1, 3]; title = "(c) Δℓ against the core sd (tails at their true values)", xlabel = "core sd s (plastochrons)",
+            ylabel = "Δℓ, 40 stems", titlesize = 15)
+        lines!(ax3, sgrid, tot; color = :black, linewidth = 3, label = "sum over the 40 stems")
+        vlines!(ax3, [EX_LAW.s]; color = :gray, linestyle = :dash)
+        ax3b = Axis(fig[1, 3]; yaxisposition = :right, ylabel = "Δℓ_s, example stem", ylabelcolor = C_PATH, yticklabelcolor = C_PATH)
+        hidexdecorations!(ax3b); hidespines!(ax3b)
+        lines!(ax3b, sgrid, one; color = C_PATH, linewidth = 1.5)
+        axislegend(ax3; position = :lb, framevisible = false)
+        save(joinpath(FIG, "e5_example_reweighting.png"), fig)
+    end
+    return s
+end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    fig_examples()
+end

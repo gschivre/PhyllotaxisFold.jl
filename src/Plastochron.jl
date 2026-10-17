@@ -68,13 +68,13 @@ const LOGWZ = log.(exp.(-ZGRID .^ 2 ./ 2) ./ sqrt(2π) .* 0.05)
 # log-likelihood of one plant's counts given τ (Poisson increments, constant terms dropped)
 function _plant_loglik(p, c, τ)
     ℓ = zero(eltype(p))
-    prev, prevF, prevk = 0.0, zero(eltype(p)), 0
+    prev, prevF = 0.0, zero(eltype(p))
     for (k, v) in enumerate(c)
         isnan(v) && continue
         F = flowering_cumulative(Float64(k), p, τ)
         μ = F - prevF
         ℓ += (v - prev) * log(μ + 1e-10) - μ
-        prev, prevF, prevk = v, F, k
+        prev, prevF = v, F
     end
     return ℓ
 end
@@ -158,8 +158,7 @@ end
 r = T_P(rank) / T̄_P for every organ of every stem. `TP`: one plastochron-by-rank vector for all stems
 (`plastochron_by_rank`) or one per stem (`plant_plastochron`); `ranks`: one vector of flower ranks per stem (rank of
 the organ at stem position p; ranks beyond `length(TP)` use the last value). T̄_P is the mean over all the organs given
-(or `Tref`), so that r averages to 1.
-Returns (; r, T̄).
+(or `Tref`), so that r averages to 1. Returns (; r, T̄).
 """
 function relative_plastochron(TP::AbstractVector, ranks::AbstractVector{<:AbstractVector{<:Integer}}; Tref = nothing)
     TPs = (eltype(TP) <: Real ? fill(TP, length(ranks)) : TP)

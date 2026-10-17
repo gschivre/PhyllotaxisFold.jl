@@ -43,7 +43,7 @@ function logbesseli(n, x::T; tol = eps(), Kmax = 20) where {T}
     isnan(x) && return x
     (x == 0) && return (n == 0 ? zero(T) : T(-Inf))
     (x == Inf) && return T(Inf)
-    (x > 100) && return _logbesseli_assymptotic(n, x; tol = tol, Kmax = Kmax)
+    (x > 100) && return _logbesseli_asymptotic(n, x; tol, Kmax)
     K = max(1, floor(Int, 0.5 * (sqrt(_fullvalue(x) ^ 2 + n ^ 2) - n))) # maximum of the series at ~x / 2
     rec = zeros(T, K) # record the first K values
     rec[1] = -loggamma(n + 1)
@@ -65,7 +65,7 @@ function logbesseli(n, x::T; tol = eps(), Kmax = 20) where {T}
     end
     return log(res) + n * log(x / 2) + rec[end]
 end
-function _logbesseli_assymptotic(n, x::T; tol = eps(), Kmax = 20) where {T}
+function _logbesseli_asymptotic(n, x::T; tol = eps(), Kmax = 20) where {T}
     μ = 4 * (n ^ 2)
     s = one(T)
     p = one(T)
@@ -87,13 +87,14 @@ function besseliratio(x::Real)
     isnan(x) && return x
     (x == Inf) && return 1.0
     (x == 0) && return 0.0
-    (x > 1e4) && return 1 - 1 / (2 * x) - 1 / (8 * (x ^ 2))
+    (x > 1e4) && return 1 - 1 / (2x) - 1 / (8x^2) - 1 / (8x^3) # asymptotic series, error O(x⁻⁴)
     return besselix(1, x) / besselix(0, x)
 end
 function besseliratio(x::ForwardDiff.Dual{Tag}) where {Tag}
     v = ForwardDiff.value(x)
     A = besseliratio(v)
-    dA = (v == 0 ? 0.5 : 1 - A ^ 2 - A / v)
+    # A' = 1 − A² − A / x cancels badly at large x: use the derivative of the asymptotic series there
+    dA = (v == 0 ? 0.5 : v > 1e4 ? 1 / (2v^2) + 1 / (4v^3) + 3 / (8v^4) : 1 - A^2 - A / v)
     return ForwardDiff.Dual{Tag}(A, dA * ForwardDiff.partials(x))
 end
 

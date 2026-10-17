@@ -14,3 +14,6 @@ Manifest-v*.toml
 .vscode/
 .DS_Store
 *.swp
+
+# built manual
+docs/build/

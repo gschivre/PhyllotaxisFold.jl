@@ -1,23 +1,24 @@
 """
     AngleLikelihood
 
-The angle likelihood shared by models A (free η) and B (fold η): per stem, the banded permanent summed over the nuisance
-grid, with its analytic gradient in (η, log μκ, σκ, α) from forward–backward (expected displacement counts and expected
-cosines). Optionally the emission is a mixture with outlier angles (probability π_o, uniform on the circle).
+The angle likelihood of an order model: per stem, the banded permanent summed over the nuisance grid, with its analytic
+gradient in (η, log μκ, σκ, α) from forward–backward (expected displacement counts and expected cosines). Optionally the
+emission is a mixture with outlier angles (probability π_o, uniform on the circle). The propensity model
+(`PhyllotaxisModelAD`) is the model that plugs in here.
 
 A model plugs in through these methods (all on the unconstrained parameters u):
 
 - `stem_value_grad(m, u, s; τ, with_grad, fws)`: the log-likelihood of stem s at u (twist rate τ) and its gradient in u
   (the model's map u ↦ η, κ, α, π_o and its chain rule);
 - `global_logprior(m, u)`: the log prior of u, Jacobian included;
-- `stem_etas(m, u, s)`: the candidate log-propensities of stem s (a vector η, or an n × (2k + 1) matrix) and their log
-  prior weights (one candidate, or one per uncertain rank offset);
+- `stem_etas(m, u, s)`: the candidate log-propensity vectors η of stem s and their log prior weights (one candidate,
+  or one per uncertain rank offset);
 - `angle_nuisance(m, u)`: (; logμκ, σκ, α, outlier), outlier = π_o or `nothing`;
 - `stem_grid(m)`: the nuisance grid (k, ngrid_ϕ, ngrid_κ, ϕ_grid, κ_nodes, κ_logweights).
 
 Everything else is generic: the log density and gradient (threaded over stems), the Hessian by one dual pass over the
 analytic gradient (`angle_vgh`), the MAP (`angle_fit_map`), stem torsion as an integrated random effect (`torsion_vgh`,
-`angle_fit_map_torsion`), the per-stem and total log-likelihoods (`stem_loglik`, `angle_loglikelihood`), and the
+`angle_fit_map_torsion!`), the per-stem and total log-likelihoods (`stem_loglik`, `angle_loglikelihood`), and the
 decoding of the organ orders (`decode_orders`: joint MAP; `order_posterior`: exact posterior marginals and samples, the
 twist rate integrated out).
 """
@@ -29,10 +30,10 @@ using ..Common: Golden_angle, Lucas_angle, logbesseli, besseliratio, _isneginf
 using ..Permanents: PermanentWorkspace, PermutationGraph, forward!, backward!, toeplitz_weights!, map_permutation,
     sample_permutation!
 using ..Torsion: TorsionPrior, TorsionNodes, torsion_step, torsion_hyperprior, stem_nodes, node_logterms, node_posterior,
-    newton_map, scan_rate, corrected_angles
+    newton_map, scan_rate, golden_section_max, corrected_angles
 
 export StemWorkspace, stem_loglik!, stem_value_grad, global_logprior, angle_model, stem_etas, angle_nuisance, stem_grid,
-       angle_vgh, angle_fit_map, angle_update_torsion!, angle_torsion_nodes, torsion_vgh, angle_fit_map_torsion,
+       angle_vgh, angle_fit_map, angle_update_torsion!, angle_torsion_nodes, torsion_vgh, angle_fit_map_torsion!,
        stem_loglik, angle_loglikelihood, decode_orders, order_posterior, spiral_posterior, simulate_stems, constrained_parameters,
        unconstrained_parameters, prior_mean_parameters
 
@@ -44,11 +45,10 @@ struct StemWorkspace{T}
     log_Z::Matrix{T} # log-permanent + n κ + log p(ψ), 4 ngrid_ϕ × ngrid_κ
     log_Zq::Vector{T} # per κ node
     grad::Vector{T} # gradient accumulator: ∂ℓ/∂η_d (2k + 1), then log μκ, σκ, α, π_o
-    gradH::Matrix{T} # per-row gradient ∂ℓ/∂H[i, d] when the log-propensities are a matrix H (n_max × (2k + 1))
 end
 function StemWorkspace(::Type{T}, k::Int, n_max::Int, ngrid_ϕ::Int, ngrid_κ::Int; logspace::Bool = false) where {T}
     Nc = 4 * ngrid_ϕ
-    return StemWorkspace{T}(PermanentWorkspace(T, k, n_max; logspace = logspace), zeros(n_max, 2 * k + 1, Nc), zeros(T, Nc), zeros(T, Nc), zeros(T, Nc, ngrid_κ), zeros(T, ngrid_κ), zeros(T, 2 * k + 5), zeros(T, n_max, 2 * k + 1))
+    return StemWorkspace{T}(PermanentWorkspace(T, k, n_max; logspace = logspace), zeros(n_max, 2 * k + 1, Nc), zeros(T, Nc), zeros(T, Nc), zeros(T, Nc, ngrid_κ), zeros(T, ngrid_κ), zeros(T, 2 * k + 5))
 end
 
 # nuisance combination c of the grid ↦ (o, ψ, log p(ψ), ϕ), in the order of `stem_loglik!` (ϕ fastest, then o, then ψ)
@@ -66,12 +66,12 @@ end
 function _fill_weights!(w, η, C, c::Int, κ, n::Int, k::Int, outlier)
     if outlier === nothing
         @inbounds for d in -k:k, i in max(1, 1 - d):min(n, n - d)
-            w[i, d + k + 1] = _eta(η, i, d + k + 1) + κ * C[i, d + k + 1, c]
+            w[i, d + k + 1] = η[d + k + 1] + κ * C[i, d + k + 1, c]
         end
     else
         la, lb = log1p(-outlier), log(outlier) + logbesseli(0, κ) - κ
         @inbounds for d in -k:k, i in max(1, 1 - d):min(n, n - d)
-            w[i, d + k + 1] = _eta(η, i, d + k + 1) + logaddexp(la + κ * C[i, d + k + 1, c], lb)
+            w[i, d + k + 1] = η[d + k + 1] + logaddexp(la + κ * C[i, d + k + 1, c], lb)
         end
     end
     return w
@@ -89,29 +89,18 @@ ngrid_ϕ, ngrid_κ, ϕ_grid, κ_nodes, κ_logweights (`stem_grid(model)`). Gener
 otherwise (a gross measurement error, or an organ the site model does not describe). Without it (`nothing`), the
 emission is the von Mises alone and ∂ℓ/∂π_o is not written.
 
-η can also be an n × (2k + 1) matrix H of per-row log-propensities (row i: organ position i; a non-stationary order law,
-e.g. a readiness spacing that follows the tempo along the stem). The weights are then H[i, d] + κ (cos − 1), the
-normaliser is − log perm(e^H), and with `with_grad` the per-row gradient ∂ℓ/∂H[i, d] = ρ_post[i, d] − ρ_H[i, d] is
-written into fws.gradH[1:n, :] (overwritten); fws.grad[1:2k+1] still receives its column sums.
+Pass 1 runs the forward pass on the whole (ϕ, o, ψ) × κ grid. Pass 2 runs forward–backward only on the grid points whose
+posterior weight exceeds `prune` (the posterior over the grid is concentrated on a few points), and accumulates the
+expected displacement counts and expected cosines.
 """
-#
-# Pass 1 runs the forward pass on the whole (ϕ, o, ψ) × κ grid. Pass 2 runs forward-backward only on
-# the grid points whose posterior weight exceeds `prune` (the posterior over the grid is concentrated
-# on a few points), and accumulates the expected displacement counts and expected cosines.
-_eta(η::AbstractVector, i, d_idx) = η[d_idx]
-_eta(η::AbstractMatrix, i, d_idx) = η[i, d_idx]
-
-function stem_loglik!(fws::StemWorkspace{T}, grid, y::AbstractVector, η::AbstractVecOrMat, logμκ, σκ, α, with_grad::Bool; prune::Real = 1e-14,
-        outlier = nothing) where {T}
+function stem_loglik!(fws::StemWorkspace{T}, grid, y::AbstractVector, η::AbstractVector, logμκ, σκ, α, with_grad::Bool;
+        prune::Real = 1e-14, outlier = nothing) where {T}
     (; k, ngrid_ϕ, ngrid_κ, ϕ_grid, κ_nodes, κ_logweights) = grid
-    (; perm, C, logp_c, galpha_c, log_Z, log_Zq, grad, gradH) = fws
+    (; perm, C, logp_c, galpha_c, log_Z, log_Zq, grad) = fws
     n = length(y)
     w = perm.w
     K = 2 * k + 1
     Nc = 4 * ngrid_ϕ
-    rows = η isa AbstractMatrix
-    rows && @assert size(η, 1) ≥ n && size(η, 2) == K
-    (rows && with_grad) && fill!(view(gradH, 1:n, :), 0)
 
     # cosines do not depend on κ: compute them once per plant
     cidx = 0
@@ -177,7 +166,6 @@ function stem_loglik!(fws::StemWorkspace{T}, grid, y::AbstractVector, η::Abstra
                             cc += r * (rv * C[i, d_idx, c] + (1 - rv) * (Aκ - 1))
                             cπ += r * ((1 - rv) / outlier - rv / (1 - outlier))
                         end
-                        rows && (gradH[i, d_idx] += π_qc * r)
                     end
                     grad[d_idx] += π_qc * s
                 end
@@ -191,13 +179,12 @@ function stem_loglik!(fws::StemWorkspace{T}, grid, y::AbstractVector, η::Abstra
     end
 
     # η normaliser: - log perm(exp η), gradient - E_η[N_d]
-    rows ? (w[1:n, :] .= view(η, 1:n, :)) : toeplitz_weights!(perm, η, n)
+    toeplitz_weights!(perm, η, n)
     ℓ -= forward!(perm, n)
     if with_grad
         rho = backward!(perm, n)
         for d_idx in 1:K, i in 1:n
             grad[d_idx] -= rho[i, d_idx]
-            rows && (gradH[i, d_idx] -= rho[i, d_idx])
         end
     end
     return ℓ
@@ -208,7 +195,7 @@ end
 
 Log-likelihood of stem s (prior excluded) at the unconstrained parameters u with twist rate τ, and its gradient in u
 (`nothing` without `with_grad`); `fws` a `StemWorkspace` of eltype(u) large enough for the stem. Methods:
-`PhyllotaxisModelAD` (model A, or its `TransformedLogDensityProblem`).
+`PhyllotaxisModelAD` (or its `TransformedLogDensityProblem`).
 """
 function stem_value_grad end
 
@@ -221,8 +208,8 @@ function angle_model end
 """
     stem_etas(m, u, s)
 
-Candidate log-propensities of stem s at u and their log prior weights, (etas, logw): one candidate (a vector η of
-2k + 1, or an n × (2k + 1) matrix with a tempo profile) with log weight 0, or one per candidate rank offset.
+Candidate log-propensities of stem s at u and their log prior weights, (etas, logw): one vector η of 2k + 1 with log
+weight 0, or one per candidate rank offset.
 """
 function stem_etas end
 
@@ -235,8 +222,8 @@ function stem_grid end
 """
     constrained_parameters(model, u)
 
-The model's parameters in their natural space, as a NamedTuple, from the unconstrained vector u. Both models carry the
-nuisance fields (logμκ, σκ, α, outlier); the propensity model adds η (the full 2k + 1 log-propensities).
+The model's parameters in their natural space, as a NamedTuple, from the unconstrained vector u: the nuisance fields
+(logμκ, σκ, α, outlier) and, for the propensity model, η (the full 2k + 1 log-propensities).
 """
 function constrained_parameters end
 
@@ -250,7 +237,8 @@ function prior_mean_parameters end
     simulate_stems(...)
 
 Simulated stems (angles, true orders, twist rates). Methods: `simulate_stems(η; ...)` (orders from the banded permanent
-with propensities η) and `simulate_stems(f::DelayLaw; ...)` (orders from Level-0 fold commitment with delay law f).
+with log-propensities η) and `simulate_stems(f::DelayLaw; ...)` (orders from Level-0 fold commitment with delay law f).
+Both take the same angle and twist options.
 """
 function simulate_stems end
 
@@ -312,7 +300,7 @@ _stem_ll(m, u, s, τ; fws = _workspace(m, Float64, length(angle_model(m).data[s]
     stem_loglik(m, u, s; τ)
 
 Log-likelihood of stem s alone (prior excluded) at the unconstrained parameters u (model parameters only), with twist
-rate τ (the stem's current rate by default). Same for models A and B.
+rate τ (the stem's current rate by default).
 """
 stem_loglik(m, u::AbstractVector, s::Int; τ::Real = angle_model(m).torsion.τ[s]) = _stem_ll(m, u, s, τ)
 
@@ -320,7 +308,7 @@ stem_loglik(m, u::AbstractVector, s::Int; τ::Real = angle_model(m).torsion.τ[s
     angle_loglikelihood(m, u)
     angle_loglikelihood(m, tfit)
 
-Total log-likelihood (prior excluded): at u with each stem's current twist rate, or, from a `fit_map_torsion` result, with
+Total log-likelihood (prior excluded): at u with each stem's current twist rate, or, from a `fit_map_torsion!` result, with
 the twist rates integrated out (the fit's `loglik`, recomputed at its parameters and nodes).
 """
 angle_loglikelihood(m, u::AbstractVector) = _data_value_grad(m, map(Float64, u), false)[1]
@@ -369,13 +357,13 @@ function _stem_integrated(m, v::AbstractVector{T}, s::Int, nodes::TorsionNodes, 
     vals = [stem_value_grad(m, u, s; τ = ω[j], with_grad = true, fws) for j in eachindex(ω)]
     a = node_logterms(ω, logw, first.(vals), mω, sω)
     L = logsumexp(a)
-    π = exp.(a .- L)
+    pw = exp.(a .- L) # posterior weight of each node
     g = zeros(T, G + 2)
     for j in eachindex(ω)
-        g[1:G] .+= π[j] .* vals[j][2]
+        g[1:G] .+= pw[j] .* vals[j][2]
         r = (ω[j] - mω) / sω
-        g[G + 1] += π[j] * r / sω
-        g[G + 2] += π[j] * (r^2 - 1)
+        g[G + 1] += pw[j] * r / sω
+        g[G + 2] += pw[j] * (r^2 - 1)
     end
     return L, g
 end
@@ -420,13 +408,13 @@ function torsion_vgh(m, prior::TorsionPrior, nodes::TorsionNodes, v::AbstractVec
 end
 
 """
-    angle_fit_map_torsion(m; u0, prior, recenter, nodes_kw, options)
+    angle_fit_map_torsion!(m; u0, prior, recenter, nodes_kw, options)
 
-The fit behind `fit_map_torsion`: fit without torsion; nodes; fit with each rate at its best mode; nodes; integrated fit
+The fit behind `fit_map_torsion!`: fit without torsion; nodes; fit with each rate at its best mode; nodes; integrated fit
 (Newton on `torsion_vgh`); `recenter` times: nodes at the new fit and refit. Returns (; u, H, result, m_ω, s_ω, τ,
 τ_mean, τ_sd, loglik, nodes), u = [model u; m_ω; log s_ω].
 """
-function angle_fit_map_torsion(m; u0, prior::TorsionPrior = TorsionPrior(), recenter::Int = 1, nodes_kw = (;),
+function angle_fit_map_torsion!(m; u0, prior::TorsionPrior = TorsionPrior(), recenter::Int = 1, nodes_kw = (;),
         options = Optim.Options(g_tol = 1e-5, iterations = 100))
     tor = angle_model(m).torsion
     tor.τ .= 0
@@ -498,7 +486,7 @@ _tfit(tfit::NamedTuple) = tfit
     order_posterior(m, tfit; nsamples = 0, rng, prune = 1e-8)
 
 Exact posterior of the organ order of each stem, summed over the nuisance grid (ϕ, o, ψ, κ node), the candidate rank
-offsets and, from a `fit_map_torsion` result `tfit`, the twist rate (its quadrature nodes, weighted by the fitted
+offsets and, from a `fit_map_torsion!` result `tfit`, the twist rate (its quadrature nodes, weighted by the fitted
 population law); with plain parameters u, at each stem's current rate. Per stem: (; ρ, samples, τ_mean, τ_sd), with
 ρ[i, d + k + 1] = P(σ[i] = i + d | angles) (the organ observed at position i is canonical organ i + d) and `nsamples`
 exact draws of σ (a nuisance state drawn from its posterior, then σ by forward filtering, backward sampling).
@@ -522,7 +510,7 @@ function order_posterior(m, ut; nsamples::Int = 0, rng::AbstractRNG = Random.def
         states, wts = Tuple{Int, Int, Int, Int}[], Float64[]
         for j in eachindex(ω)
             Pj[j] < prune && continue
-            st = _stem_state(m, u, s, ω[j], fws)
+            st = _stem_state(m, u, s, ω[j], fws) # also refreshes the cosine table of fws for this twist rate
             pc = exp.(st.lc .- logsumexp(st.lc))
             for c in eachindex(st.etas), q in 1:st.grid.ngrid_κ, cb in axes(st.P[c], 1)
                 wgt = Pj[j] * pc[c] * exp(st.P[c][cb, q])
@@ -537,10 +525,10 @@ function order_posterior(m, ut; nsamples::Int = 0, rng::AbstractRNG = Random.def
         ρ ./= sum(wts)
         samples = Vector{Vector{Int}}()
         if nsamples > 0
-            draws = sort([states[searchsortedfirst(cumsum(wts), rand(srng) * sum(wts))] for _ in 1:nsamples])
-            jlast = 0
-            st = nothing
-            for (j, c, cb, q) in draws
+            cw = cumsum(wts)
+            draws = sort([states[min(searchsortedfirst(cw, rand(srng) * cw[end]), length(cw))] for _ in 1:nsamples])
+            jlast, st = 0, nothing
+            for (j, c, cb, q) in draws # sorted by twist node: one _stem_state (and cosine table) per node
                 (j != jlast) && (st = _stem_state(m, u, s, ω[j], fws); jlast = j)
                 κ = exp(st.nu.logμκ + st.nu.σκ * st.grid.κ_nodes[q])
                 _fill_weights!(fws.perm.w, st.etas[c], fws.C, cb, κ, n, k, st.nu.outlier)
@@ -582,7 +570,7 @@ end
     spiral_posterior(m, u)
     spiral_posterior(m, tfit)
 
-Posterior of the spiral of each stem, summed over the order, ϕ, κ, the rank offsets and (from a `fit_map_torsion`
+Posterior of the spiral of each stem, summed over the order, ϕ, κ, the rank offsets and (from a `fit_map_torsion!`
 result) the twist rate: one (; p_lucas, p_ccw) per stem, P(ψ = Lucas angle | angles) and P(o = +1 | angles) (o = +1:
 the site angles increase, a counter-clockwise spiral). Only forward passes (cheaper than `order_posterior`).
 """
@@ -613,7 +601,7 @@ end
     decode_orders(m, tfit; full = false, refine = true)
 
 Most likely organ order of each stem: the joint maximum a posteriori of (σ, ϕ, o, ψ, κ node, rank offset, twist rate).
-With plain parameters u, at each stem's current twist rate; from a `fit_map_torsion` result `tfit`, the twist rate is
+With plain parameters u, at each stem's current twist rate; from a `fit_map_torsion!` result `tfit`, the twist rate is
 decoded with the order (prior: the fitted population law N(m_ω, s_ω²)): the best quadrature node, refined by golden
 section within the sd of its mode (`refine`), since a different twist can change the order. Returns the vector of
 orders σ (σ[i] = canonical index of the organ at position i), or with `full = true` one NamedTuple per stem
@@ -636,20 +624,8 @@ function decode_orders(m, ut; full::Bool = false, refine::Bool = true)
         if refine
             modes = tfit.nodes.modes[s]
             h = modes[argmin([abs(md[1] - best.τ) for md in modes])][2]
-            a, b = best.τ - h, best.τ + h
-            g = (sqrt(5) - 1) / 2
-            x1, x2 = b - g * (b - a), a + g * (b - a)
-            f1, f2 = f(x1), f(x2)
-            for _ in 1:25
-                if f1.score > f2.score
-                    b, x2, f2 = x2, x1, f1; x1 = b - g * (b - a); f1 = f(x1)
-                else
-                    a, x1, f1 = x1, x2, f2; x2 = a + g * (b - a); f2 = f(x2)
-                end
-            end
-            for c in (f1, f2)
-                c.score > best.score && (best = c)
-            end
+            _, refined = golden_section_max(f, best.τ - h, best.τ + h; tol = 1e-5 * h, score = r -> r.score)
+            refined.score > best.score && (best = refined)
         end
         out[s] = best
     end

@@ -3,7 +3,7 @@ using Test, Random, Statistics, LinearAlgebra
 using Distributions, ForwardDiff, LogExpFunctions
 using LogDensityProblems: LogDensityProblems
 using Bijectors: Bijectors
-using AdditionalDistributions: HalfTDist
+using SpecialFunctions: SpecialFunctions
 
 # all permutations of 1:n with |σ[i] − i| ≤ k
 function banded_perms(n, k)
@@ -30,6 +30,23 @@ end
 const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
 
 @testset verbose = true "PhyllotaxisFold" begin
+
+@testset "Common: log Iₙ and the Bessel ratio, values and dual derivatives" begin
+    # against SpecialFunctions (besselix = e^{-x} Iₙ(x)), on both sides of the switch to the asymptotic series at x = 100
+    for n in (0, 1, 3), x in (1e-3, 0.5, 4.0, 30.0, 99.0, 101.0, 600.0)
+        @test logbesseli(n, x) ≈ log(SpecialFunctions.besselix(n, x)) + x rtol = 1e-10 atol = 1e-14
+    end
+    @test logbesseli(0, 0.0) == 0 && logbesseli(2, 0.0) == -Inf
+    for x in (0.3, 5.0, 150.0, 2e4)
+        @test besseliratio(x) ≈ SpecialFunctions.besselix(1, x) / SpecialFunctions.besselix(0, x) rtol = 1e-8
+        # d log I₀ / dx = I₁ / I₀, and the dual rule of the ratio against a central difference
+        @test ForwardDiff.derivative(z -> logbesseli(0, z), x) ≈ besseliratio(x) rtol = 1e-8
+        # dual rule against a central difference, or against A'(x) ≈ 1/(2x²) + 1/(4x³) where differences lose precision
+        ref = x < 1e3 ? (besseliratio(x + 1e-4 * x) - besseliratio(x - 1e-4 * x)) / (2e-4 * x) : 1 / (2x^2) + 1 / (4x^3)
+        @test ForwardDiff.derivative(besseliratio, x) ≈ ref rtol = 1e-5
+    end
+    @test ForwardDiff.derivative(besseliratio, 0.0) == 0.5
+end
 
 
 @testset "Permanents: forward / backward / Viterbi against enumeration" begin
@@ -66,6 +83,8 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
     σmax = perms[argmax(lw.(perms))]
     @test counts[σmax] / 20_000 ≈ exp(lw(σmax) - logZ) atol = 0.01
     @test sort(cycle_lengths([2, 1, 3, 5, 6, 4])) == [1, 2, 3]
+    @test logprob_permutation(PermanentWorkspace(k, n), [-1.0, -0.5, 0.0, -0.5, -1.0], collect(1:n)) ≈
+          -forward!((w = PermanentWorkspace(k, n); toeplitz_weights!(w, [-1.0, -0.5, 0.0, -0.5, -1.0], n); w), n)
 end
 
 @testset "Permanents: scaled linear space falls back to log-space only when needed" begin
@@ -168,7 +187,7 @@ end
 
 @testset "PropensityModel" begin
     data = [rand(Xoshiro(s), VonMises(0.0, 1.0), 20) for s in 1:3]
-    model = PhyllotaxisModelAD(data, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4)
+    model = PhyllotaxisModelAD(data, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, logspace = true)
     θ = prior_mean(model)
     @test isfinite(LogDensityProblems.logdensity(model, θ))
     lin = PhyllotaxisModelAD(data, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, logspace = false)
@@ -176,10 +195,18 @@ end
     prob = TransformedLogDensityProblem(model)
     u = Bijectors.bijector(model)(θ)
     @test all(isfinite, ForwardDiff.hessian(v -> LogDensityProblems.logdensity(prob, v), u))
-    s = sample_prior!(model; n = 60, Nsample = 2, rng = Xoshiro(5)) # n larger than the data (legacy scoping bug)
-    @test length(s[1].data) == 60
-    dec = decode_sequence!(model, θ, data[1])
-    @test isperm(dec.σ)
+    s = sample_prior(model; n = 60, Nsample = 2, rng = Xoshiro(5)) # n larger than the data
+    @test length(s[1].data) == 60 && isperm(s[1].permutation)
+    @test_throws ArgumentError PhyllotaxisModelAD([data[1][1:3]]) # band k = 4 longer than the stem
+    # realised frequencies: with steep costs nearly every organ is a fixed point; the cycle fractions sum to one
+    steep = unconstrained_parameters(model; η = [-12.0, -24.0, -36.0, -48.0], logμκ = 1.5, σκ = 0.2, α = 0.95)
+    θs = model.binv(steep)
+    fd, _ = estimate_displacement_frequencies(model, [θs]; N = 3, n = 30, rng = Xoshiro(1))
+    @test fd[1] > 0.999
+    @test sum(fd) ≈ 1 atol = 1e-6
+    fp, _ = estimate_permutation_frequencies(model, nothing; N = 200, n = 30, rng = Xoshiro(2))
+    @test sum(fp) ≈ 1
+    @test all(sum(displacement_probability(model, θ); dims = 1) .≈ 1)
     # asymmetric variant: the prior of the late side is the mirror image of the early side
     asym = PhyllotaxisModelAD(data, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, symmetric = false)
     ηa = full_eta(asym, prior_mean(asym))
@@ -192,6 +219,17 @@ end
     @test torsion_coordinate([2.0, 3.0, 5.0]) == [0.0, 2.0, 5.0, 10.0]
     @test torsion_step([0.0, 2.0, 5.0, 10.0]) ≈ 10 / 3
     @test scan_rate(τ -> -(τ - 0.37)^2, 5.0) ≈ 0.37 atol = 0.005 # scan in degrees per mean step of 5 units
+    x, fx = golden_section_max(t -> (; v = -(t - 1.234)^2), 0.0, 3.0; tol = 1e-8, score = r -> r.v)
+    @test x ≈ 1.234 atol = 1e-6
+    @test fx.v ≈ -(x - 1.234)^2
+    # the twist coordinate of the simulators: explicit positions give the default stems, mm give another twist
+    η = [-0.8, -1.9, -2.4, -3.0]
+    pos = [collect(0.0:29.0) for _ in 1:3]
+    @test simulate_stems(η; plants = 3, organs = 30, torsion_mean = 2.0, rng = Xoshiro(4)).angles ==
+          simulate_stems(η; plants = 3, organs = 30, x = pos, torsion_mean = 2.0, rng = Xoshiro(4)).angles
+    @test simulate_stems(LAW; plants = 3, organs = 30, torsion_mean = 2.0, rng = Xoshiro(4)).angles ==
+          simulate_stems(LAW; plants = 3, organs = 30, x = pos, torsion_mean = 2.0, rng = Xoshiro(4)).angles
+    @test_throws ArgumentError simulate_stems(η; plants = 3, organs = 30, x = pos[1:2])
     sim = simulate_stems(LAW; plants = 8, organs = 40, logμκ = 1.8, torsion_mean = 4.0, torsion_sd = 3.0, rng = Xoshiro(21))
     mA = PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6)
     u = prior_mean_parameters(mA)
@@ -236,7 +274,7 @@ end
     @test g ≈ [(fv(v .+ 1e-5 .* (1:P .== i)) - fv(v .- 1e-5 .* (1:P .== i))) / 2e-5 for i in 1:P] rtol = 1e-4
     @test issymmetric(round.(H; digits = 6)) && l0 ≈ fv(v)
     # fit: population law and rates recovered
-    r = fit_map_torsion(m; prior = tp, recenter = 0)
+    r = fit_map_torsion!(m; prior = tp, recenter = 0)
     @test PhyllotaxisFold.PropensityModel.Optim.converged(r.fit.result)
     @test abs(r.m_ω - mean(sim.torsion)) < 1.0 && 0.4 < r.s_ω / std(sim.torsion) < 2.5
     @test cor(r.τ, sim.torsion) > 0.95 && all(r.τ_sd .> 0)
@@ -309,7 +347,10 @@ end
         @test t.late ≈ mean(e .> 1) atol = 0.003
         @test t.early ≈ mean(e .< -1) atol = 0.003
         @test t.off ≈ t.late + t.early
+        @test tail_masses(f; a = 2).late ≈ mean(e .> 2) atol = 0.003
     end
+    # 231: the organ of the lowest site sits two positions late; 312: the highest site's organ two positions early
+    @test order_diagnostics([[1, 2, 3, 4], [2, 3, 1, 4], [3, 1, 2, 4]]) == (; displaced = 0.5, n231 = 1, n312 = 1)
 end
 
 @testset "CommitmentTiming: exact Level-0 order likelihood" begin

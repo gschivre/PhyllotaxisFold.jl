@@ -1,4 +1,4 @@
-# Validation of the whole pipeline on simulated stems (docs/method.md §6): fitting, decoding and the commitment-timing
+# Validation of the whole pipeline on simulated stems (manual §6, docs/src/validation.md): fitting, decoding and the commitment-timing
 # law, against the truth used to simulate. Simulated data only.
 #
 # Design close to the Arabidopsis data: 60 stems of 45 organs, internodes long at the base and shorter higher up (mm),
@@ -6,7 +6,7 @@
 #   no tails   s = 0.42
 #   WT-like    s = 0.42, 5 % late (m 1.5), 5.4 % early (m 1.0)
 #   mutant-like s = 0.39, 20 % late (m 1.1), 27 % early (m 1.0)
-# three replicates each. Per replicate: the propensity model with the twist integrated (fit_map_torsion), the MAP
+# three replicates each. Per replicate: the propensity model with the twist integrated (fit_map_torsion!), the MAP
 # decoding, 200 exact posterior order samples, and the :core, :late, :both delay laws with robust standard errors.
 #
 # Run in the docs environment, with threads (≈ 1.5 h on 18 threads; the replicates are cached in validation.jls):
@@ -15,7 +15,7 @@
 using PhyllotaxisFold, Random, Statistics, Serialization, LinearAlgebra
 using GLMakie
 
-const VFIG = joinpath(@__DIR__, "figures")
+const VFIG = joinpath(@__DIR__, "src", "figures")
 const VCACHE = joinpath(@__DIR__, "validation.jls")
 const NSTEMS, NORGANS = 60, 45
 const TWIST = (mean = 1.0, sd = 0.7) # °/mm
@@ -43,7 +43,7 @@ function run_replicate(law, seed)
     sim = simulate_stems(law; plants = NSTEMS, organs = NORGANS, x, KAPPA..., α = 0.95, torsion_mean = TWIST.mean,
         torsion_sd = TWIST.sd, rng)
     m = PhyllotaxisModelAD(sim.angles; symmetric = true, torsion_x = x)
-    r = fit_map_torsion(m; prior = TPRIOR)
+    r = fit_map_torsion!(m; prior = TPRIOR)
     G = length(r.fit.u) - 2
     θ = constrained_parameters(m, r.fit.u[1:G])
     dec = decode_orders(m, r; full = true)
@@ -186,9 +186,9 @@ end
 #################################################################################################################
 function fig_v3(res)
     with_theme(VTHEME) do
-        fig = Figure(size = (1500, 820))
-        quantities = [(:s, "core sd s (plastochron)", f -> f.s), (:late, "P(e > 1): late by > 1 plastochron", f -> tail_masses(f).late),
-            (:early, "P(e < −1): early by > 1 plastochron", f -> tail_masses(f).early)]
+        fig = Figure(size = (1800, 820))
+        quantities = [(:s, "core sd s (plastochron)", f -> f.s), (:late, "P(e > 1): late by > 1", f -> tail_masses(f).late),
+            (:early, "P(e < −1): early by > 1", f -> tail_masses(f).early), (:off, "P(|e| > 1): off-time", f -> tail_masses(f).off)]
         for (c, (q, lab, tf)) in enumerate(quantities)
             ax = Axis(fig[1, c]; title = "($('a' + c - 1)) $(lab)", xticks = (1:3, [l for (_, l, _) in SCENARIOS]), ylabel = "estimate ± 2 se")
             for (i, (key, _, law)) in enumerate(SCENARIOS)
@@ -203,8 +203,8 @@ function fig_v3(res)
                 end
             end
         end
-        # (d) the fitted delay densities against the truth (log scale), replicate 1
-        ax = Axis(fig[2, 1:2]; title = "(d) Delay density: truth (black) and fits (replicates)", xlabel = "delay e (plastochrons)",
+        # (e) the fitted delay densities against the truth (log scale), replicate 1
+        ax = Axis(fig[2, 1:2]; title = "(e) Delay density: truth (black) and fits (replicates)", xlabel = "delay e (plastochrons)",
             ylabel = "density", yscale = log10, limits = (-4, 5, 1e-4, 2))
         z = collect(DELAY_GRID)
         sel = -4 .≤ z .≤ 5
@@ -214,8 +214,8 @@ function fig_v3(res)
             end
             lines!(ax, z[sel], exp.(delay_logdensity(law))[sel]; color = :black, linewidth = 1.5, linestyle = :dash)
         end
-        # (e) what the tails add, and the optimism of the fit over the truth
-        ax = Axis(fig[2, 3]; title = "(e) Log-likelihood gains (Δℓ)", xticks = (1:3, [l for (_, l, _) in SCENARIOS]),
+        # (f) what the tails add, and the optimism of the fit over the truth
+        ax = Axis(fig[2, 3:4]; title = "(f) Log-likelihood gains (Δℓ)", xticks = (1:3, [l for (_, l, _) in SCENARIOS]),
             ylabel = "Δℓ", yscale = Makie.pseudolog10, yticks = [0, 1, 3, 10, 30, 100, 300])
         for (i, (key, _, _)) in enumerate(SCENARIOS), rep in 1:NREP
             v = res[(key, rep)]
@@ -265,7 +265,7 @@ function validation_table(res)
         t = tail_masses(v.law)
         r3(x) = round(x; digits = 3)
         (; key, rep, s = (v.law.s, r3(v.inf.estimate.s), r3(v.inf.se.s)), late = (r3(t.late), r3(v.inf.estimate.late), r3(v.inf.se.late)),
-            early = (r3(t.early), r3(v.inf.estimate.early), r3(v.inf.se.early)), tails_gain = round(v.fits[:both].rel_ll - v.fits[:core].rel_ll; digits = 1),
+            early = (r3(t.early), r3(v.inf.estimate.early), r3(v.inf.se.early)), off = (r3(t.off), r3(v.inf.estimate.off), r3(v.inf.se.off)), tails_gain = round(v.fits[:both].rel_ll - v.fits[:core].rel_ll; digits = 1),
             optimism = round(v.fits[:both].rel_ll - v.truth_ll; digits = 1), twist = (r3(v.fit.m_ω), r3(v.fit.s_ω)), logμκ = r3(v.fit.θ.logμκ),
             correct = round(mean(mean(d.σ .== σ) for (d, σ) in zip(v.dec, v.sim.orders)); digits = 3), ess_median = round(median(v.ess); digits = 1))
     end

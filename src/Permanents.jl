@@ -316,7 +316,7 @@ Exact sample of σ with P(σ) ∝ ∏_i exp(w[i, σ[i] − i]) (log-weights in w
 start state choose each edge with probability ∝ w B(next state).
 """
 function sample_permutation!(rng::AbstractRNG, ws::PermanentWorkspace, n::Int)
-    (; g, B, w, ew) = ws
+    (; g, B, w) = ws
     (; k, edge_ptr, edge_next, edge_d) = g
     forward!(ws, n)
     backward!(ws, n)
@@ -324,24 +324,25 @@ function sample_permutation!(rng::AbstractRNG, ws::PermanentWorkspace, n::Int)
     σ = zeros(Int, n)
     s = g.start_s
     for i in 1:n
-        # transition weights w B, relative to their maximum in log-space
+        # transition weights w B (relative to their maximum in log-space)
         lmax = -Inf
-        for e in edge_ptr[s]:(edge_ptr[s + 1] - 1)
-            d = edge_d[e]
-            (1 ≤ i + d ≤ n) && inlog && (lmax = max(lmax, w[i, d + k + 1] + B[edge_next[e], i + 1]))
+        if inlog
+            for e in edge_ptr[s]:(edge_ptr[s + 1] - 1)
+                d = edge_d[e]
+                (1 ≤ i + d ≤ n) && (lmax = max(lmax, w[i, d + k + 1] + B[edge_next[e], i + 1]))
+            end
         end
-        tw(e, d) = (inlog ? exp(w[i, d + k + 1] + B[edge_next[e], i + 1] - lmax) : ew[i, d + k + 1] * B[edge_next[e], i + 1])
         wsum = 0.0
         for e in edge_ptr[s]:(edge_ptr[s + 1] - 1)
             d = edge_d[e]
-            (1 ≤ i + d ≤ n) && (wsum += tw(e, d))
+            (1 ≤ i + d ≤ n) && (wsum += _transition_weight(ws, inlog, lmax, i, e, d))
         end
         r = rand(rng) * wsum
         cumw = 0.0
         for e in edge_ptr[s]:(edge_ptr[s + 1] - 1)
             d = edge_d[e]
             (1 ≤ i + d ≤ n) || continue
-            cumw += tw(e, d)
+            cumw += _transition_weight(ws, inlog, lmax, i, e, d)
             if cumw ≥ r
                 σ[i] = i + d
                 s = edge_next[e]
@@ -350,6 +351,12 @@ function sample_permutation!(rng::AbstractRNG, ws::PermanentWorkspace, n::Int)
         end
     end
     return σ
+end
+
+@inline function _transition_weight(ws::PermanentWorkspace, inlog::Bool, lmax, i::Int, e::Int, d::Int)
+    (; g, B, w, ew) = ws
+    nxt, j = g.edge_next[e], d + g.k + 1
+    return inlog ? exp(w[i, j] + B[nxt, i + 1] - lmax) : ew[i, j] * B[nxt, i + 1]
 end
 sample_permutation!(ws::PermanentWorkspace, n::Int) = sample_permutation!(Random.default_rng(), ws, n)
 

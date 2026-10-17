@@ -187,9 +187,9 @@ end
     stem_terms(samples, logP)
 
 Per stem, log p(y | f) − log p(y | A) = log Σ_j w_j P_f(σ_j) / P_A(σ_j) over its sampled orders, for a delay law f
-(exact Level-0 order law) or any order law given as a function σ ↦ log P(σ). Threaded over stems.
+(exact Level-0 order law) or any order law given as a callable σ ↦ log P(σ). Threaded over stems.
 """
-function stem_terms(samples, logP::Function)
+function stem_terms(samples, logP)
     out = zeros(length(samples))
     Threads.@threads for i in eachindex(samples)
         s = samples[i]
@@ -280,7 +280,8 @@ function simulate_stems(f::DelayLaw; plants::Int = 100, organs = 50, x = nothing
         outlier::Real = 0.0, torsion_mean::Real = 0.0, torsion_sd::Real = 0.0, rng::AbstractRNG = Random.default_rng())
     ns = organs isa Integer ? fill(organs, plants) : collect(organs)
     xs = x === nothing ? [collect(0.0:(n - 1)) for n in ns] : x
-    @assert length(ns) == plants && length(xs) == plants && all(length.(xs) .== ns)
+    (length(ns) == plants && length(xs) == plants && all(length.(xs) .== ns)) ||
+        throw(ArgumentError("organs and x: one entry per stem, x with one coordinate per organ"))
     out = map(1:plants) do s
         n = ns[s]
         e = [rand(rng, f) for _ in 1:n]

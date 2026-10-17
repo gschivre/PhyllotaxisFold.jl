@@ -1,5 +1,6 @@
 [deps]
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 LogExpFunctions = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
 PhyllotaxisFold = "d2830e13-74ad-46ce-b38c-a9ef4f62f74f"
