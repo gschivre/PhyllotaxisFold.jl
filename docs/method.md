@@ -419,6 +419,72 @@ shape poorly: it depends on rare long displacements and on their direction.
 $\eta$ and of its derivatives in shape and $\log\gamma$); `FoldModel(angles, ptab; outlier = false)`, `fit_map`,
 `fit_map_torsion`, `decode_orders`, `order_posterior`, `simulate_stems`: the same API as model A.
 
+### 5.5 B-mix: an input that varies between sites
+
+**Why [C].** Fitted to real stems, model A's costs fall steeply for the first step and then flatten (on WT with the
+twist, $\eta_{1..4} \approx -1.2, -2.5, -3.1, -3.9$). On the fold surface, the first cost fixes $\gamma$, and at that
+$\gamma$ no single passage law makes long displacements that cheap: the costs fall like $d^2$ (Gaussian-like plateaus) or
+like $d$ (exponential), never slower. The data look like a *mixture*: most organs precisely timed, a few much later.
+
+**Biology [B].** Sites do not receive the same input: the amplitude and duration of the auxin maximum differ from site to
+site, so the margin above the fold, $\mu_j$, differs too (extrinsic variability), while the switch itself (its noise
+and gain) is shared. Near the fold the delay grows without bound as the margin shrinks (above the fold
+$T \propto \mu^{-1/2}$; below, an escape over a barrier, $T \propto e^{(8/3)|\mu|^{3/2}}$), so a spread of margins becomes
+a heavy late tail of delays.
+
+**Statement [B].** $\mu_j = \bar\mu + s_\mu\zeta_j$, $\zeta_j \sim \mathcal N(0,1)$ i.i.d., restricted to
+$[\mu_c, \mu_{\max}] = [-1, 16]$. Given $\mu_j$, the delay follows the plateau law at $\mu_j$ (absolute noise time, not
+standardised per margin). The delays stay i.i.d. across sites, with the mixture law
+$g_{\text{mix}}(s) = \int g_\mu(s)\,\mathcal N(\mu;\bar\mu,s_\mu^2)\,d\mu / Z$, so everything downstream (exact
+displacement marginals, KL projection onto $\eta$, the angle model, the twist, tempo, outliers) is unchanged: B-mix is
+model B with a two-parameter family of laws (one parameter more than B, one fewer than A with $k = 4$).
+
+- **The cut-off $\mu_c$.** A margin of $-1$ already means a mean wait of about 50 noise units, about 20 plastochrons at
+  the fitted tempo: such an organ falls far outside the band, and appears as a misplaced angle (the outlier fits put
+  that fraction below 1 %). Mass below $\mu_c$ is renormalised away.
+- **The scale of $\gamma$.** The mixture law is standardised by its median and $\mathrm{IQR}/1.349$, not its sd: with a
+  heavy tail the sd mostly measures the rare long delays. $\gamma = T_P / (\mathrm{IQR}/1.349)$ keeps measuring the
+  precision of the bulk, and $s_\mu$ alone carries the long range. At $s_\mu = 0$ the law is model B's at $\mu = \bar\mu$
+  (only the unit of $\gamma$ differs, by the ratio IQR/1.349 : sd of that law).
+
+**Reachability [C].** Before any fit, the closest B-mix costs to model A's symmetric fitted costs. In the gauge
+$\eta_{-1} = \eta_1$, the symmetric part $(\eta_d + \eta_{-d})/2$ is reachable: $\chi^2$ (A's full Laplace covariance, 4
+costs) 9.6 on hda9 WT, 9.1 on *hda9-1*, 1.7 on tfiis WT, 6.0 on *tfiis-2*, 1.1 on *ssrp1-2*, against 533, 238, 60, 46,
+50 for model B. But a delay tail is one-sided: the same mixtures make late long displacements far more frequent than
+early ones (at $|d| = 4$, about 10 to 1), an asymmetry that symmetric A does not have. (A first version of this check
+compared the symmetric parts only and read it as a full match.)
+
+**Fits [C].** Twist integrated, 32 ϕ × 16 κ nodes, same priors as A and B (`mutant_analysis/bmix_fits.jl`).
+
+| group | $\ell_A - \ell_B$ | $\ell_{\text{B-mix}} - \ell_B$ | $\ell_A - \ell_{\text{B-mix}}$ | $\bar\mu$ | $s_\mu$ | $\gamma$ |
+|---|---|---|---|---|---|---|
+| hda9 WT | 30.7 | +12.6 | 18.1 | 4.27 | 1.47 | 2.30 |
+| *hda9-1* | 43.7 | +8.3 | 35.4 | 4.05 | 1.47 | 1.37 |
+| tfiis WT | 9.9 | +0.9 | 9.0 | 3.14 | 1.15 | 1.80 |
+| *tfiis-2* | 3.2 | −0.2 | 3.5 | 3.70 | 0.59 | 1.63 |
+| *ssrp1-2* | 11.1 | +0.1 | 10.9 | 3.63 | 0.61 | 1.20 |
+
+B-mix fits the late side of the displacement law as well as A (the late long displacements are a heavy delay tail),
+but cannot make early long displacements, which the data have about as often as late ones: that is the remaining gap to
+A. In-band mass at every MAP ≥ 0.99. Validation: the exact-vs-projected cost is 0.65 ± 1.5 nats per in-band stem
+(heavy tails make the order law less local than for B, 0.1–0.3), and about 2 % of organs fall beyond the band $k = 4$ at
+the hda9 WT optimum (as for model A, they are forced into the band). One recovery replicate at the hda9 WT design
+recovers $\bar\mu$ and $s_\mu$ within their intervals but overestimates $\gamma$ (4.1 for 3.1); replicates are pending.
+
+**Projection [C].** Heavy-tailed targets make the plain iterative scaling of `match_propensity` oscillate (a first
+build of the table left errors up to 11.6 in log-marginal, and 22 % of the nodes off by more than 0.05 in $\eta$, some
+in the region the WT fits use). `match_propensity` now halves its damping when the error stalls, then polishes by
+Gauss–Newton (finite-difference Jacobian, the two gauge directions dropped) to the least-squares optimum. At finite $n$
+the trimmed bulk marginals of a permanent are not exactly zero-mean, so a zero-mean target is reached only up to a
+floor: over the 29 155 nodes, the largest error is $1.2\times10^{-4}$ (log-marginal), and $\eta$ moves by at most
+$7\times10^{-4}$ from $n = 60$ to $n = 100$.
+
+**Code.** `build_mixture_tables` (fine plateau table on $[\mu_c, \mu_{\max}]$, step 0.05, and η on
+$\bar\mu \in [-0.5, 8]$, $s_\mu \in [0, 4]$, 49 values of $\log\gamma$; cached in `tables/tables_mix_k4.jls` without the
+passage table), `mixture_passage_column`, `propensity!(η, ∂η, mtab, μ̄, sμ, logγ)` (tricubic, with its Jacobian).
+`FoldModel(angles, mtab)` is B-mix: parameters (μ̄, log γ, log μκ, σκ, α [, β], s_μ [, π_o]), prior
+$s_\mu \sim$ half-Normal(1.5). `simulate_stems(tab, μ̄, γ; sμ)` simulates it (with the fine passage table).
+
 ---
 
 ## 6. A tempo that changes along the stem

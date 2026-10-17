@@ -13,9 +13,11 @@ explained by a commitment switch near its fold. Submodules, in dependency order:
 | `PropensityPriors` | log-normal softplus prior on free log-propensities η and its bijectors                        |
 | `PassageTime`      | fold passage law (plateau, ramp): Fokker–Planck tables, `FoldPassageTime`                     |
 | `OrderStatistics`  | order law of a paced meristem, propensity map (shape, γ) ↦ η, exact order likelihood, tables |
+| `MixturePassage`   | B-mix: a margin that varies between sites, mixture passage law and 3-D propensity table       |
 | `PropensityModel`  | model A: free log-propensities η, `PhyllotaxisModelAD`                                        |
 | `FoldAngleModel`   | model B: η from the passage law, optional tempo along the stem, `FoldModel`                   |
 | `Plastochron`      | plastochron by flower rank from daily open-flower counts (input of the tempo option)          |
+| `Level1`           | commitment-paced readiness (Level 1): simulator and the statistics that separate it from Level 0 |
 
 Every submodule's exported names are re-exported here. The method is described in `docs/method.md`.
 """
@@ -30,9 +32,11 @@ include("AngleLikelihood.jl")
 include("PropensityPriors.jl")
 include("PassageTime.jl")
 include("OrderStatistics.jl")
+include("MixturePassage.jl")
 include("PropensityModel.jl")
 include("FoldAngleModel.jl")
 include("Plastochron.jl")
+include("Level1.jl")
 
 @reexport using .Common
 @reexport using .Torsion
@@ -41,8 +45,10 @@ include("Plastochron.jl")
 @reexport using .PropensityPriors
 @reexport using .PassageTime
 @reexport using .OrderStatistics
+@reexport using .MixturePassage
 @reexport using .PropensityModel
 @reexport using .FoldAngleModel
 @reexport using .Plastochron
+@reexport using .Level1
 
 end # module PhyllotaxisFold

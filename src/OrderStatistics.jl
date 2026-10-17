@@ -12,7 +12,7 @@ passage z ~ g, so the organ order is σ = sortperm(iγ + z_i). This module gives
 """
 module OrderStatistics
 
-using Statistics, Serialization
+using Statistics, Serialization, LinearAlgebra
 using LogExpFunctions
 using ..Common: _keys_w, _keys_dw, _keys_index
 using ..Permanents: PermanentWorkspace, toeplitz_weights!, forward!, backward!
@@ -108,33 +108,88 @@ end
 
 Find the Toeplitz log-propensities η whose bulk displacement marginals in the banded-permanent model
 equal `target` (zero-mean distribution over d = -k..k). This is the moment-matching / maximum-entropy
-condition, i.e. the KL projection of the true Level-0 order law onto the permanent family, computed
-by damped iterative scaling η_d += log(t_d / m_d).
+condition, i.e. the KL projection of the true Level-0 order law onto the permanent family. Two phases:
+damped iterative scaling η_d += λ log(t_d / m_d) (the damping λ starts at `damping` and is halved, down to 0.02,
+whenever the error has not decreased for 50 iterations: heavy-tailed targets make the undamped scaling oscillate),
+then, if it has not reached `tol` after `nscale` iterations, Gauss–Newton steps on r = log t − log m with a
+finite-difference Jacobian (pseudo-inverse: the two gauge directions are its null space) and step halving, until
+the least-squares gradient vanishes. At finite n the trimmed bulk marginals of the permanent are not exactly zero-mean,
+so a zero-mean target is reached only up to a floor (≈ 1e-5–1e-4 at n = 60 for heavy-tailed targets, halving at
+n = 100): the polish returns the least-squares optimum. Returns (η, iterations, err) with err the maximum
+|log t_d − log m_d| (weighted 1e-3 where t_d ≤ 1e-12).
 """
-function match_propensity(target::AbstractVector, k::Int; ws::PermanentWorkspace = PermanentWorkspace(k, 60), n::Int = ws.n_max, trim::Int = 2 * k, maxiter::Int = 3000, tol::Real = 1e-7, damping::Real = 0.8, floor_p::Real = 1e-250)
+function match_propensity(target::AbstractVector, k::Int; ws::PermanentWorkspace = PermanentWorkspace(k, 60), n::Int = ws.n_max, trim::Int = 2 * k, maxiter::Int = 3000, tol::Real = 1e-7, damping::Real = 0.8, floor_p::Real = 1e-250, nscale::Int = 300, η0 = nothing)
+    K = 2 * k + 1
     t = max.(target, floor_p)
-    η = gauge!(log.(t ./ t[k + 1]), k)
-    m = zeros(2 * k + 1)
+    lt = log.(t)
+    wt = [t[d] > 1e-12 ? 1.0 : 1e-3 for d in 1:K]
+    η = gauge!(η0 === nothing ? log.(t ./ t[k + 1]) : copy(η0), k)
+    m = zeros(K)
+    r = zeros(K)
+    resid!(r, η) = (_bulk_marginals!(m, ws, η, n, trim, k); for d in 1:K; r[d] = wt[d] * (lt[d] - log(max(m[d], 1e-300))); end; maximum(abs, r))
     err = Inf
-    for it in 1:maxiter
-        toeplitz_weights!(ws, η, n)
-        forward!(ws, n)
-        rho = backward!(ws, n)
-        fill!(m, 0.0)
-        for i in (trim + 1):(n - trim), d_idx in 1:(2 * k + 1)
-            m[d_idx] += rho[i, d_idx]
-        end
-        m ./= sum(m)
-        err = 0.0
-        for d_idx in 1:(2 * k + 1)
-            δ = log(t[d_idx]) - log(max(m[d_idx], 1e-300))
-            err = max(err, abs(δ) * (t[d_idx] > 1e-12 ? 1.0 : 1e-3))
-            η[d_idx] += damping * δ
+    best, stall, λ = Inf, 0, damping
+    it = 0
+    while it < min(nscale, maxiter)
+        it += 1
+        err = resid!(r, η)
+        (err < tol) && return (η, it, err)
+        for d in 1:K
+            η[d] += λ * r[d] / wt[d]
         end
         gauge!(η, k)
-        (err < tol) && return (η, it, err)
+        if err < best
+            best, stall = err, 0
+        elseif (stall += 1) ≥ 50
+            λ, stall = max(λ / 2, 0.02), 0
+        end
     end
-    return (η, maxiter, err)
+    # Gauss–Newton polish (steps accepted on the L2 norm of r, the quantity it minimises)
+    err = resid!(r, η)
+    nr = norm(r)
+    J = zeros(K, K)
+    r1 = zeros(K)
+    h = 1e-6
+    while it < maxiter && err ≥ tol
+        it += 1
+        for j in 1:K
+            η[j] += h
+            resid!(r1, η)
+            η[j] -= h
+            for d in 1:K
+                J[d, j] = (r1[d] - r[d]) / h
+            end
+        end
+        norm(J' * r) < 1e-12 && break # least-squares optimum: the rest of r is out of reach at finite n
+        Δ = -(pinv(J; rtol = 1e-5) * r) # drops the two gauge directions (singular values ~1e-7)
+        α = 1.0
+        accepted = false
+        while α > 1e-4
+            ηn = gauge!(η .+ α .* Δ, k)
+            en = resid!(r1, ηn)
+            if norm(r1) < nr
+                η, err, nr, accepted = ηn, en, norm(r1), true
+                r .= r1
+                break
+            end
+            α /= 2
+        end
+        accepted || break
+    end
+    return (η, it, err)
+end
+
+# bulk displacement marginals m (positions trim+1..n−trim, normalised) of the banded permanent with log-propensities η
+function _bulk_marginals!(m, ws, η, n, trim, k)
+    toeplitz_weights!(ws, η, n)
+    forward!(ws, n)
+    rho = backward!(ws, n)
+    fill!(m, 0.0)
+    for i in (trim + 1):(n - trim), d_idx in 1:(2 * k + 1)
+        m[d_idx] += rho[i, d_idx]
+    end
+    m ./= sum(m)
+    return m
 end
 
 struct PropensityTable

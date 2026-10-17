@@ -441,4 +441,92 @@ end
     @test mean((p.p_ccw > 0.5) == (o == 1) for (p, o) in zip(post, sp.o)) ≥ 0.9
 end
 
+@testset "B-mix: mixture law, 3-D propensity table, model gradient" begin
+    # the cached plateau table (margins −1:0.25:10) is the margin quadrature: building one here costs minutes on one thread
+    (; tab) = load_tables(TABLES)
+    # the mixture law is normalised, standardised by its median and IQR/1.349
+    col = mixture_passage_column(tab, 1.5, 1.0)
+    z = collect(col.z_grid)
+    g = exp.(col.logg[:, 1])
+    @test sum(g) * step(col.z_grid) ≈ 1 atol = 2e-3
+    Fat(x) = exp(col.logF[searchsortedfirst(z, x), 1])
+    @test Fat(0.0) ≈ 0.5 atol = 0.01
+    Fz = exp.(col.logF[:, 1])
+    zq(p) = z[searchsortedfirst(Fz, p)]
+    @test zq(0.75) - zq(0.25) ≈ 1.349 atol = 0.05 # IQR = 1.349 scales (quartiles asymmetric: a skewed law)
+    @test exp(col.logS[end ÷ 2, 1]) + exp(col.logF[end ÷ 2, 1]) ≈ 1 atol = 1e-3
+    # a heavy late tail: the mixture survival at z = 10 is far above the plateau law's at its mean margin
+    @test col.logS[searchsortedfirst(z, 10.0), 1] > passage_column(tab, 1.5; field = :logS)[searchsortedfirst(collect(tab.z_grid), 10.0)] + 5
+    # small 3-D table; at s_μ = 0 it is model B's law (up to the scale convention, sd vs IQR/1.349)
+    mt = mixture_propensity_table(tab, 3; μ_grid = collect(1.0:0.5:3.0), s_grid = collect(0.0:0.5:1.5),
+        logγ_grid = collect(range(log(1.5) - 0.8, log(1.5) + 0.8; length = 9)), J = 40)
+    # same readiness spacing T_P = 1.5 IQR-scales = 1.5 scale / sd passage sds
+    ptab = propensity_table(tab, 3; logγ_grid = [log(1.5) + log(mt.scale[3, 1] / tab.sd[findfirst(==(2.0), tab.μ_grid)])])
+    @test mt.η[:, 3, 1, 5] ≈ ptab.η[:, findfirst(==(2.0), tab.μ_grid), 1] atol = 0.02 # logγ_grid[5] = log(1.5)
+    @test exp(mt.logγ_grid[5]) ≈ 1.5 rtol = 1e-12
+    @test mt.maxerr < 1e-3
+    # KL projection of a heavy-tailed target (the hda9 WT region, μ̄ = 3, s_μ = 2, γ = 2.95): the plain scaling
+    # oscillated at err 0.31; the damped scaling + Gauss–Newton polish reaches the least-squares optimum
+    ptail = [0.00432, 0.00683, 0.013, 0.0378, 0.612, 0.253, 0.048, 0.00555, 0.000444]
+    ttail = zero_mean_tilt(ptail ./ sum(ptail), 4)
+    wsT = PermanentWorkspace(4, 60; logspace = false)
+    ηT, _, errT = match_propensity(ttail, 4; ws = wsT)
+    @test errT < 1e-3
+    mT(η) = PhyllotaxisFold.OrderStatistics._bulk_marginals!(zeros(9), wsT, η, 60, 8, 4)
+    rT(η) = log.(ttail) .- log.(mT(η))
+    JT = reduce(hcat, [(rT(ηT .+ 1e-6 .* (1:9 .== j)) .- rT(ηT)) ./ 1e-6 for j in 1:9])
+    @test norm(JT' * rT(ηT)) < 1e-8 # stationary: what is left of r is out of reach at finite n
+    # tricubic interpolation: exact at the nodes, analytic Jacobian
+    η = zeros(7); J = zeros(7, 3)
+    propensity!(η, nothing, mt, 2.0, 0.5, mt.logγ_grid[4])
+    @test η ≈ mt.η[:, 3, 2, 4]
+    propensity!(η, J, mt, 2.2, 0.7, log(1.3))
+    f(x) = (e = zeros(eltype(x), 7); propensity!(e, nothing, mt, x[1], x[2], x[3]); e)
+    @test J ≈ ForwardDiff.jacobian(f, [2.2, 0.7, log(1.3)]) atol = 1e-8
+    # the mixture flattens the costs of long displacements
+    @test mt.η[7, 3, 4, 5] - mt.η[6, 3, 4, 5] > mt.η[7, 3, 1, 5] - mt.η[6, 3, 1, 5] + 0.5
+    # B-mix model: s_μ is one more parameter, analytic gradient and dual-pass Hessian (also with tempo and outliers)
+    sim = simulate_stems(tab, 2.0, 1.5; plants = 3, organs = 25, sμ = 0.8, rng = Xoshiro(5))
+    @test length(sim.orders) == 3 && all(isperm, sim.orders)
+    r = exp.(range(log(1.4), log(0.7); length = 25))
+    for kw in ((;), (; outlier = true), (; tempo = [r for _ in 1:3]))
+        m = FoldModel(sim.angles, mt; ngrid_ϕ = 8, ngrid_κ = 4, kw...)
+        @test has_mixture(m)
+        u = prior_mean_parameters(m) .+ 0.05
+        @test constrained_parameters(m, u).sμ > 0
+        l, gr, H = angle_vgh(m, u, 2)
+        fv(w) = angle_vgh(m, w, 0)[1]
+        @test gr ≈ [(fv(u .+ 1e-5 .* (1:length(u) .== i)) - fv(u .- 1e-5 .* (1:length(u) .== i))) / 2e-5 for i in eachindex(u)] rtol = 1e-5
+        @test H ≈ ForwardDiff.hessian(fv, u) rtol = 1e-4
+    end
+    # the simulated delays carry the mixture's late tail: more organs displaced late by ≥ 2 than with s_μ = 0
+    late(orders) = mean(count(i -> σ[i] - i ≤ -2, eachindex(σ)) for σ in orders)
+    s0 = simulate_stems(tab, 2.0, 1.5; plants = 300, organs = 40, sμ = 0.0, rng = Xoshiro(6))
+    s1 = simulate_stems(tab, 2.0, 1.5; plants = 300, organs = 40, sμ = 1.5, rng = Xoshiro(6))
+    @test late(s1.orders) > late(s0.orders)
+end
+
+@testset "Level 1: simulator and the statistics that separate it from Level 0" begin
+    (; tab) = load_tables(TABLES)
+    μ, γ = 1.0, 1.7
+    kw = (; plants = 200, organs = 60, rng = Xoshiro(2))
+    L0 = simulate_paced(tab, μ, γ; architecture = :level0, kw...)
+    L1 = simulate_paced(tab, μ, γ; architecture = :level1, p = 3, q = 5, w = 0.5, kw...)
+    @test L1.R > 0 && all(isperm, L1.orders)
+    # mean plastochron T̄ = γ in sd units for both architectures
+    @test mean(mean(diff(t)) for t in L0.times) ≈ γ rtol = 0.02
+    @test mean(mean(diff(t)) for t in L1.times) ≈ γ rtol = 0.05
+    # the Level-0 timeline levels off near 2/γ² · γ² = 2 sd² (two independent delays); Level 1 keeps growing
+    s0, s1 = timeline_structure(L0.times, γ), timeline_structure(L1.times, γ)
+    @test s0[20] < 1.5 * s0[5]
+    @test s1[20] > 2 * s1[5]
+    # Level-0 intervals: lag-1 autocorrelation negative (a late organ makes a long then a short interval)
+    @test interval_autocorrelation(L0.times)[1] < -0.2
+    # cascades: runs of displaced positions, a swap is a run of 2
+    @test cascade_lengths([[2, 1, 3, 5, 6, 4]]) == [2, 3]
+    # Level 0 here is exactly model B's simulator (same law of the orders): same displaced fraction
+    sB = simulate_stems(tab, μ, γ; plants = 200, organs = 60, rng = Xoshiro(3))
+    @test mean(mean(σ .!= eachindex(σ)) for σ in L0.orders) ≈ mean(mean(σ .!= eachindex(σ)) for σ in sB.orders) atol = 0.03
+end
+
 end # testset PhyllotaxisFold

@@ -21,6 +21,10 @@ gradient is analytic (expected displacement counts per row and expected cosines 
 through the bicubic η table); the Hessian is one ForwardDiff pass over that gradient; the MAP is Newton trust region
 (`fit_map`). Stem torsion: one rate per stem, ω_s ~ N(m_ω, s_ω²), integrated out by adaptive quadrature
 (`fit_map_torsion`). `outlier = true` adds outlier angles (probability π_o, uniform on the circle), as in model A.
+
+**B-mix.** With a `MixturePropensityTable` (`build_mixture_tables`) in place of the propensity table, the margin varies
+from site to site (μ_j ~ N(μ̄, s_μ²), module `MixturePassage`): the shape parameter is the mean margin μ̄, γ is in units
+of the mixture's IQR/1.349, and s_μ is one more parameter (after β, before π_o).
 Decoding (`decode_orders`, `order_posterior`) and the log-likelihoods (`stem_loglik`, `angle_loglikelihood`) are the
 generic ones of `AngleLikelihood`, shared with model A.
 """
@@ -35,6 +39,7 @@ import ..Common: fit_map
 using ..Permanents: PermanentWorkspace, forward!
 using ..PassageTime: PassageTable, passage_sampler
 using ..OrderStatistics: PropensityTable, propensity!
+using ..MixturePassage: MixturePropensityTable, mixture_sampler
 using ..Torsion: StemTorsion, TorsionPrior, torsion_coordinate, torsion_corrected
 using ..AngleLikelihood: StemWorkspace, stem_loglik!, angle_vgh, angle_fit_map, angle_update_torsion!, angle_torsion_nodes,
     angle_fit_map_torsion
@@ -42,7 +47,7 @@ import ..AngleLikelihood: stem_value_grad, global_logprior, angle_model, stem_et
     constrained_parameters, unconstrained_parameters, prior_mean_parameters, angle_loglikelihood
 import ..Torsion: corrected_angles, update_torsion!, torsion_nodes, fit_map_torsion
 
-export FoldPrior, FoldModel, has_tempo, fold_logprior, fold_loglikelihood, logdensity_and_gradient!, fold_eta, offset_posterior,
+export FoldPrior, FoldModel, has_tempo, has_mixture, fold_logprior, fold_loglikelihood, logdensity_and_gradient!, fold_eta, offset_posterior,
        with_logspace, fold_plant_loglik
 
 Base.@kwdef struct FoldPrior
@@ -73,6 +78,9 @@ Base.@kwdef struct FoldPrior
     # Beta prior on the outlier probability π_o (used only with `outlier = true`): mean 2 %
     aπ::Float64 = 1.0
     bπ::Float64 = 49.0
+
+    # half-Normal prior on the margin sd s_μ (B-mix only), noise units
+    ss::Float64 = 1.5
 end
 
 struct FoldModel{T}
@@ -83,7 +91,7 @@ struct FoldModel{T}
     ϕ_grid::Vector{Float64}
     κ_nodes::Vector{Float64} # standard normal nodes
     κ_logweights::Vector{Float64}
-    ptab::PropensityTable
+    ptab::Union{PropensityTable, MixturePropensityTable}
     prior::FoldPrior
     μ_bounds::Tuple{Float64, Float64}
     logγ_bounds::Tuple{Float64, Float64}
@@ -93,6 +101,7 @@ struct FoldModel{T}
     logw::Union{Nothing, Vector{Vector{Float64}}} # per stem: log prior weight of each candidate offset
     offsets::Union{Nothing, Vector{Vector{Int}}} # per stem: the candidate offsets (nothing with `tempo` or no tempo)
     outlier::Bool # angles are a mixture with uniform outliers (parameter π_o, last in u)
+    s_bounds::Tuple{Float64, Float64} # range of s_μ (B-mix), (0, 0) otherwise
 end
 
 """
@@ -113,7 +122,7 @@ prior weights `offset_prior` (uniform by default); `offset_posterior` gives each
 `outlier`: each angle is an outlier (uniform on the circle) with probability π_o, fitted (prior Beta(aπ, bπ)); adds the
 last parameter of u.
 """
-function FoldModel(data::Vector{Vector{T}}, ptab::PropensityTable, prior::FoldPrior = FoldPrior(); ngrid_ϕ::Int = 32, ngrid_κ::Int = 16,
+function FoldModel(data::Vector{Vector{T}}, ptab::Union{PropensityTable, MixturePropensityTable}, prior::FoldPrior = FoldPrior(); ngrid_ϕ::Int = 32, ngrid_κ::Int = 16,
         logspace::Bool = false, torsion_x = nothing, tempo = nothing, plastochron = nothing, offsets = 0, offset_prior = nothing,
         outlier::Bool = false) where {T}
     k = ptab.k
@@ -136,7 +145,8 @@ function FoldModel(data::Vector{Vector{T}}, ptab::PropensityTable, prior::FoldPr
         logr, logw, offs = _offset_profiles(plastochron, length.(data), offsets, offset_prior)
     end
     return FoldModel{T}(data, k, ngrid_ϕ, ngrid_κ, ϕ_grid, κ_nodes, log.(κ_weights), ptab, prior, extrema(ptab.μ_grid),
-        extrema(ptab.logγ_grid), logspace, StemTorsion(tx), logr, logw, offs, outlier)
+        extrema(ptab.logγ_grid), logspace, StemTorsion(tx), logr, logw, offs, outlier,
+        (ptab isa MixturePropensityTable ? extrema(ptab.s_grid) : (0.0, 0.0)))
 end
 
 # candidate tempo profiles: organ i of stem s with offset o has flower rank i + o and r = T_P(i + o) / T̄, T̄ the mean over
@@ -162,15 +172,17 @@ end
 
 "whether the model has a tempo profile (and the exponent β)"
 has_tempo(model::FoldModel) = model.logr !== nothing
+"whether the model is B-mix (a margin that varies between sites, parameter s_μ)"
+has_mixture(model::FoldModel) = model.ptab isa MixturePropensityTable
 
 corrected_angles(model::FoldModel, s::Int; τ::Real = model.torsion.τ[s]) = torsion_corrected(model.data[s], model.torsion.x[s], τ)
 
-LogDensityProblems.dimension(model::FoldModel) = 5 + has_tempo(model) + model.outlier
+LogDensityProblems.dimension(model::FoldModel) = 5 + has_tempo(model) + has_mixture(model) + model.outlier
 LogDensityProblems.capabilities(::Type{<:FoldModel}) = LogDensityProblems.LogDensityOrder{2}()
 
 "the same model evaluated in log-space"
 with_logspace(m::FoldModel{T}) where {T} = FoldModel{T}(m.data, m.k, m.ngrid_ϕ, m.ngrid_κ, m.ϕ_grid, m.κ_nodes, m.κ_logweights, m.ptab,
-    m.prior, m.μ_bounds, m.logγ_bounds, true, m.torsion, m.logr, m.logw, m.offsets, m.outlier)
+    m.prior, m.μ_bounds, m.logγ_bounds, true, m.torsion, m.logr, m.logw, m.offsets, m.outlier, m.s_bounds)
 
 #################################################################################################################
 # parameters and prior
@@ -179,40 +191,51 @@ with_logspace(m::FoldModel{T}) where {T} = FoldModel{T}(m.data, m.k, m.ngrid_ϕ,
 """
     constrained_parameters(model, u)
 
-(; μ, logγ, logμκ, σκ, α, β, outlier) from the unconstrained u: μ (the shape) and log γ through a scaled logistic onto
-the table ranges, σκ = exp, α = logistic, β = u[6] (0 without tempo), outlier = π_o = logistic(u[end]) (0 without).
+(; μ, logγ, logμκ, σκ, α, β, sμ, outlier) from the unconstrained u: μ (the shape; the mean margin μ̄ for B-mix) and
+log γ through a scaled logistic onto the table ranges, σκ = exp, α = logistic, then the optional parameters in this
+order: β (tempo; 0 without), s_μ (B-mix: scaled logistic onto the table range; 0 without), π_o = logistic (outliers; 0
+without).
 """
 function constrained_parameters(model::FoldModel, u::AbstractVector)
     z = zero(eltype(u))
+    j = 6 + has_tempo(model)
     return (; μ = _scaled_logistic(u[1], model.μ_bounds), logγ = _scaled_logistic(u[2], model.logγ_bounds),
         logμκ = u[3], σκ = exp(u[4]), α = logistic(u[5]), β = (has_tempo(model) ? u[6] : z),
+        sμ = (has_mixture(model) ? _scaled_logistic(u[j], model.s_bounds) : z),
         outlier = (model.outlier ? logistic(u[end]) : z))
 end
 function unconstrained_parameters(model::FoldModel; μ, logγ, logμκ, σκ, α, β = model.prior.mβ,
-        outlier = mean(Beta(model.prior.aπ, model.prior.bπ)))
+        sμ = model.prior.ss * sqrt(2 / π), outlier = mean(Beta(model.prior.aπ, model.prior.bπ)))
     _inv(x, (lo, hi)) = logit((x - lo) / (hi - lo))
     u = [_inv(μ, model.μ_bounds), _inv(logγ, model.logγ_bounds), logμκ, log(σκ), logit(α)]
     has_tempo(model) && push!(u, β)
+    has_mixture(model) && push!(u, _inv(clamp(sμ, model.s_bounds[1] + 1e-3, model.s_bounds[2] - 1e-3), model.s_bounds))
     model.outlier && push!(u, logit(outlier))
     return u
 end
 function prior_mean_parameters(model::FoldModel)
-    (; mμ, mγ, mκ, νκ, τκ, aα, bα, mβ) = model.prior
+    (; mμ, mγ, mκ, νκ, τκ, aα, bα, mβ, ss) = model.prior
     μ = clamp(mμ, model.μ_bounds[1] + 0.1, model.μ_bounds[2] - 0.1)
     logγ = clamp(mγ, model.logγ_bounds[1] + 0.1, model.logγ_bounds[2] - 0.1)
-    return unconstrained_parameters(model; μ, logγ, logμκ = mκ, σκ = mean(HalfTDist(νκ, τκ)), α = mean(Beta(aα, bα)), β = mβ)
+    return unconstrained_parameters(model; μ, logγ, logμκ = mκ, σκ = mean(HalfTDist(νκ, τκ)), α = mean(Beta(aα, bα)), β = mβ,
+        sμ = ss * sqrt(2 / π))
 end
 
 "log prior on the constrained parameters plus the log-Jacobian of the transform u ↦ θ (generic in the number type)"
 function fold_logprior(model::FoldModel, u::AbstractVector)
-    (; mμ, sμ, mγ, sγ, mκ, sκ, νκ, τκ, aα, bα, mβ, sβ, aπ, bπ) = model.prior
-    (; μ, logγ, logμκ, σκ, α, β, outlier) = constrained_parameters(model, u)
+    (; mμ, sμ, mγ, sγ, mκ, sκ, νκ, τκ, aα, bα, mβ, sβ, aπ, bπ, ss) = model.prior
+    θ = constrained_parameters(model, u)
+    (; μ, logγ, logμκ, σκ, α, β, outlier) = θ
     sμ_u, sγ_u = logistic(u[1]), logistic(u[2])
     lp = logpdf(Normal(mμ, sμ), μ) + logpdf(Normal(mγ, sγ), logγ) + logpdf(Normal(mκ, sκ), logμκ) + logpdf_halft(σκ, νκ, τκ) + logpdf(Beta(aα, bα), α)
     lp += log((model.μ_bounds[2] - model.μ_bounds[1]) * sμ_u * (1 - sμ_u)) + log((model.logγ_bounds[2] - model.logγ_bounds[1]) * sγ_u * (1 - sγ_u))
     lp += u[4] + log(α) + log1p(-α)
     has_tempo(model) && (lp += -0.5 * ((β - mβ) / sβ)^2 - log(sβ * sqrt(2π)))
     model.outlier && (lp += logpdf(Beta(aπ, bπ), outlier) + log(outlier) + log1p(-outlier))
+    if has_mixture(model) # half-Normal(ss) on s_μ, and the Jacobian of its scaled logistic
+        ls = logistic(u[6 + has_tempo(model)])
+        lp += -0.5 * (θ.sμ / ss)^2 + log(sqrt(2 / π) / ss) + log((model.s_bounds[2] - model.s_bounds[1]) * ls * (1 - ls))
+    end
     return lp
 end
 
@@ -224,19 +247,20 @@ end
     fold_eta(model, θ, s; with_grad = false, c = 1)
 
 Log-propensities of stem s (candidate offset c) at the constrained parameters θ, with their derivatives in
-(shape, log γ) if `with_grad`:
-without tempo, the vector η (2k + 1) and ∂η ((2k + 1) × 2); with tempo, the n × (2k + 1) matrix H (row p at
-log γ_p = log γ + β log r_p, clamped to the table, where its derivative is 0) and the matrices ∂H/∂shape, ∂H/∂log γ_p.
+(shape, log γ, s_μ) if `with_grad`:
+without tempo, the vector η (2k + 1) and ∂η ((2k + 1) × 3, the last column 0 without B-mix); with tempo, the
+n × (2k + 1) matrix H (row p at log γ_p = log γ + β log r_p, clamped to the table, where its derivative is 0) and the
+matrices ∂H/∂shape, ∂H/∂log γ_p, ∂H/∂s_μ.
 """
 function fold_eta(model::FoldModel, θ, s::Int; with_grad::Bool = false, c::Int = 1)
     (; ptab, logγ_bounds) = model
-    (; μ, logγ, β) = θ
-    T = promote_type(typeof(μ), typeof(logγ), typeof(β))
+    (; μ, logγ, β, sμ) = θ
+    T = promote_type(typeof(μ), typeof(logγ), typeof(β), typeof(sμ))
     K = 2 * ptab.k + 1
     η = zeros(T, K)
-    ∂η = (with_grad ? zeros(T, K, 2) : nothing)
+    ∂η = (with_grad ? zeros(T, K, 3) : nothing)
     if !has_tempo(model)
-        propensity!(η, ∂η, ptab, μ, logγ)
+        _prop!(η, ∂η, ptab, μ, sμ, logγ)
         return η, ∂η
     end
     lr = model.logr[s][c]
@@ -244,40 +268,58 @@ function fold_eta(model::FoldModel, θ, s::Int; with_grad::Bool = false, c::Int 
     H = zeros(T, n, K)
     dμ = (with_grad ? zeros(T, n, K) : nothing)
     dγ = (with_grad ? zeros(T, n, K) : nothing)
+    ds = (with_grad ? zeros(T, n, K) : nothing)
     lo, hi = logγ_bounds
     for i in 1:n
         lg = logγ + β * lr[i]
-        propensity!(η, ∂η, ptab, μ, clamp(lg, lo, hi))
+        _prop!(η, ∂η, ptab, μ, sμ, clamp(lg, lo, hi))
         H[i, :] .= η
         if with_grad
             dμ[i, :] .= view(∂η, :, 1)
             (lo < lg < hi) && (dγ[i, :] .= view(∂η, :, 2))
+            ds[i, :] .= view(∂η, :, 3)
         end
     end
-    return H, (dμ, dγ)
+    return H, (dμ, dγ, ds)
 end
 
-# ∂ℓ/∂(shape, log γ, β) from the gradient of the stem likelihood in its log-propensities
+# η and its Jacobian in (shape, log γ, s_μ), for a propensity table (s_μ ignored) or a B-mix table
+function _prop!(η, ∂η, ptab::PropensityTable, μ, sμ, logγ)
+    propensity!(η, (∂η === nothing ? nothing : view(∂η, :, 1:2)), ptab, μ, logγ)
+    return η
+end
+function _prop!(η, ∂η, ptab::MixturePropensityTable, μ, sμ, logγ)
+    ∂η === nothing && return propensity!(η, nothing, ptab, μ, sμ, logγ)
+    J = similar(∂η)
+    propensity!(η, J, ptab, μ, sμ, logγ) # columns (μ̄, s_μ, log γ)
+    ∂η[:, 1] .= view(J, :, 1)
+    ∂η[:, 2] .= view(J, :, 3)
+    ∂η[:, 3] .= view(J, :, 2)
+    return η
+end
+
+# ∂ℓ/∂(shape, log γ, β, s_μ) from the gradient of the stem likelihood in its log-propensities
 function _eta_chain(model::FoldModel, fws, ∂, s, c, ::Type{T}) where {T}
     K = 2 * model.k + 1
     if !has_tempo(model)
         g = fws.grad
-        return (sum(g[d] * ∂[d, 1] for d in 1:K), sum(g[d] * ∂[d, 2] for d in 1:K), zero(T))
+        return (sum(g[d] * ∂[d, 1] for d in 1:K), sum(g[d] * ∂[d, 2] for d in 1:K), zero(T), sum(g[d] * ∂[d, 3] for d in 1:K))
     end
-    dμ, dγ = ∂
+    dμ, dγ, ds = ∂
     G = fws.gradH
     lr = model.logr[s][c]
-    gμ = gγ = gβ = zero(T)
+    gμ = gγ = gβ = gs = zero(T)
     for i in eachindex(lr)
         gi = zero(T)
         for d in 1:K
             gμ += G[i, d] * dμ[i, d]
             gi += G[i, d] * dγ[i, d]
+            gs += G[i, d] * ds[i, d]
         end
         gγ += gi
         gβ += gi * lr[i]
     end
-    return (gμ, gγ, gβ)
+    return (gμ, gγ, gβ, gs)
 end
 
 _workspace(model::FoldModel, ::Type{T}, n::Int) where {T} = StemWorkspace(T, model.k, n, model.ngrid_ϕ, model.ngrid_κ; logspace = model.logspace)
@@ -306,11 +348,15 @@ function _stem_candidate(model::FoldModel, u::AbstractVector, s::Int, c::Int, y,
     with_grad || return ℓ, nothing
     K = 2 * model.k + 1
     g = fws.grad
-    gμ, gγ, gβ = _eta_chain(model, fws, ∂, s, c, eltype(u))
+    gμ, gγ, gβ, gs = _eta_chain(model, fws, ∂, s, c, eltype(u))
     sμ_u, sγ_u = logistic(u[1]), logistic(u[2])
     grad = [gμ * (model.μ_bounds[2] - model.μ_bounds[1]) * sμ_u * (1 - sμ_u), gγ * (model.logγ_bounds[2] - model.logγ_bounds[1]) * sγ_u * (1 - sγ_u),
         g[K + 1], g[K + 2] * σκ, g[K + 3] * α * (1 - α)]
     has_tempo(model) && push!(grad, gβ)
+    if has_mixture(model)
+        ls = logistic(u[6 + has_tempo(model)])
+        push!(grad, gs * (model.s_bounds[2] - model.s_bounds[1]) * ls * (1 - ls))
+    end
     model.outlier && push!(grad, g[K + 4] * πo * (1 - πo))
     return ℓ, grad
 end
@@ -427,7 +473,7 @@ end
 #################################################################################################################
 
 """
-    simulate_stems(tab, μ, γ; plants, organs, κ, σκ = 0, α, outlier = 0, torsion_mean, torsion_sd, tempo, β, rng)
+    simulate_stems(tab, μ, γ; plants, organs, κ, σκ = 0, α, outlier = 0, torsion_mean, torsion_sd, tempo, β, sμ, rng)
 
 Simulate from the generative model: site i is ready at iγ and commits at τ_i = iγ + z_i (z_i i.i.d. from the passage
 law of shape μ, standardised); the organ order is σ = sortperm(τ), and the angles are von Mises,
@@ -435,14 +481,23 @@ y_p ~ vM(ϕ + o (σ[p] − 1) ψ + τ_s (p − 1), κ), with a twist τ_s ~ Norm
 position. κ_s = κ e^{σκ z_s} per stem (z_s standard normal); with probability `outlier` an angle is replaced by a uniform
 one. Returns (; angles, orders, torsion, κ, outliers, ψ, o), as `simulate_stems(η; ...)` of model A.
 
+`sμ` (B-mix): the margin of each site is drawn from N(μ, s_μ²) restricted to the range of `tab` (a fine plateau table,
+e.g. the `tab` of `build_mixture_tables`), its delay from the plateau law at that margin (absolute noise time), and γ is
+in units of the mixture's IQR/1.349. Not combined with `tempo`.
+
 `tempo`: a plastochron that changes along the stem, either a vector r (relative plastochron of organ i, the same for
 every stem) or a function s ↦ r. Organ i is then ready at γ Σ_{j ≤ i} r_j and its delay has sd r_i^(1 − β): its local
 readiness spacing is γ r_i^β (the model `FoldModel(...; tempo)`).
 """
 function simulate_stems(tab::PassageTable, μ::Real, γ::Real; plants::Int = 100, organs::Int = 50, κ::Real = exp(1.5), σκ::Real = 0.0,
         α::Real = 0.95, outlier::Real = 0.0, torsion_mean::Real = 0.0, torsion_sd::Real = 0.0, tempo = nothing, β::Real = 0.0,
-        rng::AbstractRNG = Random.default_rng())
+        sμ = nothing, rng::AbstractRNG = Random.default_rng())
+    @assert sμ === nothing || tempo === nothing "B-mix simulation without tempo"
     smp = passage_sampler(tab, μ)
+    if sμ !== nothing # delays in units of the mixture scale
+        msmp, sc = mixture_sampler(tab, μ, sμ)
+        smp = rng -> msmp(rng) / sc
+    end
     orders = Vector{Vector{Int}}(undef, plants)
     angles = Vector{Vector{Float64}}(undef, plants)
     torsion, κs, outs = zeros(plants), zeros(plants), Vector{Vector{Int}}(undef, plants)
