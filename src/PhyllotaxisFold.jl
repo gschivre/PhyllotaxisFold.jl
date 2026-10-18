@@ -12,7 +12,7 @@ after a random delay) is fitted through its posterior orders. Submodules, in dep
 | `Permanents`       | banded permanent: graph, forward / backward (marginals), exact sampling, Viterbi             |
 | `AngleLikelihood`  | the angle likelihood of one stem and its analytic gradient; decoding and order posterior     |
 | `PropensityPriors` | log-normal softplus prior on free log-propensities η and its bijectors                        |
-| `PropensityModel`  | the propensity model: free log-propensities η, `PhyllotaxisModelAD`                           |
+| `PropensityModel`  | the propensity model: free symmetric log-propensities η, `PhyllotaxisModelAD`                 |
 | `CommitmentTiming` | fold-commit delay laws, exact Level-0 order likelihood, re-weighting of the posterior orders  |
 | `Plastochron`      | plastochron by flower rank from daily open-flower counts (delays in hours)                    |
 

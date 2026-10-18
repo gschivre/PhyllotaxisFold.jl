@@ -158,7 +158,8 @@ For the stem likelihood, the gradient in the costs reads
 \frac{\partial \ell}{\partial \eta_d} = \mathbb E[N_d \mid \text{angles}] - \mathbb E[N_d] :
 ```
 
-the expected number of organs displaced by ``d`` given the angles, minus the same number before seeing them. The
+the expected number of organs displaced by ``d`` given the angles, minus the same number before seeing them (with
+the symmetric costs of [§4](propensity.md), ``\eta_{-d} = \eta_d``, the two sides add up). The
 derivatives in ``\kappa`` and ``\alpha`` come from the same pass (expected cosines, posterior weight of the golden
 spiral). The Hessian is one pass of forward-mode dual numbers through this analytic gradient.
 

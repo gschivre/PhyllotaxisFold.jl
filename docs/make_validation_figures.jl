@@ -42,7 +42,7 @@ function run_replicate(law, seed)
     x = stem_coordinates(rng)
     sim = simulate_stems(law; plants = NSTEMS, organs = NORGANS, x, KAPPA..., α = 0.95, torsion_mean = TWIST.mean,
         torsion_sd = TWIST.sd, rng)
-    m = PhyllotaxisModelAD(sim.angles; symmetric = true, torsion_x = x)
+    m = PhyllotaxisModelAD(sim.angles; torsion_x = x)
     r = fit_map_torsion!(m; prior = TPRIOR)
     G = length(r.fit.u) - 2
     θ = constrained_parameters(m, r.fit.u[1:G])

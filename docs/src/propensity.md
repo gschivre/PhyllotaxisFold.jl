@@ -41,9 +41,15 @@ set by the inhibitory field. It keeps what the orders of a stem can identify: ho
     ``\sum_p \sigma(p) = \sum_p p``: the displacements of an order always sum to zero. Every order gains the same
     amount (zero), and ``P(\sigma \mid \eta)`` is unchanged. ∎
 
-The code therefore fixes ``\eta_0 = 0``, and by default uses the symmetric law ``\eta_{-d} = \eta_d``. With
-`symmetric = false` the two sides are free, and the tilt is fixed by the prior only. The difference between early and
-late organs is then better read from the timing law of [§5](timing.md).
+The code therefore fixes ``\eta_0 = 0``, and uses **symmetric costs**, ``\eta_{-d} = \eta_d``. Free costs on the
+two sides would not pay for themselves:
+
+- the tilt moves the overall balance between positive and negative displacements without changing any probability, so
+  that balance would be set by the prior alone;
+- what remains of the asymmetry is carried by the rarer patterns of three organs or more (an organ that jumps two
+  places one way while its neighbours each shift one place back);
+- and the question an asymmetry would answer, *are the off-time organs early or late?*, is a question about timing.
+  [§5](timing.md) asks it directly, with a law in which early and late have a physical meaning.
 
 ## 4.3 Prior
 
@@ -74,7 +80,7 @@ says that displacements by two positions are rare. It does not say why. It does 
 organ initiated late, or from one initiated early. It does not predict how the displacements of neighbouring organs go
 together. Answering these questions needs a mechanism, and this is where [§5](timing.md) starts.
 
-**Code.** `PhyllotaxisModelAD(angles, PhyllotaxisPrior(); symmetric = true, outlier = false, torsion_x)`,
+**Code.** `PhyllotaxisModelAD(angles, PhyllotaxisPrior(); outlier = false, torsion_x)`,
 `fit_map` (no twist), `fit_map_torsion!` (twist integrated out; overwrites the stored twist rates of the model),
 `constrained_parameters` (η is the full vector of ``2k + 1`` costs), `unconstrained_parameters`,
 `prior_mean_parameters`, `full_eta`; post-processing: `estimate_displacement_frequencies`,

@@ -85,6 +85,11 @@ end
     @test sort(cycle_lengths([2, 1, 3, 5, 6, 4])) == [1, 2, 3]
     @test logprob_permutation(PermanentWorkspace(k, n), [-1.0, -0.5, 0.0, -0.5, -1.0], collect(1:n)) ≈
           -forward!((w = PermanentWorkspace(k, n); toeplitz_weights!(w, [-1.0, -0.5, 0.0, -0.5, -1.0], n); w), n)
+    # a tilt of the costs, η_d → η_d + a d, changes no order probability (the displacements of an order sum to zero):
+    # with free early and late costs, this direction would be set by the prior alone
+    ηa = [-1.3, -0.4, 0.0, -0.7, -2.0]
+    wa = PermanentWorkspace(k, n)
+    @test all(logprob_permutation(wa, ηa, σ) ≈ logprob_permutation(wa, ηa .+ 0.8 .* (-k:k), σ) for σ in perms)
 end
 
 @testset "Permanents: scaled linear space falls back to log-space only when needed" begin
@@ -124,16 +129,17 @@ end
     μΔ, σΔ = η_prior(m, v)
     @test all(exp.(μΔ .+ σΔ .^ 2 ./ 2) .≈ m) # gap means
     @test all((exp.(σΔ .^ 2) .- 1) .* exp.(2 .* μΔ .+ σΔ .^ 2) .≈ v) # gap variances
-    for D in (LogNormalSoftPlus, ReverseLogNormalSoftPlus)
-        d = D([μΔ...], [σΔ...])
-        η = rand(Xoshiro(2), d)
-        b = Bijectors.bijector(d)
-        θ = b(η)
-        @test Bijectors.inverse(b)(θ) ≈ η
-        _, lj = Bijectors.with_logabsdet_jacobian(Bijectors.inverse(b), θ)
-        @test lj ≈ logabsdet(ForwardDiff.jacobian(Bijectors.inverse(b), θ))[1]
-        @test isfinite(logpdf(d, η))
-    end
+    d = LogNormalSoftPlus([μΔ...], [σΔ...])
+    η = rand(Xoshiro(2), d)
+    @test issorted(η; rev = true) && η[1] < 0 # η_1 > η_2 > … > η_k, all negative
+    b = Bijectors.bijector(d)
+    θ = b(η)
+    @test Bijectors.inverse(b)(θ) ≈ η
+    _, lj = Bijectors.with_logabsdet_jacobian(Bijectors.inverse(b), θ)
+    @test lj ≈ logabsdet(ForwardDiff.jacobian(Bijectors.inverse(b), θ))[1]
+    @test isfinite(logpdf(d, η))
+    @test mean(d) ≈ -cumsum([m...])
+    @test mean(rand(Xoshiro(3), d, 200_000); dims = 2) ≈ mean(d) rtol = 0.02
 end
 
 @testset "Plastochron: piecewise-linear rate with per-plant arrest" begin
@@ -207,10 +213,11 @@ end
     fp, _ = estimate_permutation_frequencies(model, nothing; N = 200, n = 30, rng = Xoshiro(2))
     @test sum(fp) ≈ 1
     @test all(sum(displacement_probability(model, θ); dims = 1) .≈ 1)
-    # asymmetric variant: the prior of the late side is the mirror image of the early side
-    asym = PhyllotaxisModelAD(data, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, symmetric = false)
-    ηa = full_eta(asym, prior_mean(asym))
-    @test ηa ≈ reverse(ηa)
+    @test sum(displacement_probability(model, θ)[2:end]) ≈ 2 * sum(exp, θ[1:4]) / (1 + 2 * sum(exp, θ[1:4]))
+    # symmetric costs: k of them, mirrored in the full vector
+    @test LogDensityProblems.dimension(model) == 4 + 3
+    ηf = full_eta(model, θ)
+    @test ηf ≈ reverse(ηf) && ηf[5] == 0
 end
 
 
@@ -242,14 +249,12 @@ end
 
 @testset "Angle likelihood: analytic gradient and Hessian" begin
     sim = simulate_stems(LAW; plants = 3, organs = 30, logμκ = 1.8, rng = Xoshiro(3))
-    for symmetric in (true, false)
-        prob = TransformedLogDensityProblem(PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6, symmetric))
-        v = Bijectors.bijector(prob.prob)(prior_mean(prob.prob)) .+ 0.1
-        l, g, H = angle_vgh(prob, v, 2)
-        @test l ≈ LogDensityProblems.logdensity(prob, v)
-        @test g ≈ ForwardDiff.gradient(w -> LogDensityProblems.logdensity(prob, w), v) rtol = 1e-6
-        @test H ≈ ForwardDiff.hessian(w -> LogDensityProblems.logdensity(prob, w), v) rtol = 1e-5
-    end
+    prob = TransformedLogDensityProblem(PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6))
+    v = Bijectors.bijector(prob.prob)(prior_mean(prob.prob)) .+ 0.1
+    l, g, H = angle_vgh(prob, v, 2)
+    @test l ≈ LogDensityProblems.logdensity(prob, v)
+    @test g ≈ ForwardDiff.gradient(w -> LogDensityProblems.logdensity(prob, w), v) rtol = 1e-6
+    @test H ≈ ForwardDiff.hessian(w -> LogDensityProblems.logdensity(prob, w), v) rtol = 1e-5
 end
 
 @testset "Torsion: rates integrated out (adaptive quadrature); decoding and order posterior" begin
@@ -293,7 +298,7 @@ end
 @testset "Outlier angles: gradient, Hessian, limit and recovery" begin
     sim = simulate_stems(LAW; plants = 3, organs = 25, logμκ = 1.8, outlier = 0.05, rng = Xoshiro(3))
     fd(f, u) = [(f(u .+ 1e-5 .* (1:length(u) .== i)) - f(u .- 1e-5 .* (1:length(u) .== i))) / 2e-5 for i in eachindex(u)]
-    m = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 8, ngrid_κ = 4, outlier = true, symmetric = false)
+    m = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 8, ngrid_κ = 4, outlier = true)
     u = prior_mean_parameters(m) .+ 0.1
     l, g, H = angle_vgh(m, u, 2)
     f(w) = angle_vgh(m, w, 0)[1]
@@ -316,11 +321,15 @@ end
 
 @testset "Propensity model API: parameters, likelihood, spiral of each stem" begin
     sim = simulate_stems(LAW; plants = 3, organs = 30, logμκ = 1.8, rng = Xoshiro(3))
-    mA = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 16, ngrid_κ = 6, symmetric = false)
-    η = [-3.0, -2.4, -1.9, -0.8, 0.0, -0.9, -1.8, -2.6, -3.1]
+    mA = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 16, ngrid_κ = 6)
+    η = [-3.0, -2.4, -1.9, -0.8, 0.0, -0.8, -1.9, -2.4, -3.0]
     uA = unconstrained_parameters(mA; η, logμκ = 1.8, σκ = 0.1, α = 0.95)
     θA = constrained_parameters(mA, uA)
     @test θA.η ≈ η && θA.σκ ≈ 0.1
+    @test unconstrained_parameters(mA; η = η[6:end], logμκ = 1.8, σκ = 0.1, α = 0.95) ≈ uA
+    @test_throws ArgumentError unconstrained_parameters(mA; η = [-3.0, -2.4, -1.9, -0.8, 0.0, -0.9, -1.8, -2.6, -3.1],
+        logμκ = 1.8, σκ = 0.1, α = 0.95) # an asymmetric full vector
+    @test_throws ArgumentError unconstrained_parameters(mA; η = η[6:8], logμκ = 1.8, σκ = 0.1, α = 0.95)
     @test sum(stem_loglik(mA, uA, s) for s in 1:3) ≈ angle_loglikelihood(mA, uA)
     prob = TransformedLogDensityProblem(mA)
     @test angle_loglikelihood(prob, uA) ≈ angle_loglikelihood(mA, uA)

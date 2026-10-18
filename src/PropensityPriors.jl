@@ -5,9 +5,9 @@ Prior on free log-propensities η_1 > η_2 > … > η_k (all negative, decreasin
 
     η_d = −(Δ_1 + … + Δ_d),   Δ_j ~ LogNormal(μΔ_j, σΔ_j)
 
-`LogNormalSoftPlus` (d > 0) and `ReverseLogNormalSoftPlus` (the mirror, for η_{−k} < … < η_{−1} in the asymmetric
-model), their bijectors to ℝ^k (θ_j = softplus⁻¹(Δ_j)), and `η_prior` (log-normal location and scale from the mean and
-variance of each gap). Used by the free-η angle model (`PropensityModel`).
+`LogNormalSoftPlus`, its bijector to ℝ^k (θ_j = softplus⁻¹(Δ_j)), and `η_prior` (log-normal location and scale from
+the mean and variance of each gap). Used by the free-η angle model (`PropensityModel`), whose costs are symmetric
+(η_{−d} = η_d).
 """
 module PropensityPriors
 
@@ -15,7 +15,7 @@ using LinearAlgebra, Random, Statistics
 using Distributions, LogExpFunctions
 using Bijectors: Bijectors
 
-export LogNormalSoftPlus, ReverseLogNormalSoftPlus, η_prior, marginal_quantiles
+export LogNormalSoftPlus, η_prior, marginal_quantiles
 
 struct LogNormalSoftPlus{V <: AbstractVector} <: ContinuousMultivariateDistribution
     μΔ::V
@@ -45,39 +45,8 @@ function Distributions.mean(d::LogNormalSoftPlus)
     return -cumsum(Δm)
 end
 
-# the same in reverse order: η = (η_{−k}, …, η_{−1}), gaps Δ_j = η_{j+1} − η_j and Δ_k = −η_{−1}
-struct ReverseLogNormalSoftPlus{V <: AbstractVector} <: ContinuousMultivariateDistribution
-    μΔ::V
-    σΔ::V
-end
-Base.length(d::ReverseLogNormalSoftPlus) = length(d.μΔ)
-function Distributions._rand!(rng::AbstractRNG, d::ReverseLogNormalSoftPlus, x::AbstractVector{<:Real})
-    Δ = rand(rng, MvLogNormal(d.μΔ, Diagonal(d.σΔ .^ 2)))
-    reverse!(Δ)
-    cumsum!(x, Δ)
-    x .*= -1
-    reverse!(x)
-    return x
-end
-function Distributions._logpdf(d::ReverseLogNormalSoftPlus, η::AbstractVector{<:Real})
-    k = length(d)
-    Δₖ = -η[k]
-    (Δₖ > 0) || return -Inf
-    logp = logpdf(LogNormal(d.μΔ[k], d.σΔ[k]), Δₖ)
-    for j in 1:(k - 1)
-        Δⱼ = η[j + 1] - η[j]
-        (Δⱼ > 0) || return -Inf
-        logp += logpdf(LogNormal(d.μΔ[j], d.σΔ[j]), Δⱼ)
-    end
-    return logp
-end
-function Distributions.mean(d::ReverseLogNormalSoftPlus)
-    Δm = exp.(d.μΔ .+ (d.σΔ .^ 2) ./ 2)
-    return reverse!(-cumsum(reverse(Δm)))
-end
-
 "marginal quantiles of each η_d by Monte Carlo"
-function marginal_quantiles(d::Union{LogNormalSoftPlus, ReverseLogNormalSoftPlus}, α::Real; N::Int = 100_000)
+function marginal_quantiles(d::LogNormalSoftPlus, α::Real; N::Int = 100_000)
     samples = rand(d, N)
     return [quantile(samples[i, :], α) for i in 1:length(d)]
 end
@@ -109,20 +78,6 @@ function Bijectors.with_logabsdet_jacobian(b::LogNormalSoftPlusBijector, η::Abs
     θ = b(η)
     return (θ, sum(x -> softplus(-x), θ))
 end
-struct ReverseLogNormalSoftPlusBijector <: Bijectors.Bijector end
-function (b::ReverseLogNormalSoftPlusBijector)(η::AbstractVector)
-    k = length(η)
-    θ = similar(η)
-    for j in 1:(k - 1)
-        θ[j] = invsoftplus(η[j + 1] - η[j])
-    end
-    θ[k] = invsoftplus(-η[k])
-    return θ
-end
-function Bijectors.with_logabsdet_jacobian(b::ReverseLogNormalSoftPlusBijector, η::AbstractVector)
-    θ = b(η)
-    return (θ, sum(x -> softplus(-x), θ))
-end
 
 # the Jacobian of θ ↦ η is triangular with diagonal −logistic(θ_j): log|J| = Σ log logistic(θ_j)
 struct InverseLogNormalSoftPlusBijector <: Bijectors.Bijector end
@@ -130,21 +85,10 @@ struct InverseLogNormalSoftPlusBijector <: Bijectors.Bijector end
 function Bijectors.with_logabsdet_jacobian(ib::InverseLogNormalSoftPlusBijector, θ::AbstractVector)
     return (ib(θ), sum(loglogistic, θ))
 end
-struct ReverseInverseLogNormalSoftPlusBijector <: Bijectors.Bijector end
-function (ib::ReverseInverseLogNormalSoftPlusBijector)(θ::AbstractVector)
-    Δ = softplus.(θ)
-    return reverse!(.-cumsum!(reverse(Δ), reverse(Δ)))
-end
-function Bijectors.with_logabsdet_jacobian(ib::ReverseInverseLogNormalSoftPlusBijector, θ::AbstractVector)
-    return (ib(θ), sum(loglogistic, θ))
-end
 
 Bijectors.inverse(::LogNormalSoftPlusBijector) = InverseLogNormalSoftPlusBijector()
 Bijectors.inverse(::InverseLogNormalSoftPlusBijector) = LogNormalSoftPlusBijector()
-Bijectors.inverse(::ReverseLogNormalSoftPlusBijector) = ReverseInverseLogNormalSoftPlusBijector()
-Bijectors.inverse(::ReverseInverseLogNormalSoftPlusBijector) = ReverseLogNormalSoftPlusBijector()
 
 Bijectors.bijector(::LogNormalSoftPlus) = LogNormalSoftPlusBijector()
-Bijectors.bijector(::ReverseLogNormalSoftPlus) = ReverseLogNormalSoftPlusBijector()
 
 end # module PropensityPriors
