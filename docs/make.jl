@@ -24,7 +24,7 @@ makedocs(;
             "Commitment timing" => "timing.md",
         ],
         "Validation on simulated stems" => "validation.md",
-        "Inference and limits" => "inference.md",
+        "Assumptions and limits" => "limits.md",
         "Notation and references" => "notation.md",
         "API" => "api.md",
     ],

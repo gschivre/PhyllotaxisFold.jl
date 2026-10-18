@@ -2,14 +2,17 @@
 # law, against the truth used to simulate. Simulated data only.
 #
 # Design close to the Arabidopsis data: 60 stems of 45 organs, internodes long at the base and shorter higher up (mm),
-# κ ≈ 6.4 (log-normal across stems), 95 % golden spirals, a twist of 1.0 ± 0.7 °/mm. Three delay laws (plastochrons):
-#   no tails   s = 0.42
-#   WT-like    s = 0.42, 5 % late (m 1.5), 5.4 % early (m 1.0)
-#   mutant-like s = 0.39, 20 % late (m 1.1), 27 % early (m 1.0)
+# κ ≈ 6.4 (log-normal across stems), 95 % golden spirals, a twist of 1.0 ± 0.7 °/mm. Three delay laws (plastochrons),
+# the tailed ones taken from fits to a wild type and to a mutant with many off-time organs:
+#   no tails     s = 0.42
+#   light tails  s = 0.42, 5 % late (m 1.5), 5.4 % early (m 1.04)
+#   heavy tails  s = 0.39, 19.6 % late (m 1.09), 26.9 % early (m 1.01)
 # three replicates each. Per replicate: the propensity model with the twist integrated (fit_map_torsion!), the MAP
-# decoding, 200 exact posterior order samples, and the :core, :late, :both delay laws with robust standard errors.
+# decoding, 200 exact posterior order samples (cached), then the :core, :late, :both delay laws with robust standard
+# errors; per replicate pair, the light and heavy laws with a shared core sd.
 #
-# Run in the docs environment, with threads (≈ 1.5 h on 18 threads; the replicates are cached in validation.jls):
+# Run in the docs environment, with threads (≈ 1.5 h on 18 threads; the replicates are cached in validation.jls, and
+# run_validation(; refit_timing = true) refits only the delay laws from the cached order samples):
 #   julia -t 18 --project=docs docs/make_validation_figures.jl     (in Kaimon: include(...) with mt = true)
 
 using PhyllotaxisFold, Random, Statistics, Serialization, LinearAlgebra
@@ -23,10 +26,10 @@ const KAPPA = (logμκ = 1.85, σκ = 0.15)
 const TPRIOR = TorsionPrior(m0 = 0.0, sm = 2.0, νs = 4.0, τs = 1.0) # °/mm
 const SCENARIOS = [
     (:none, "no tails", DelayLaw(0.42)),
-    (:wt, "WT-like", DelayLaw(0.42; πL = 0.05, mL = 1.5, πE = 0.054, mE = 1.04)),
-    (:mutant, "mutant-like", DelayLaw(0.39; πL = 0.196, mL = 1.09, πE = 0.269, mE = 1.01)),
+    (:light, "light tails", DelayLaw(0.42; πL = 0.05, mL = 1.5, πE = 0.054, mE = 1.04)),
+    (:heavy, "heavy tails", DelayLaw(0.39; πL = 0.196, mL = 1.09, πE = 0.269, mE = 1.01)),
 ]
-const SCOL = Dict(:none => :gray40, :wt => "#2a78d6", :mutant => "#eb6834")
+const SCOL = Dict(:none => :gray40, :light => "#2a78d6", :heavy => "#eb6834")
 const NREP = 3
 
 # twist coordinate of each stem (mm below each organ): internodes from ≈ 9 mm at the base to ≈ 3 mm, log-normal noise
@@ -49,6 +52,14 @@ function run_replicate(law, seed)
     dec = decode_orders(m, r; full = true)
     post = order_posterior(m, r; nsamples = 200, rng = Xoshiro(seed + 1))
     smp = order_samples(post, θ.η)
+    return (; law, sim = (; sim.orders, sim.delays, sim.torsion, sim.κ, sim.ψ, sim.o), x,
+        fit = (; θ, r.m_ω, r.s_ω, r.τ_mean, r.τ_sd, r.loglik), dec = [(; d.σ, d.o, d.ψ) for d in dec],
+        ρ = [p.ρ for p in post], k = m.k, smp)
+end
+
+# the delay laws of one replicate, from its cached order samples
+function timing_fits(v)
+    smp, law = v.smp, v.law
     fits = Dict{Symbol, Any}()
     fits[:core] = fit_delay_law(smp, :core; init = DelayLaw(0.5))
     fits[:late] = fit_delay_law(smp, :late; init = DelayLaw(fits[:core].law.s; πL = 0.05, mL = 1.0))
@@ -61,20 +72,40 @@ function run_replicate(law, seed)
         w = exp.(lw .- maximum(lw))
         sum(w)^2 / sum(w .^ 2 ./ s.w ./ 200)
     end
-    return (; law, sim = (; sim.orders, sim.delays, sim.torsion, sim.κ, sim.ψ, sim.o), x,
-        fit = (; θ, r.m_ω, r.s_ω, r.τ_mean, r.τ_sd, r.loglik), dec = [(; d.σ, d.o, d.ψ) for d in dec],
-        ρ = [p.ρ for p in post], k = m.k, fits, inf, truth_ll = relative_loglik(smp, law), ess)
+    return (; fits, inf, truth_ll = relative_loglik(smp, law), ess)
 end
 
-function run_validation()
+# per replicate: the light- and heavy-tailed sets fitted together, with one core sd (their true cores, 0.42 and 0.39,
+# are close but not equal), and the likelihood ratio against separate cores
+function shared_fits(res, rep)
+    groups = [res[(:light, rep)].smp, res[(:heavy, rep)].smp]
+    t = shared_core_test(groups, :both)
+    return (; test = t, inf = delay_law_inference(groups, t.shared))
+end
+
+function run_validation(; refit_timing = false)
     res = isfile(VCACHE) ? deserialize(VCACHE) : Dict{Any, Any}()
     for rep in 1:NREP, (key, _, law) in SCENARIOS
-        haskey(res, (key, rep)) && continue
-        res[(key, rep)] = run_replicate(law, 1000 * rep + findfirst(s -> s[1] == key, SCENARIOS))
+        if !haskey(res, (key, rep))
+            res[(key, rep)] = run_replicate(law, 1000 * rep + findfirst(s -> s[1] == key, SCENARIOS))
+            serialize(VCACHE, res)
+        end
+        if refit_timing || !haskey(res[(key, rep)], :fits)
+            v = res[(key, rep)]
+            res[(key, rep)] = (; v[(:law, :sim, :x, :fit, :dec, :ρ, :k, :smp)]..., timing_fits(v)...)
+            serialize(VCACHE, res)
+        end
+    end
+    for rep in 1:NREP
+        (refit_timing || !haskey(res, (:shared, rep))) || continue
+        res[(:shared, rep)] = shared_fits(res, rep)
         serialize(VCACHE, res)
     end
     return res
 end
+
+# the nine replicates (the cache also holds the shared-core fits, under (:shared, rep))
+replicates(res) = [res[(key, rep)] for (key, _, _) in SCENARIOS for rep in 1:NREP]
 
 const VTHEME = Theme(fontsize = 15, Axis = (xgridvisible = false, ygridcolor = (:black, 0.07), topspinevisible = false,
     rightspinevisible = false, titlefont = :bold, titlesize = 15))
@@ -125,7 +156,7 @@ end
 function fig_v2(res)
     with_theme(VTHEME) do
         fig = Figure(size = (1500, 450))
-        k = first(values(res)).k
+        k = first(replicates(res)).k
         # (a) reliability: predicted P(σ[p] = p + d) against the frequency with which it is true
         edges = [0.0, 0.01, 0.05, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 0.95, 0.99, 1.0]
         ax = Axis(fig[1, 1]; title = "(a) Posterior of the order is calibrated", xlabel = "predicted probability",
@@ -152,7 +183,7 @@ function fig_v2(res)
         end
         # (b) decoded (MAP) displacement against the true one, all scenarios pooled
         C = zeros(2k + 1, 2k + 1)
-        for v in values(res), (d, σ) in zip(v.dec, v.sim.orders), p in eachindex(σ)
+        for v in replicates(res), (d, σ) in zip(v.dec, v.sim.orders), p in eachindex(σ)
             dt, dd = σ[p] - p, d.σ[p] - p
             (abs(dt) ≤ k && abs(dd) ≤ k) && (C[dt + k + 1, dd + k + 1] += 1)
         end
@@ -173,7 +204,7 @@ function fig_v2(res)
                 color = (SCOL[key], 0.45), markersize = 6)
         end
         lines!(ax, [0, 0.8], [0, 0.8]; color = :black, linestyle = :dash)
-        acc = mean(mean(d.σ .== σ) for v in values(res) for (d, σ) in zip(v.dec, v.sim.orders))
+        acc = mean(mean(d.σ .== σ) for v in replicates(res) for (d, σ) in zip(v.dec, v.sim.orders))
         text!(ax, 0.03, 0.97; text = "positions decoded correctly: $(round(100acc; digits = 1)) %", space = :relative,
             align = (:left, :top), fontsize = 12)
         save(joinpath(VFIG, "v2_decoding.png"), fig; px_per_unit = 2)
@@ -270,6 +301,17 @@ function validation_table(res)
             correct = round(mean(mean(d.σ .== σ) for (d, σ) in zip(v.dec, v.sim.orders)); digits = 3), ess_median = round(median(v.ess); digits = 1))
     end
     return rows
+end
+
+# the shared-core fits of the light- and heavy-tailed sets, per replicate
+function shared_table(res)
+    r3(x) = round(x; digits = 3)
+    map(1:NREP) do rep
+        v = res[(:shared, rep)]
+        e, se = v.inf.estimate, v.inf.se
+        (; rep, s = (r3(e[1].s), r3(se[1].s)), off_light = (r3(e[1].off), r3(se[1].off)), off_heavy = (r3(e[2].off), r3(se[2].off)),
+            Δoff = (r3(v.inf.Δoff[1].estimate), r3(v.inf.Δoff[1].se)), lr = round(v.test.lr; digits = 2), p = round(v.test.p; digits = 3))
+    end
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

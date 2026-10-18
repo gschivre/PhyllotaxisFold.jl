@@ -64,9 +64,24 @@ mapped to the real line by a softplus (`LogNormalSoftPlus`).
 ## 4.4 Fitting
 
 The parameters (``\eta``, ``\log\mu_\kappa``, ``\sigma_\kappa``, ``\alpha``, the twist population ``m_\omega,
-s_\omega`` and optionally ``\pi_o``) are fitted by maximum a posteriori. The gradient is analytic ([§3.6](orders.md)),
-and the optimiser is Newton's method with a trust region ([§7](inference.md)). For the example stem and the other
-stems simulated with it, figure 1 shows the fitted costs and the orders they reconstruct.
+s_\omega`` and optionally ``\pi_o``) are fitted by maximum a posteriori.
+
+- **Parameters on the real line.** Positive parameters go through a log, probabilities through a logit, and the costs
+  ``\eta`` through the softplus map of their gaps ([§4.3](propensity.md)). The log-Jacobian of these maps is part of
+  the log density.
+- **Newton's method with a trust region.** The value, the gradient and the Hessian are computed in one call, and the
+  Hessian only when the optimiser asks for it. The gradient is analytic ([§3.6](orders.md)). The Hessian is one pass
+  of forward-mode dual numbers through the analytic gradient. A non-finite evaluation counts as a rejected step.
+- **Uncertainty.** Laplace approximation: ``-H^{-1}`` at the maximum is the covariance of the unconstrained
+  parameters.
+- **Model comparison.** The integrated log-likelihood at the maximum (`loglik` of `fit_map_torsion!`, priors
+  excluded). Timing laws are compared with the propensity model and with each other by ``\Delta\ell``
+  ([§5.5](timing.md)).
+- **Cost.** One stem of about 45 organs takes about 50 ms (2048 nuisance nodes). A fit of 50–90 stems with the twist
+  integrated takes 10–15 minutes on 18 threads.
+
+For the example stem and the other stems simulated with it, figure 1 shows the fitted costs and the orders they
+reconstruct.
 
 ![The propensity model fitted to the stems of the example](figures/e4_example_propensity.png)
 
@@ -74,7 +89,38 @@ stems simulated with it, figure 1 shows the fitted costs and the orders they rec
 (b) The realised frequency of each displacement under the fitted costs, against the frequency in the true orders.
 (c) The fraction of organs whose most probable site is correct, stem by stem.*
 
-## 4.5 Why not stop here
+## 4.5 Integrating the twist out
+
+The twist rate of each stem is integrated out of its likelihood ([§2.3](angles.md)). The likelihood of one stem is
+sharp and often multimodal in ``\omega_s``. A fixed grid of nodes would need to be very fine, and Gauss–Hermite nodes
+placed on the population law would miss the peaks. The quadrature is therefore *adaptive*, built on each stem's own
+likelihood.
+
+1. Scan the rate, find the local maxima within 8 log-units of the best, and measure the curvature of each.
+2. Place Gauss–Hermite nodes on each mode (a mixture of Gaussians ``q_s``).
+3. Weight each node so that the rule integrates *any* population law: ``\int L_s(\omega)\, p(\omega)\, d\omega
+   \approx \sum_j w_j\, L_s(\omega_j)\, p(\omega_j)/q_s(\omega_j)``.
+
+The nodes stay fixed during a Newton fit, so the objective is a smooth function of all the parameters, including
+``(m_\omega, \log s_\omega)``. `fit_map_torsion!` alternates the two:
+
+1. fit without twist;
+2. place the nodes;
+3. fit with each stem at its best mode;
+4. place the nodes again;
+5. fit the integrated objective.
+
+It then optionally places the nodes once more and refits.
+
+!!! details "Why the weights are right"
+    For component ``r`` of the mixture (weight ``\pi_r``, centre ``c_r``, sd ``h_r``), the Gauss–Hermite rule gives
+    ``\mathbb E_{\mathcal N(c_r, h_r^2)}[g] \approx \sum_j \gamma_j\, g(c_r + h_r z_j)``. Writing
+    ``\int L p = \int (L p / q)\, q = \sum_r \pi_r\, \mathbb E_{\mathcal N_r}[L p / q]`` and applying the rule to each
+    component gives node weights ``\pi_r \gamma_j / q(\omega_{rj})``. This is multiple importance sampling with the
+    balance heuristic. It is exact for any ``p`` in expectation, and accurate when ``L_s`` is close to Gaussian around
+    each mode and ``p`` varies slowly on the scale of the mode.
+
+## 4.6 Why not stop here
 
 The propensity model reconstructs the orders well, but its parameters only describe them. A cost ``\eta_2 = -2.5``
 says that displacements by two positions are rare. It does not say why. It does not say whether they come from an

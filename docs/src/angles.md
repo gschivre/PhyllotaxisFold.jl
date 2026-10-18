@@ -53,7 +53,13 @@ where ``x_p`` is the length of stem below the organ and ``\omega_s`` a rate (deg
 When the internodes are not measured, ``x_p = p - 1`` and the rate is per organ.
 
 **assumption** — the rates are a random effect, ``\omega_s \sim \mathcal N(m_\omega, s_\omega^2)``, integrated out of
-each stem's likelihood ([§7](inference.md)).
+each stem's likelihood.
+
+Why integrate, rather than fix each twist at its best value? Because the twist of a stem is not known, and fixing it
+would make the orders look more certain than they are. A different twist combined with a few permutations can explain
+the same angles, so the likelihood of a stem is often multimodal in ``\omega_s``. It is also very sharp (about
+0.1°/mm wide). The integral is computed by an adaptive quadrature built on each stem's own likelihood
+([§4.5](propensity.md)).
 
 Could a twist be mistaken for a slightly different divergence? Both rotate the organs more and more going up the
 stem. A divergence ``\psi + \delta`` instead of ``\psi`` moves the organ of site ``j`` by ``o\,(j - 1)\,\delta``:
@@ -102,8 +108,12 @@ quantities are low-dimensional and handled by quadrature.
     (`ngrid_ϕ`, 32 by default). The integrand is smooth and periodic in ``\phi``, so this rectangle rule converges
     geometrically: its error behaves like the Bessel ratio ``I_N(\kappa n)/I_0(\kappa n)``. The integral over
     ``\log\kappa`` uses `ngrid_κ` Gauss–Hermite nodes (16 by default) of the log-normal law. The twist rate is
-    integrated by an adaptive quadrature described in [§7](inference.md). All the terms are computed in log space,
+    integrated by an adaptive quadrature described in [§4.5](propensity.md). All the terms are computed in log space,
     and ``\log I_0`` with a dedicated routine (`logbesseli`) that also accepts dual numbers for the derivatives.
+
+    Accuracy: 32 ``\phi`` nodes give converged estimates; use 64 for fine comparisons of log-likelihoods. 16
+    ``\kappa`` nodes are accurate while ``\sigma_\kappa \lesssim 0.5``. The cost is proportional to
+    `ngrid_ϕ` × `ngrid_κ`.
 
 **Code.** `AngleLikelihood.stem_loglik!` (one stem, all grids, and its gradient), `stem_loglik`, `angle_loglikelihood`;
 the twist: `torsion_coordinate(ℓ)`, `corrected_angles`; simulation: `simulate_stems` (both laws of the order).

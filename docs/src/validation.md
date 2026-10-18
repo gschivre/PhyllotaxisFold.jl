@@ -5,14 +5,17 @@ Each step of the method rests on assumptions and approximations, and each could 
 - the twist could be confused with a change of spiral;
 - the posterior of the order could be overconfident;
 - the re-weighting could rest on too few samples;
-- the delay law could be poorly identified from orders alone.
+- the delay law could be poorly identified from orders alone;
+- the plant's clock might not be as regular as the model assumes.
 
 The only way to know is to run the whole pipeline on stems for which the truth is known, and compare. This page does
-that, step by step: the angle model and the twist ([§6.1](validation.md)), the orders ([§6.2](validation.md)), the
-delay law ([§6.3](validation.md)), and the two computations of [§5](timing.md) on which the delay law rests
-([§6.4](validation.md)). The figures are made by `docs/make_validation_figures.jl` (simulated data only).
+that, step by step. After the simulated stems ([§6.1](validation.md)) come the angle model and the twist
+([§6.2](validation.md)), the orders ([§6.3](validation.md)), the delay law ([§6.4](validation.md)) and a remedy for
+its weak point ([§6.5](validation.md)), the two computations of [§5](timing.md) on which the delay law rests
+([§6.6](validation.md)), and a clock that drifts ([§6.7](validation.md)). The figures are made by
+`docs/make_validation_figures.jl` (simulated data only).
 
-## The simulated stems
+## 6.1 The simulated stems
 
 The stems are made to resemble the *Arabidopsis* data:
 
@@ -28,11 +31,12 @@ The orders come from independent commitment delays ([§5.2](timing.md)), with th
 | scenario | core sd ``s`` | late tail | early tail | ``P(\lvert e\rvert > 1)`` |
 |---|---|---|---|---|
 | no tails | 0.42 | — | — | 1.7 % |
-| WT-like | 0.42 | 5 % (mean 1.5) | 5.4 % (mean 1.0) | 6.5 % |
-| mutant-like | 0.39 | 20 % (mean 1.1) | 27 % (mean 1.0) | 19.7 % |
+| light tails | 0.42 | 5 % (mean 1.5) | 5.4 % (mean 1.04) | 6.5 % |
+| heavy tails | 0.39 | 19.6 % (mean 1.09) | 26.9 % (mean 1.01) | 19.7 % |
 
-The WT-like and mutant-like laws are close to the laws fitted to a wild type and to a mutant with more off-time
-organs. The no-tails law asks whether the method invents tails that are not there.
+The two tailed laws are laws fitted to real stems, which is why their values are not round: the light-tailed law to a
+wild type, the heavy-tailed law to a mutant with many off-time organs. The no-tails law asks whether the method
+invents tails that are not there.
 
 Each scenario is simulated three times (three *replicates*, nine data sets in all). Each data set goes through the
 steps of the [quick start](index.md), exactly as real data would:
@@ -43,7 +47,10 @@ steps of the [quick start](index.md), exactly as real data would:
 4. the `:core`, `:late` and `:both` delay laws by `fit_delay_law`;
 5. `delay_law_inference` (robust standard errors, *se* below).
 
-## 6.1 The angle model and the twist
+In each replicate, the light- and heavy-tailed data sets are also fitted together, with a shared core
+([§6.5](validation.md)).
+
+## 6.2 The angle model and the twist
 
 **What could go wrong.** The twist of a stem and a change of its spiral can both rotate the organs. If the model
 confused them, it would get the twist wrong, and then the orders.
@@ -60,9 +67,9 @@ against truth. (b) The twist population: mean and sd, truth in black. (c) The po
 
 One stem in 540 gets a twist at a secondary mode of its likelihood (figure 1a, the point far from the diagonal). It is
 a reminder that the twist likelihood of a stem can have several peaks. This is why the twist is integrated out rather
-than fixed at its best value ([§7.2](inference.md)).
+than fixed at its best value ([§2.3](angles.md), [§4.5](propensity.md)).
 
-## 6.2 The orders
+## 6.3 The orders
 
 **What could go wrong.** The posterior of the order could be overconfident (or underconfident). Step 2 relies on its
 samples, so it must be *calibrated*: an event to which it gives a probability of 70 % should happen about 70 % of the
@@ -84,7 +91,7 @@ of each true displacement. (c) The fraction of displaced organs per stem, decode
   posterior usually shares its probability between it and the true order. This is why step 2 uses the posterior
   samples, not the best order alone.
 
-## 6.3 The delay law
+## 6.4 The delay law
 
 **What could go wrong.** The delay law is seen only through the orders it produces, and different laws can produce
 nearly the same orders ([§5.6](timing.md)). Which of its features are recovered, and which are not?
@@ -96,38 +103,84 @@ masses: estimate ± 2 robust se for each replicate, truth in black. (e) The fitt
 (dashed). (f) Log-likelihood gains: what the two tails add to a core-only law (circles), and how much the fitted law
 beats the true one (triangles, the optimism of the fit).*
 
-Truth, then the fits of the three replicates:
+Truth, then the `:both` fits of the three replicates:
 
 | scenario | ``s`` | ``P(e > 1)`` | ``P(e < -1)`` | ``P(\lvert e\rvert > 1)`` | tails gain (``\Delta\ell``) |
 |---|---|---|---|---|---|
-| no tails | 0.42 → 0.28, 0.43, 0.42 | 0.009 → 0.022, 0.010, 0.009 | 0.009 → 0.003, 0.010, 0.009 | 0.017 → 0.025, 0.019, 0.018 | 1.6, 0.0, 0.0 |
-| WT-like | 0.42 → 0.41, 0.41, 0.38 | 0.035 → 0.043, 0.045, 0.043 | 0.030 → 0.018, 0.021, 0.026 | 0.065 → 0.061, 0.065, 0.068 | 132, 126, 99 |
-| mutant-like | 0.39 → 0.00, 0.01, 0.01 | 0.086 → 0.105, 0.108, 0.113 | 0.110 → 0.110, 0.110, 0.104 | 0.197 → 0.216, 0.218, 0.217 | 74, 58, 76 |
+| no tails | 0.42 → 0.32, 0.39, 0.37 | 0.009 → 0.009, 0.029, 0.033 | 0.009 → 0.008, 0.002, 0.001 | 0.017 → 0.018, 0.031, 0.034 | 1.6, 0.2, 0.4 |
+| light tails | 0.42 → 0.41, 0.41, 0.38 | 0.035 → 0.043, 0.045, 0.043 | 0.030 → 0.018, 0.021, 0.026 | 0.065 → 0.061, 0.065, 0.068 | 131, 126, 97 |
+| heavy tails | 0.39 → 0.01, 0.01, 0.01 | 0.086 → 0.106, 0.109, 0.113 | 0.110 → 0.110, 0.110, 0.104 | 0.197 → 0.216, 0.218, 0.217 | 74, 58, 76 |
 
 **What we find**, from the most to the least robust:
 
-1. **No false tails.** When the truth has none, the tails add 0 to 1.6 units of log-likelihood, and the off-time
-   fraction stays at the core's own (0.017).
-2. **Real tails are found without doubt.** For both tailed laws, the tails add 58 to 132 units.
+1. **No false tails.** When the truth has none, the tails add 0.2 to 1.6 units of log-likelihood. The `:core` fit then
+   recovers the law: ``s`` = 0.40, 0.43, 0.42 and an off-time fraction of 0.013, 0.019, 0.018 for 0.017. The `:both`
+   fit is too flexible here ([§5.6](timing.md)). In two replicates it puts nearly every site in a short "tail" (mean
+   0.2 plastochron) that only reshapes the core, and its off-time fraction drifts to 0.031–0.034, about one standard
+   error (0.015) above the truth. When the tails gain little, read the `:core` fit.
+2. **Real tails are found without doubt.** For both tailed laws, the tails add 58 to 131 units.
 3. **The off-time fraction ``P(|e| > 1)`` is the best estimated quantity.** It is recovered within its standard error
-   for the WT-like law. For the mutant-like law it is about 0.02 too high in all three replicates (about 2 se): a
+   for the light-tailed law. For the heavy-tailed law it is about 0.02 too high in all three replicates (about 2 se): a
    10 % overestimate when a fifth of the organs are off time.
-4. **The core sd is recovered when the tails are light** (WT-like: 0.38–0.41 for 0.42), **but not when they are
-   heavy.** For the mutant-like law (47 % of the sites in a tail), the fitted core shrinks to zero, with a standard
-   error that is misleadingly small. A narrow core plus more tail mass predicts nearly the same orders.
-5. **The split between late and early leans late.** For the WT-like law, ``P(e > 1)`` is overestimated (0.043–0.045
-   for 0.035) and ``P(e < -1)`` underestimated (0.018–0.026 for 0.030). The reason is that some orders have two
-   readings. In the order 2 3 1, the organ of site 1 sits two heights above its place. Either site 1 committed about
-   two plastochrons late, or sites 2 and 3 each committed about one plastochron early. Both readings give the same
-   order, and the fit tends to prefer the single late site.
+4. **The core sd is recovered when the tails are light** (0.38–0.41 for 0.42), **but not when they are heavy.** For
+   the heavy-tailed law (47 % of the sites in a tail), the fitted core collapses: ``s`` falls to about 0.01, below the
+   step of the delay grid (0.05), where a narrower core no longer changes anything. Its standard error is
+   misleadingly small. A narrow core plus more tail mass predicts nearly the same orders. The overestimated off-time
+   fraction of point 3 comes with this collapse; a shared core ([§6.5](validation.md)) usually removes both.
+5. **The split between late and early leans late.** For the light-tailed law, ``P(e > 1)`` is overestimated
+   (0.043–0.045 for 0.035) and ``P(e < -1)`` underestimated (0.018–0.026 for 0.030). The reason is that some orders
+   have two readings. In the order 2 3 1, the organ of site 1 sits two heights above its place. Either site 1
+   committed about two plastochrons late, or sites 2 and 3 each committed about one plastochron early. Both readings
+   give the same order, and the fit tends to prefer the single late site.
 6. **Optimism.** The fitted law is tuned to the very stems on which it is scored, so it scores them a little better
-   than the true law does: by 0 to 5 units. Differences of ``\Delta\ell`` below about 5 between two laws are therefore
-   not meaningful on their own.
+   than the true law does: by 0.4 to 5 units. Differences of ``\Delta\ell`` below about 5 between two laws are
+   therefore not meaningful on their own.
 
 **In short:** the off-time fraction is the quantity to compare between groups. The core sd and the late/early split
 are informative for laws with light tails, and should be read with the caveats of points 4 and 5.
 
-## 6.4 The exact order likelihood and the weights
+## 6.5 A shared core
+
+**What could go wrong.** Point 4 is a real limitation for comparisons: a mutant with many off-time organs has a core
+that cannot be estimated, and its off-time fraction is biased with it. But the core can be borrowed. If the mutant
+changes *which* organs are off time, and not the precision of a typical commitment, the mutant and its wild type share
+one core sd. The wild type, whose tails are light, then carries it ([§5.7](timing.md)).
+
+To test this, each replicate's light- and heavy-tailed data sets are fitted together, with one core sd and their own
+tails (`fit_delay_law([light, heavy], :both)`), and the shared core is tested against separate cores
+(`shared_core_test`). The true cores are close but *not* equal (0.42 and 0.39): a mild violation of the hypothesis,
+as real data would have.
+
+Truth, then the shared-core fit of each replicate (estimate ± se):
+
+| replicate | shared ``s`` | off-time, light tails | off-time, heavy tails | difference | likelihood ratio (``p``) |
+|---|---|---|---|---|---|
+| truth | 0.42 and 0.39 | 0.065 | 0.197 | 0.132 | |
+| 1 | 0.40 ± 0.02 | 0.062 ± 0.006 | 0.201 ± 0.010 | 0.139 ± 0.012 | 2.8 (0.10) |
+| 2 | 0.41 ± 0.02 | 0.066 ± 0.006 | 0.204 ± 0.011 | 0.138 ± 0.012 | 2.3 (0.13) |
+| 3 | 0.01 ± 0.001 | 0.093 ± 0.013 | 0.217 ± 0.010 | 0.124 ± 0.016 | 2.3 (0.13) |
+
+With separate fits ([§6.4](validation.md)), the heavy-tailed off-time fraction was 0.216–0.218 and the difference
+0.149–0.155.
+
+**What we find.**
+
+- **When the light-tailed group holds the core, the shared core removes the bias** (replicates 1 and 2). The shared
+  ``s`` (0.40–0.41) lies between the two true cores. The heavy-tailed off-time fraction falls from 0.217 to
+  0.201–0.204, for 0.197, and the difference between the groups is recovered within its standard error.
+- **The likelihood ratio does not reject the shared core**, even though the true cores differ by 0.03. A difference
+  this small is beyond what 60 stems can detect, and it does no visible harm to the estimates.
+- **It can fail, and this can be seen** (replicate 3). There the shared core collapses as well, and the light-tailed
+  group's off-time fraction is pulled up (0.093 for 0.065). This is the true maximum, not a failure of the optimiser:
+  profiled over ``s``, that light-tailed data set loses only 1 unit of log-likelihood when its core shrinks from 0.4 to
+  0.01, while the heavy-tailed one gains 3. Its own fit gave ``s`` = 0.38 ± 0.04, but the standard error hides a
+  lopsided profile: the data bound the core from above, not from below.
+
+**In practice.** Fit each group alone, then together. If the shared ``s`` stays close to the light-tailed group's own
+``s``, report the shared-core estimates. If it collapses far below it, the light-tailed group does not hold the core:
+report the separate fits, with the caveat of [§6.4](validation.md) point 4.
+
+## 6.6 The exact order likelihood and the weights
 
 **What could go wrong.** Two computations of [§5](timing.md) carry the delay law: the recursion that scores one order
 ([§5.4](timing.md)), and the re-weighting average over the posterior samples ([§5.5](timing.md)). The first could be
@@ -146,3 +199,39 @@ fitted law, per stem, out of 200 posterior samples.*
 - **The re-weighting rests on many samples.** The effective sample size ([§5.5](timing.md)) is close to 200 for most
   stems (median 175–200), and above 100 for nearly all (figure 4b). The posterior of the propensity model covers the
   orders that the delay laws favour, as [§5.3](timing.md) led us to expect.
+
+## 6.7 A clock that drifts
+
+**What could go wrong.** The model asks the deviations of the sites from a regular clock to be independent
+([§5.2](timing.md)). Independent jitter of the readiness is absorbed into ``f``, but a clock whose *intervals* vary
+is not: its errors add up like a random walk, and neighbouring delays become dependent. A drifting clock then gives more
+displacements by two than an independent law with the same rate of neighbour swaps. Could the fit read them as tails?
+
+Here the orders are simulated from a clock of intervals ``1 + \xi_i``, ``\xi_i \sim \mathcal N(0, \sigma_\xi^2)``,
+followed by Gaussian commitment delays of sd 0.3. The delay law is fitted to the **true** orders (no angles), so only
+the timing model is tested: three data sets of 60 stems of 45 organs per value of ``\sigma_\xi``, and one of 1200
+stems to see the bias without noise. The *matched* law is the independent Gaussian with the same rate of neighbour
+swaps (``s^2 = 0.3^2 + \sigma_\xi^2/2``).
+
+| ``\sigma_\xi`` | tails gain, 60 stems | off-time, 60 stems | tails gain, 1200 stems | off-time, 1200 stems | off-time, matched law |
+|---|---|---|---|---|---|
+| 0 | 0.0, 6.1, 0.0 | 0.09, 0.82, 0.09 % | 0.0 | 0.08 % | 0.09 % |
+| 0.1 | 0.0, 0.0, 0.0 | 0.08, 0.17, 0.11 % | 0.0 | 0.12 % | 0.12 % |
+| 0.2 | 0.0, 0.0, 0.0 | 0.24, 0.22, 0.33 % | 7.5 | 0.59 % | 0.26 % |
+| 0.3 | 1.7, 0.0, 2.7 | 2.8, 0.53, 1.7 % | 17.2 | 1.2 % | 0.65 % |
+| 0.4 | 8.1, 10.0, 17.7 | 2.9, 3.0, 3.5 % | 161 | 3.8 % | 1.5 % |
+
+**What we find.**
+
+- **A clock that varies by up to 30 % per interval is absorbed.** With 60 stems, no tails are found, and the drift
+  only widens the core (as the matched law predicts). Even with 1200 stems the off-time fraction stays below about
+  1 %.
+- **A clock that varies by 40 % is read as tails.** All three data sets of 60 stems find them (gain 8 to 18), with an
+  off-time fraction of 3–3.5 % instead of 1.5 %, leaning late.
+- **For real data**, a drifting clock could therefore account for a couple of points of off-time fraction, but not
+  for a group in which a fifth of the organs are off time. Whether drift or true commitment tails, the orders cannot
+  tell them apart.
+- **One false tail in twelve data sets without drift** (the gain of 6.1 at ``\sigma_\xi = 0``). With a narrow law
+  (sd 0.3) and 60 stems, a gain slightly above the threshold of about 5 of [§6.4](validation.md) can occur by chance.
+
+The simulation is `docs/validation_clock_drift.jl`.

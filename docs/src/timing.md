@@ -1,7 +1,5 @@
 # 5. Commitment timing
 
-## Where we are
-
 Step 1 is done. For every stem, the propensity model gives the exact posterior of its order, and we can draw as many
 orders from it as we like ([§3.7](orders.md)). Step 2 asks the question of [§1.4](problem.md): *which delay law ``f``
 explains these orders?* The page answers it in four moves.
@@ -61,8 +59,19 @@ probability of the order is the probability of this chain of inequalities:
     P_f(\sigma) = \int_{t_1 < t_2 < \dots < t_n} \prod_{p=1}^{n} f\big(t_p - \sigma(p)\big)\, dt_1 \cdots dt_n .
     ```
 
-Here the sites commit independently of each other. A paced meristem, where a late site also delays the next ones,
-would break this assumption. For two sites, this integral is the ``\Phi`` above.
+For two sites, this integral is the ``\Phi`` above.
+
+**What the delay covers.** The delays are independent from site to site. This is less restrictive than it looks.
+Suppose that the readiness of a site itself wanders, so that site ``i`` is ready at ``i + u_i`` and commits a delay
+``c_i`` later. Then ``\tau_i = i + (u_i + c_i)``: the same model, with ``e_i = u_i + c_i``, as long as the ``u_i`` are
+independent. So ``e_i`` is the deviation of site ``i`` from a regular clock, and ``f`` measures the total timing noise
+around that clock. The orders cannot tell how much of it comes from readiness and how much from commitment
+([§7](limits.md)).
+
+What the model does not cover are timing errors that build on each other: a clock whose intervals vary, so that its
+errors add up like a random walk, or a late site that also delays the next ones. Both make the delays of neighbouring
+sites dependent ([§7](limits.md) lists the signs). [§6.7](validation.md) shows when a drifting clock starts to be read
+as tails.
 
 ## 5.3 Not a product, but close to one
 
@@ -94,8 +103,8 @@ have to commit in order, the two pairs would be independent and the two odds wou
 *which* sites sit at heights 2 and 3 depends on both swaps: sites 2 and 3 in 1 2 3 4, sites 1 and 4 in 2 1 4 3. So the
 probability of one swap depends a little on whether the other has happened.
 
-The sign of this dependence is not fixed. With the WT-like law of [§6](validation.md), which has late and early tails,
-the two odds are 0.0868 and 0.0890: **2.6 % higher** when heights 3–4 are swapped. A product form, with its one price
+The sign of this dependence is not fixed. With the delay law of the running example ([home page](index.md)), which
+has late and early tails, the two odds are 0.0913 and 0.0941: **3.1 % higher** when heights 3–4 are swapped. A product form, with its one price
 per swap, can follow neither effect.
 
 !!! details "Reproducing the numbers"
@@ -104,11 +113,11 @@ per swap, can follow neither effect.
     P(σ, f) = exp(loglik_order_exact(σ, f))      # exact probability of an order under f (§5.4)
     odds(f) = (P([2, 1, 3, 4], f) / P([1, 2, 3, 4], f), P([2, 1, 4, 3], f) / P([1, 2, 4, 3], f))
     gauss = DelayLaw(0.42)                       # Gaussian delays, sd 0.42 plastochron
-    wt = DelayLaw(0.42; πL = 0.05, mL = 1.5, πE = 0.054, mE = 1.04) # the WT-like law of §6
+    ex = DelayLaw(0.42; πL = 0.06, mL = 1.5, πE = 0.06, mE = 1.0) # the law of the running example
     P([2, 1], gauss)                             # 0.046 (§5.2)
     odds(gauss)                                  # (0.0508, 0.0487)
-    odds(wt)                                     # (0.0868, 0.0890)
-    P([3, 1, 2], gauss) + P([2, 3, 1], gauss), P([3, 1, 2], wt) + P([2, 3, 1], wt) # 0.0003, 0.021 (§5.6)
+    odds(ex)                                     # (0.0913, 0.0941)
+    P([3, 1, 2], gauss) + P([2, 3, 1], gauss), P([3, 1, 2], ex) + P([2, 3, 1], ex) # 0.0003, 0.024 (§5.6)
     ```
 
 Two lessons, one bad and one good.
@@ -143,8 +152,12 @@ commits before site 2, as it should.
     ``a_{p-1}``) and ``t_{p-1} < t_p``. Integrating it over ``(-\infty, t_p)`` gives the cumulative of ``a_{p-1}`` at
     ``t_p``. ∎
 
-    The functions are represented on a grid of step 0.05 plastochron (`DELAY_GRID`, from −12 to 30), and each
-    ``a_p`` is renormalised as it goes (the logs of the normalisers add up to ``\log P_f(\sigma)``). The cumulative
+    The functions are represented on a grid of step 0.05 plastochron (`DELAY_GRID`, from −30 to 30), and each
+    ``a_p`` is renormalised as it goes (the logs of the normalisers add up to ``\log P_f(\sigma)``). The delay
+    density itself is renormalised on the grid, so the grid must hold all of it. A tail of mass ``\pi`` and mean
+    ``m`` loses ``\pi e^{-30/m}`` beyond the edge: below ``10^{-5}`` for ``m \le 3`` plastochrons. A cut-off tail
+    would not be harmless: renormalising gives the mass it lost back to every site, a bonus of about ``n`` times the
+    lost mass per stem. `fit_delay_law` warns if a fitted tail is too long for the grid. The cumulative
     counts the cell that contains ``t`` for one half (midpoint rule). Counting it in full would treat two times in the
     same cell as ordered, which biases ``\log P_f(\sigma)`` upwards at first order in the step: by +0.28 for an order
     of 6 sites with three displacements. The midpoint rule leaves an error below 0.01. The tests check the two-site
@@ -194,14 +207,22 @@ seconds, because neither the angles nor the permanents are recomputed.
 ![Re-weighting the orders of the example stem](figures/e5_example_reweighting.png)
 
 *Figure 2. The example stem. (a) Its distinct posterior orders, with their frequencies among 200 samples. (b) The
-log-weight ``\log P_f(\sigma) - \log P_A(\sigma)`` of each, under the true delay law; the true order is in orange.
+log-weight ``\log P_f(\sigma) - \log P_A(\sigma)`` of each, under the true delay law: a ratio of two probabilities,
+not the probability of the order under ``f``. The true order is in orange.
 (c) ``\Delta\ell`` summed over the 40 stems (black) and the term of the example stem (orange, right axis), as a
 function of the core sd ``s``, the tails kept at their true values. The dashed line is the true ``s``.*
 
 Figure 2 shows the identity at work on the example stem. One order, the true one, carries 90 % of its posterior
 samples, and seven others share the rest (a). The true delay law finds the true order about six times more probable
 than the propensity model does (log-weight +1.8), and most of the alternatives less probable (b). So
-``\Delta\ell_s > 0``: on this stem, the timing law explains the angles better than ``A``. Repeated for each value
+``\Delta\ell_s > 0``: on this stem, the timing law explains the angles better than ``A``.
+
+Order 4 has a log-weight as high as the true order's. This does not mean that ``f`` prefers it: ``f`` finds it 16
+times *less* probable than the true order (``\log P_f`` = −18.0 against −15.2). Its weight is high because ``A``
+finds it less probable still. Where the true order has two neighbours each displaced by one (−1, +1), order 4 has them
+displaced by two (+2, −2): a pattern that the product form penalises a little more than a law with tails does
+([§5.3](timing.md)). The weight corrects for this. Order 4 holds 0.5 % of the samples, so it adds 0.03 to the sum,
+against 5.3 for the true order. Repeated for each value
 of the core sd and summed over the stems, ``\Delta\ell`` peaks close to the true value (c).
 
 **When can the average be trusted?** An average over samples is precise when the weights
@@ -209,7 +230,7 @@ of the core sd and summed over the stems, ``\Delta\ell`` peaks close to the true
 over the ``N`` draws, ``(\sum r)^2 / \sum r^2``: it equals ``N`` when all the weights are equal, and 1 when a single
 draw carries everything. The weights are even when ``P_A`` is close to ``P_f``, and [§5.3](timing.md) showed that a
 product-form law can come close to ``P_f``. In the validation, the effective sample size is typically 175–200
-out of 200 draws ([§6.4](validation.md)).
+out of 200 draws ([§6.6](validation.md)).
 
 **Limits.** The angle nuisances (``\kappa``, spiral, twist) are those of the propensity model's fit. Orders outside its
 band (``|d| > k``) are never sampled, so a law that puts mass on them is slightly penalised. A stem whose effective
@@ -230,8 +251,7 @@ exponential delay of mean ``m_L``, and a fraction ``\pi_E`` is early by ``m_E``.
 makes neighbour swaps common but displacements by two positions very rare ([§5.2](timing.md)). A tail produces exactly
 the pattern a Gaussian cannot: one organ displaced by two or three positions while its neighbours stay in order. For
 three sites, the two orders with a displacement by two (3 1 2 and 2 3 1) have a probability of 0.03 % under the
-Gaussian core alone, and of 2.1 % under the WT-like law of [§6](validation.md), whose tails hold about 10 % of the
-sites.
+Gaussian core alone, and of 2.4 % under the law of the running example, whose tails hold 12 % of the sites.
 
 Three nested variants are fitted: `:core` (``s``), `:late` (``s, \pi_L, m_L``) and `:both` (all five). Comparing their
 ``\Delta\ell`` tells whether the orders call for tails, and on which side.
@@ -254,31 +274,47 @@ Three nested variants are fitted: `:core` (``s``), `:late` (``s, \pi_L, m_L``) a
   one plastochron, and predict nearly the same orders.
 - **The core sd and the late/early split are identified when the tails are light**, and lost when they are heavy. When
   tens of percent of the sites sit in the tails, a narrower core plus more tail mass predicts nearly the same orders.
-  ``s`` and the split are then no longer identified, even though their standard errors may look small.
+  ``s`` and the split are then no longer identified, even though their standard errors may look small. A core
+  shared with a group whose tails are light can restore it ([§5.7](timing.md), [§6.5](validation.md)).
+- **When there are no tails, the two-tail law is too flexible.** A short "tail" that holds most of the sites only
+  reshapes the core, and the off-time fraction of the `:both` fit can then drift by about one standard error. If the
+  tails gain little over `:core`, read the off-time fraction from `:core`.
 
-The validation ([§6.3](validation.md)) measures each of these statements on simulated stems.
+The validation ([§6.4](validation.md)) measures each of these statements on simulated stems.
 
 ## 5.7 Fit, uncertainty and comparisons
 
-- **Fit.** `fit_delay_law(samples, variant)` maximises ``\Delta\ell`` by Nelder–Mead on unconstrained parameters:
-  ``\log s``; for `:both`, ``\operatorname{logit}(\pi_L + \pi_E)``, the logit of the late share
-  ``\pi_L/(\pi_L + \pi_E)``, ``\log m_L`` and ``\log m_E``. The tail mass and the late share are separate
-  coordinates because the first is well identified and the second may not be.
+- **Fit.** `fit_delay_law(samples, variant)` maximises ``\Delta\ell`` by Newton's method with a trust region, on
+  unconstrained parameters: ``\log s``; for `:both`, ``\operatorname{logit}(\pi_L + \pi_E)``, the logit of the late
+  share ``\pi_L/(\pi_L + \pi_E)``, ``\log m_L`` and ``\log m_E``. The tail mass and the late share are separate
+  coordinates because the first is well identified and the second may not be. The grid is fixed, so ``\Delta\ell``
+  is a smooth function of the parameters. Its gradient and Hessian are exact: forward-mode dual numbers pass through
+  the delay density and the recursion of [§5.4](timing.md).
 - **Robust standard errors.** The stem is the unit of replication: each stem contributes its own term
   ``\Delta\ell_s``, and stems may differ from each other more than one shared law says. `delay_law_inference`
   therefore measures the uncertainty from the spread of the per-stem slopes ``g_s`` of these terms, not from the
   curvature ``H`` of their sum alone. This is the sandwich covariance
-  ``H^{-1}\big(\sum_s g_s g_s^\top\big)H^{-1}`` (derivatives by central differences). The delta method then gives the
-  standard errors of ``s`` and of the tail masses.
+  ``H^{-1}\big(\sum_s g_s g_s^\top\big)H^{-1}``, with exact derivatives. The delta method then gives the standard
+  errors of ``s`` and of the tail masses.
 - **Two groups** (a mutant and its co-segregant wild type). Fit each group separately. Then compare the off-time
   fractions with their standard errors (independent groups), or compare separate laws with one shared law by the
   difference of their summed ``\Delta\ell`` (a likelihood ratio). The terms of ``A`` cancel in these differences,
   because each stem's term is relative to its own group's fit of ``A``.
+- **A shared core.** When one group has heavy tails, its own core sd is not identified (§5.6). The groups can then be
+  fitted together with **one core sd and their own tails**: `fit_delay_law([smp_wt, smp_mutant], :both)`. This states
+  a biological hypothesis, *the mutant changes the off-time organs, not the precision of a typical commitment*, and
+  the group with light tails carries the core. `shared_core_test` tests it, by the likelihood ratio of one core
+  against one per group (χ² with one degree of freedom per extra group; a permutation of the group labels among the
+  stems calibrates it when the tails are heavy). `delay_law_inference` on the joint fit gives each group's off-time
+  fraction and their difference, with standard errors that account for the shared core. Check that the shared core
+  stays close to the light-tailed group's own: if it collapses instead, that group does not hold the core, and the
+  separate fits should be reported ([§6.5](validation.md)).
 - **Delays in hours.** The delays are in plastochrons. The `Plastochron` module estimates the plastochron at each
   flower rank from daily counts of open flowers, to convert them.
 
 **Code.** `DelayLaw(s; πL, mL, πE, mE)`, `rand(rng, f)`, `delay_logdensity(f)`, `tail_masses(f; a = 1)`;
 `loglik_order_exact(σ, f)` (or `(σ, logg, grid, γ)`); `order_samples(order_posterior(m, fit; nsamples), η)`,
 `stem_terms(samples, f)`, `relative_loglik(samples, f)` (`stem_terms(samples, logP)` scores any law of the order given
-as ``\sigma \mapsto \log P(\sigma)``); `fit_delay_law`, `delay_law_inference`; `simulate_stems(f::DelayLaw; ...)`;
+as ``\sigma \mapsto \log P(\sigma)``); `fit_delay_law`, `delay_law_inference`, `shared_core_test`;
+`simulate_stems(f::DelayLaw; ...)`;
 `flowering_rate`, `fit_flowering`, `plastochron_by_rank`, `plant_plastochron`, `relative_plastochron`.

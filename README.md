@@ -40,7 +40,7 @@ using PhyllotaxisFold, Random
 # your data: one vector of azimuths per stem (radians, bottom to top), and the stem length (mm) below each organ.
 # here, 60 simulated stems of 45 organs
 x = [collect(range(0.0, 200.0; length = 45)) for _ in 1:60]
-law = DelayLaw(0.42; πL = 0.05, mL = 1.5, πE = 0.05, mE = 1.0)
+law = DelayLaw(0.42; πL = 0.06, mL = 1.5, πE = 0.06, mE = 1.0)
 angles = simulate_stems(law; plants = 60, organs = 45, x, logμκ = 1.8, torsion_mean = 0.2, torsion_sd = 0.15,
     rng = Xoshiro(1)).angles
 
@@ -62,8 +62,9 @@ inf.estimate.off, inf.se.off                 # the fraction of organs more than 
 Fit each group on its own (for a mutant, against its own co-segregant wild type). Then compare the **off-time
 fraction** `inf.estimate.off` of the two groups with their standard errors. This is the quantity the angles identify
 best. The precision of a typical organ (`inf.estimate.s`) and the split between late and early organs are reliable
-only when off-time organs are rare. The manual explains why, and shows how well each quantity is recovered on
-simulated stems.
+only when off-time organs are rare. When one group has many, fit the two groups together with one shared precision
+and their own off-time organs: `fit_delay_law([smp_wt, smp_mutant])`, tested by `shared_core_test`. The manual
+explains why, and shows how well each quantity is recovered on simulated stems.
 
 ## Learn more
 
@@ -75,7 +76,7 @@ throughout. It is written in [`docs/src`](docs/src):
   [the propensity model](docs/src/propensity.md): how the orders are reconstructed;
 - [commitment timing](docs/src/timing.md): how the delay law is estimated from the reconstructed orders;
 - [validation on simulated stems](docs/src/validation.md): what is recovered, and how well;
-- [inference and limits](docs/src/inference.md): the assumptions, and what would break them.
+- [assumptions and limits](docs/src/limits.md): the assumptions, and what would break them.
 
 Earlier versions included a "fold-commitment" model of the order (tag `with-model-B`).
 

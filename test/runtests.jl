@@ -363,7 +363,7 @@ end
 end
 
 @testset "CommitmentTiming: exact order likelihood" begin
-    s, zg = 0.43, range(-12.0, 30.0; step = 0.05)
+    s, zg = 0.43, DELAY_GRID
     lg = [-(z / s)^2 / 2 - log(s * sqrt(2π)) for z in zg]
     # two sites: P(in order) = Φ(1 / (s √2))
     @test exp(loglik_order_exact([1, 2], lg, zg, 1.0)) ≈ cdf(Normal(), 1 / (s * sqrt(2))) atol = 5e-4
@@ -420,7 +420,39 @@ end
     f0, f2 = fit_delay_law(kc, :core; init = DelayLaw(0.5)), fit_delay_law(kc, :both)
     @test f0.law.s ≈ 0.42 atol = 0.02
     @test f2.rel_ll - f0.rel_ll < 5 # χ²(4)/2 is below 5 with probability > 0.99
-    @test tail_masses(f2.law).off ≈ tail_masses(DelayLaw(0.42)).off atol = 0.01
+    # without tails, a short tail holding most sites only reshapes the core: the off-time fraction of the two-tail law
+    # is then loosely determined, and checked against its own standard error
+    i2 = delay_law_inference(kc, f2)
+    @test abs(i2.estimate.off - tail_masses(DelayLaw(0.42)).off) < 3 * i2.se.off
+end
+
+@testset "CommitmentTiming: exact derivatives and the shared core" begin
+    CT = PhyllotaxisFold.CommitmentTiming
+    η = [-1.0 * abs(d) for d in -8:8]
+    known(f, S, seed) = order_samples([(; samples = [σ]) for σ in simulate_stems(f; plants = S, organs = 35, rng = Xoshiro(seed)).orders], η)
+    # the gradient of the summed terms (ForwardDiff through the recursion) against central differences
+    smp = known(DelayLaw(0.42; πL = 0.06, mL = 1.3, πE = 0.05, mE = 1.0), 20, 3)
+    obj(v) = sum(CT._stem_terms(smp, CT._law(v, :both), DELAY_GRID))
+    v = [log(0.4), -2.0, 0.3, log(1.2), 0.1]
+    h = 1e-5
+    @test CT.ForwardDiff.gradient(obj, v) ≈ [(obj(v .+ h .* (1:5 .== i)) - obj(v .- h .* (1:5 .== i))) / 2h for i in 1:5] rtol = 1e-5
+    # two groups with the same core and different tails: the shared-core fit recovers the core and each group's
+    # off-time fraction, and the likelihood ratio does not reject the shared core
+    fA, fB = DelayLaw(0.42; πL = 0.04, mL = 1.2, πE = 0.04, mE = 1.0), DelayLaw(0.42; πL = 0.15, mL = 1.2, πE = 0.12, mE = 1.0)
+    groups = [known(fA, 120, 11), known(fB, 120, 12)]
+    t = shared_core_test(groups, :both)
+    @test t.shared.converged && length(t.shared.laws) == 2
+    @test t.shared.laws[1].s == t.shared.laws[2].s
+    @test t.shared.laws[1].s ≈ 0.42 atol = 0.05
+    @test t.df == 1 && t.lr ≥ 0 && t.p > 0.001
+    @test t.shared.rel_ll ≈ sum(t.shared.rel_ll_groups)
+    inf = delay_law_inference(groups, t.shared)
+    @test length(inf.estimate) == 2
+    for (g, f) in enumerate((fA, fB))
+        @test abs(inf.estimate[g].off - tail_masses(f).off) < 3 * inf.se[g].off + 0.01
+    end
+    @test inf.Δoff[1].estimate ≈ inf.estimate[2].off - inf.estimate[1].off
+    @test abs(inf.Δoff[1].estimate - (tail_masses(fB).off - tail_masses(fA).off)) < 3 * inf.Δoff[1].se + 0.01
 end
 
 @testset "CommitmentTiming: the whole pipeline on simulated stems (angles → orders → delay law)" begin

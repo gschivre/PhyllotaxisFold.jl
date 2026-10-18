@@ -17,6 +17,10 @@ characteristic jumps. (c) What produced them, hidden from the observer: each sit
 (circles) and committed to become an organ after a small random delay (stars). Where two stars cross, the organs are
 swapped on the stem.*
 
+The example stem is one of 40 simulated stems of 35 organs. Their delays come from one law, used throughout the
+manual: a Gaussian core of sd 0.42 plastochron, plus 6 % of the sites late by an extra delay of mean 1.5 plastochron
+and 6 % early by an advance of mean 1.0 plastochron ([§5.6](timing.md)).
+
 ## The story in five steps
 
 1. [**The problem**](problem.md). What a swap is, what we measure, and why the order cannot simply be read off the
@@ -31,7 +35,7 @@ swapped on the stem.*
    But it can be scored exactly on the orders reconstructed in step 4, and this gives its likelihood from the angles.
 
 Then: [**validation on simulated stems**](validation.md) (does each step recover a known truth?),
-[**inference and limits**](inference.md), [notation and references](notation.md), and the [API](api.md).
+[**assumptions and limits**](limits.md), [notation and references](notation.md), and the [API](api.md).
 
 ## How to read this manual
 
@@ -55,7 +59,7 @@ using PhyllotaxisFold, Random
 
 # 60 simulated stems of 45 organs: the stem length (mm) below each organ, and a known delay law (plastochrons)
 x = [collect(range(0.0, 200.0; length = 45)) for _ in 1:60]
-law = DelayLaw(0.42; πL = 0.05, mL = 1.5, πE = 0.05, mE = 1.0)
+law = DelayLaw(0.42; πL = 0.06, mL = 1.5, πE = 0.06, mE = 1.0)
 sim = simulate_stems(law; plants = 60, organs = 45, x, logμκ = 1.8, torsion_mean = 0.2, torsion_sd = 0.15,
     rng = Xoshiro(1))
 
@@ -73,5 +77,7 @@ inf.estimate.off, inf.se.off                  # the fraction of organs more than
 ```
 
 To compare two groups of plants, for instance a mutant and its wild type, fit each group separately. Then compare
-their off-time fractions with the standard errors, or compare the likelihood of separate and shared laws.
+their off-time fractions with the standard errors, or compare the likelihood of separate and shared laws. When one
+group has many off-time organs, fit the groups together with a shared core sd (`fit_delay_law([smp_wt, smp_mutant])`,
+[§5.7](timing.md)).
 [§5.6](timing.md) and [§6](validation.md) explain which quantities the orders identify well.
