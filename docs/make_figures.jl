@@ -172,7 +172,7 @@ end
 
 #################################################################################################################
 #################################################################################################################
-# m9. a swap seen in the timeline, the internodes and the angles (hand-made Level-0 stem, plateau-like late organ)
+# m9. a swap seen in the timeline, the internodes and the angles (hand-made stem with independent delays, plateau-like late organ)
 #################################################################################################################
 let n = 12
     τ = collect(1.0:n) .+ [0.05, -0.1, 0.12, 0.0, -0.08, 1.35, -0.12, 0.1, -0.05, 0.08, 0.0, -0.1]
@@ -185,7 +185,7 @@ let n = 12
     div = [mod(rad2deg(y[p + 1] - y[p]), 360) for p in 1:(n - 1)]
     fig = Figure(size = (1400, 430))
     ax = Axis(fig[1, 1]; xlabel = "time (plastochrons)", ylabel = "site j (canonical order)", yticks = 1:n, titlesize = 15,
-        title = "(a) Level 0: ready at j (○), commits at τ_j (★)")
+        title = "(a) Ready at j (○), commits at τ_j (★)")
     for j in 1:n
         lines!(ax, [j, τ[j]], [j, j]; color = :gray)
     end

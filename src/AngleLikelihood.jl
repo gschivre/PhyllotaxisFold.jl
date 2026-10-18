@@ -237,7 +237,7 @@ function prior_mean_parameters end
     simulate_stems(...)
 
 Simulated stems (angles, true orders, twist rates). Methods: `simulate_stems(η; ...)` (orders from the banded permanent
-with log-propensities η) and `simulate_stems(f::DelayLaw; ...)` (orders from Level-0 fold commitment with delay law f).
+with log-propensities η) and `simulate_stems(f::DelayLaw; ...)` (orders from fold commitment with i.i.d. delays f).
 Both take the same angle and twist options.
 """
 function simulate_stems end

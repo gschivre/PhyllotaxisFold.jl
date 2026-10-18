@@ -13,12 +13,12 @@ after a random delay) is fitted through its posterior orders. Submodules, in dep
 | `AngleLikelihood`  | the angle likelihood of one stem and its analytic gradient; decoding and order posterior     |
 | `PropensityPriors` | log-normal softplus prior on free log-propensities η and its bijectors                        |
 | `PropensityModel`  | the propensity model: free symmetric log-propensities η, `PhyllotaxisModelAD`                 |
-| `CommitmentTiming` | fold-commit delay laws, exact Level-0 order likelihood, re-weighting of the posterior orders  |
+| `CommitmentTiming` | fold-commit delay laws, exact order likelihood, re-weighting of the posterior orders          |
 | `Plastochron`      | plastochron by flower rank from daily open-flower counts (delays in hours)                    |
 
-Every submodule's exported names are re-exported here. The method is described in the manual (`docs/src`). Model B (the
-fold-commitment model: costs from the passage law of a switch near its fold), B-mix, B-tempo and the Level-1 simulator
-are in the tagged version `with-model-B`.
+Every submodule's exported names are re-exported here. The method is described in the manual (`docs/src`). The earlier
+fold-commitment model (costs from the passage law of a switch near its fold), its variants and the simulator of a
+paced meristem are in the tagged version `with-model-B`.
 """
 module PhyllotaxisFold
 

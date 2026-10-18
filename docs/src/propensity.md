@@ -18,15 +18,16 @@ P(\sigma \mid \eta) = \frac{1}{Z(\eta)} \exp\Big( \sum_{p=1}^{n} \eta_{\sigma(p)
 \qquad Z(\eta) = \operatorname{perm}\big[ e^{\eta_{j-p}} \big]_{p,j}.
 ```
 
-This is the **propensity model**, called model A in what follows. There is one free *log-propensity* ``\eta_d`` per
-displacement ``d = -k, \dots, k``. With the angles, the weights of [§3](orders.md) are
+This is the **propensity model**, the law ``A`` of [§1.5](problem.md). There is one free *log-propensity* ``\eta_d``
+per displacement ``d = -k, \dots, k``. With the angles, the weights of [§3](orders.md) are
 
 ```math
 W_{p,j} = e^{\eta_{j-p}}\; e^{\kappa \cos(y_p - \phi - o\,(j-1)\,\psi - \omega_s x_p)} .
 ```
 
-Model A is close in spirit to the stochastic model of Refahi et al. (2016), where each candidate site fires at a rate
-set by the inhibitory field. It keeps what the orders of a stem can identify: how costly each displacement is.
+The propensity model is close in spirit to the stochastic model of Refahi et al. (2016), where each candidate site
+fires at a rate set by the inhibitory field. It keeps what the orders of a stem can identify: how costly each
+displacement is.
 
 ## 4.2 What ``\eta`` means
 

@@ -26,7 +26,7 @@ function banded_perms(n, k)
     return out
 end
 
-# test data: Level-0 fold-commit stems (the model of the analysis) with a twist per position
+# test data: fold-commit stems with independent delays (the model of the analysis) with a twist per position
 const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
 
 @testset verbose = true "PhyllotaxisFold" begin
@@ -362,7 +362,7 @@ end
     @test order_diagnostics([[1, 2, 3, 4], [2, 3, 1, 4], [3, 1, 2, 4]]) == (; displaced = 0.5, n231 = 1, n312 = 1)
 end
 
-@testset "CommitmentTiming: exact Level-0 order likelihood" begin
+@testset "CommitmentTiming: exact order likelihood" begin
     s, zg = 0.43, range(-12.0, 30.0; step = 0.05)
     lg = [-(z / s)^2 / 2 - log(s * sqrt(2π)) for z in zg]
     # two sites: P(in order) = Φ(1 / (s √2))

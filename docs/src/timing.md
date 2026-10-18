@@ -56,13 +56,13 @@ stem exactly when ``\tau_{\sigma(1)} < \tau_{\sigma(2)} < \dots < \tau_{\sigma(n
 ``t_p = \tau_{\sigma(p)}`` the commitment time of the organ at height ``p``. Its delay is ``t_p - \sigma(p)``, and the
 probability of the order is the probability of this chain of inequalities:
 
-!!! note "result — the Level-0 order law"
+!!! note "result — the order law of independent delays"
     ```math
     P_f(\sigma) = \int_{t_1 < t_2 < \dots < t_n} \prod_{p=1}^{n} f\big(t_p - \sigma(p)\big)\, dt_1 \cdots dt_n .
     ```
 
-("Level 0": the sites commit independently of each other. A paced meristem where a late site also delays the next
-ones would be a "Level 1".) For two sites, this integral is the ``\Phi`` above.
+Here the sites commit independently of each other. A paced meristem, where a late site also delays the next ones,
+would break this assumption. For two sites, this integral is the ``\Phi`` above.
 
 ## 5.3 Not a product, but close to one
 
@@ -79,7 +79,7 @@ cancel in the ratio):
 \frac{P(2\,1\,3\,4)}{P(1\,2\,3\,4)} = \frac{P(2\,1\,4\,3)}{P(1\,2\,4\,3)} .
 ```
 
-So compute both ratios under Level 0. Here are the exact probabilities of the four orders, for Gaussian delays of sd
+So compute both ratios under ``P_f``. Here are the exact probabilities of the four orders, for Gaussian delays of sd
 0.42 (they come from the recursion of [§5.4](timing.md); the box below has the code):
 
 | order | 1 2 3 4 | 2 1 3 4 | 1 2 4 3 | 2 1 4 3 |
@@ -101,7 +101,7 @@ per swap, can follow neither effect.
 !!! details "Reproducing the numbers"
     ```julia
     using PhyllotaxisFold
-    P(σ, f) = exp(loglik_order_exact(σ, f))      # exact Level-0 probability of an order (§5.4)
+    P(σ, f) = exp(loglik_order_exact(σ, f))      # exact probability of an order under f (§5.4)
     odds(f) = (P([2, 1, 3, 4], f) / P([1, 2, 3, 4], f), P([2, 1, 4, 3], f) / P([1, 2, 4, 3], f))
     gauss = DelayLaw(0.42)                       # Gaussian delays, sd 0.42 plastochron
     wt = DelayLaw(0.42; πL = 0.05, mL = 1.5, πE = 0.054, mE = 1.04) # the WT-like law of §6
@@ -208,7 +208,7 @@ of the core sd and summed over the stems, ``\Delta\ell`` peaks close to the true
 ``r_j = P_f(\sigma_j)/P_A(\sigma_j)`` are of similar size. Their spread is measured by the *effective sample size*
 over the ``N`` draws, ``(\sum r)^2 / \sum r^2``: it equals ``N`` when all the weights are equal, and 1 when a single
 draw carries everything. The weights are even when ``P_A`` is close to ``P_f``, and [§5.3](timing.md) showed that a
-product-form law can come close to a Level-0 law. In the validation, the effective sample size is typically 175–200
+product-form law can come close to ``P_f``. In the validation, the effective sample size is typically 175–200
 out of 200 draws ([§6.4](validation.md)).
 
 **Limits.** The angle nuisances (``\kappa``, spiral, twist) are those of the propensity model's fit. Orders outside its

@@ -77,7 +77,7 @@ sample size, per-stem terms that disagree with each other.
 | von Mises angular noise, one precision per stem | [§2.2](angles.md) | a broad but not uniform error (e.g. angles off by a fraction of the divergence) |
 | one twist rate per stem, Normal across stems | [§2.3](angles.md) | a tapering stem makes the rate drift along the stem |
 | displacements bounded by ``k = 4`` | [§3.2](orders.md) | posterior mass at ``\lvert d\rvert = k``; refit with a larger ``k`` |
-| sites ready at a regular pace commit independently, with i.i.d. delays (Level 0) | [§5.2](timing.md) | cascades of permutations, a drifting timeline; stems that differ in their off-time rate |
+| sites ready at a regular pace commit independently, with i.i.d. delays | [§5.2](timing.md) | cascades of permutations, a drifting timeline; stems that differ in their off-time rate |
 | the same delay law all along the stem | [§5.2](timing.md) | an off-time rate that changes along the stem (e.g. at the base) |
 | the delay law is a Gaussian core with exponential tails | [§5.6](timing.md) | discrete slot errors (organs exactly one plastochron off) are fitted as short tails |
 | the timing law is scored at the propensity model's angle nuisances and band | [§5.5](timing.md) | a small effective sample size of the weights; refit with a larger ``k`` |

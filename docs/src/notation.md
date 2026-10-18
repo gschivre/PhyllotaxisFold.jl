@@ -11,6 +11,8 @@
 | ``\kappa``, ``\mu_\kappa``, ``\sigma_\kappa`` | angular concentration of a stem, its log-normal population law |
 | ``\omega_s``, ``m_\omega``, ``s_\omega`` | twist rate of stem ``s``, its population mean and sd |
 | ``\eta_d`` | cost (log-propensity) of displacement ``d`` |
+| ``A``, ``P_A(\sigma)`` | the propensity model ([§4](propensity.md)), its law of the order |
+| ``P_f(\sigma)`` | the law of the order when the sites commit with independent delays ``f`` ([§5.2](timing.md)) |
 | ``W``, ``\rho_{p,d}`` | weight matrix, marginal probability ``P(\sigma(p) = p + d)`` |
 | ``X``, ``\mu`` | switch variable and margin above the fold, in noise units ([§5.1](timing.md)) |
 | ``\tau_i``, ``e_i``, ``f`` | commitment time and delay of site ``i`` (plastochrons), delay law |

@@ -23,7 +23,7 @@ The stems are made to resemble the *Arabidopsis* data:
 - 95 % golden spirals;
 - a stem twist of ``1.0 \pm 0.7`` °/mm.
 
-The orders come from Level-0 commitment ([§5.2](timing.md)), with three delay laws (in plastochrons):
+The orders come from independent commitment delays ([§5.2](timing.md)), with three delay laws (in plastochrons):
 
 | scenario | core sd ``s`` | late tail | early tail | ``P(\lvert e\rvert > 1)`` |
 |---|---|---|---|---|
@@ -135,7 +135,7 @@ inaccurate on its grid; the second could rest on a few samples only.
 
 ![Exact likelihood and weights](figures/v4_exact_likelihood_and_weights.png)
 
-*Figure 4. (a) The exact Level-0 probability of each order of 7 sites ([§5.4](timing.md)), against its frequency
+*Figure 4. (a) The exact probability of each order of 7 sites ([§5.4](timing.md)), against its frequency
 among a million orders drawn from the three delay laws. (b) The effective sample size of the re-weighting at the
 fitted law, per stem, out of 200 posterior samples.*
 

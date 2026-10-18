@@ -1,7 +1,8 @@
 """
     CommitmentTiming
 
-The fold-commit (Level-0) timing law of organ order, scored through the posterior orders of the propensity model.
+The fold-commit timing law of organ order (independent delays), scored through the posterior orders of the propensity
+model.
 
 Site i becomes ready at time i (plastochron units) and commits after an i.i.d. delay eᵢ ~ f; the organ order is
 σ = sortperm(i + eᵢ). The propensity model fitted to the angles gives, per stem, exact posterior samples of σ
@@ -9,15 +10,16 @@ Site i becomes ready at time i (plastochron units) and commits after an i.i.d. d
 
     p(y | f) / p(y | A) = E_{σ ∼ p(σ | y, A)} [ P_f(σ) / P_A(σ) ]
 
-(P_A: the banded-permanent law with the fitted costs η; P_f: the exact Level-0 order law). Any delay law is thereby
-scored against the propensity model, and against any other law, without refitting the angle model.
+(A: the propensity model; P_A: its banded-permanent law with the fitted costs η; P_f: the exact order law of the
+delays f). Any delay law is thereby scored against the propensity model, and against any other law, without refitting
+the angle model.
 
 - `DelayLaw`: f = (1 − π_L − π_E) N(0, s²) + π_L (N(0, s²) + Exp(m_L)) + π_E (N(0, s²) − Exp(m_E))
-- `loglik_order_exact`: the exact Level-0 log P(σ) (forward recursion on a delay grid, midpoint rule for ties)
+- `loglik_order_exact`: the exact log P_f(σ) (forward recursion on a delay grid, midpoint rule for ties)
 - `order_samples`, `stem_terms`, `relative_loglik`: the re-weighting estimate, per stem and summed
 - `fit_delay_law`: maximum of the summed terms for the :core, :late or :both law
 - `delay_law_inference`: robust (sandwich, clustered by stem) standard errors of s and of the tail masses
-- `simulate_stems(f::DelayLaw; ...)`: stems whose order comes from Level 0 with delay law f (for validation)
+- `simulate_stems(f::DelayLaw; ...)`: stems whose order comes from independent delays f (for validation)
 """
 module CommitmentTiming
 
@@ -94,7 +96,7 @@ end
 """
     loglik_order_exact(σ, logg, z_grid, γ)
 
-Exact Level-0 log P(σ) for sites 1..n with readiness iγ and i.i.d. delay density g:
+Exact log P(σ) for sites 1..n with readiness iγ and i.i.d. delay density g:
 P(σ) = ∫_{τ_1 < … < τ_n} ∏_p g(τ_p − σ[p] γ) dτ, by a forward recursion on a time grid with step Δz. Two times in the
 same grid cell are ordered with probability ½ (midpoint rule): counting such ties as ordered biased log P(σ) upwards at
 first order in Δz (Gaussian delays of sd 0.43 on a 0.05 grid: +0.28 for an order with three displacements); the error
@@ -187,7 +189,7 @@ end
     stem_terms(samples, logP)
 
 Per stem, log p(y | f) − log p(y | A) = log Σ_j w_j P_f(σ_j) / P_A(σ_j) over its sampled orders, for a delay law f
-(exact Level-0 order law) or any order law given as a callable σ ↦ log P(σ). Threaded over stems.
+(exact order law of f) or any order law given as a callable σ ↦ log P(σ). Threaded over stems.
 """
 function stem_terms(samples, logP)
     out = zeros(length(samples))
@@ -269,8 +271,8 @@ end
     simulate_stems(f::DelayLaw; plants = 100, organs = 50, x = nothing, logμκ = 1.5, σκ = 0, α = 0.95, outlier = 0,
         torsion_mean = 0, torsion_sd = 0, rng)
 
-Stems under Level-0 fold commitment: the order of each stem is σ = sortperm(i + eᵢ) with eᵢ ~ f, and the angles
-y_p ~ vM(ϕ + o (σ[p] − 1) ψ + τ_s x_p, κ_s) as in model A's simulator (κ_s ~ LogNormal(logμκ, σκ), golden with
+Stems under fold commitment with independent delays: the order of each stem is σ = sortperm(i + eᵢ) with eᵢ ~ f, and the angles
+y_p ~ vM(ϕ + o (σ[p] − 1) ψ + τ_s x_p, κ_s) as in the propensity model's simulator (κ_s ~ LogNormal(logμκ, σκ), golden with
 probability α, uniform ϕ and orientation, uniform outlier angles with probability `outlier`). `organs` is one count or
 one per stem; `x` the twist coordinate of each stem (e.g. mm of stem below each organ; default: the positions
 0, 1, …), and the twist τ_s ~ N(torsion_mean, torsion_sd²) is in degrees per unit of x. Returns (; angles, orders,
