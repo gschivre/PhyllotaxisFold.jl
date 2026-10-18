@@ -229,7 +229,10 @@ The boxes below derive each rule and measure its accuracy on the 40 stems of the
 nearly constant as the parameters move shifts the log-likelihood without moving its maximum or its curvature, so it
 leaves the estimates and their standard errors alone. The errors here are of that kind: they depend mostly on the
 data of each stem (where its peak in ``\phi`` falls between the nodes, how far its peak in ``\omega`` is from a
-Gaussian), and little on the parameters.
+Gaussian), and little on the parameters. On the running example, refitting with 64 ``\phi`` nodes and 9 twist nodes per peak moves
+every parameter by less than 0.1 standard error and leaves every decoded order, the fitted delay law and its overtaking
+profile unchanged; the posterior probabilities of the order change by less than 0.002, except on one stem (up to
+0.15). Only the integrated log-likelihood moves, by 0.9 over the 40 stems.
 
 They do not cancel when the integrated log-likelihoods of two *different* fitted models are compared, because the two
 fits can sit at parameters where the error differs. Such comparisons call for finer settings: 64 ``\phi`` nodes, 32
