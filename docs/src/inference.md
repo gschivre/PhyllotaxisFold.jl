@@ -1,5 +1,10 @@
 # 7–8. Inference and limits
 
+The main pages explain *what* is computed. This page collects *how*: the fitting machinery of step 1, the integral
+over the twist, what it costs ([§7](inference.md)). It ends with every assumption of the manual in one table, and what
+would show that it fails ([§8](inference.md)). The fit of the delay law and its standard errors (step 2) are in
+[§5.7](timing.md).
+
 ## 7. Inference
 
 ### 7.1 Fitting the propensity model
@@ -15,12 +20,13 @@
   parameters.
 - **Model comparison.** The integrated log-likelihood at the maximum (`loglik` of `fit_map_torsion!`, priors
   excluded). Timing laws are compared with the propensity model and with each other by ``\Delta\ell``
-  ([§5.4](timing.md)).
+  ([§5.5](timing.md)).
 
 ### 7.2 Integrating the twist out
 
 Each stem has its own twist rate ``\omega_s \sim \mathcal N(m_\omega, s_\omega^2)`` ([§2.3](angles.md)), and its
-likelihood must be integrated over it. This integral is harder than it looks. The likelihood of one stem is very sharp
+likelihood must be integrated over it: the twist of a stem is not known, and fixing it at its best value would make
+the orders look more certain than they are. This integral is harder than it looks. The likelihood of one stem is very sharp
 in ``\omega_s`` (about 0.1°/mm wide). It is also often multimodal: a different twist combined with a few permutations
 can explain the same angles. A fixed grid of nodes would need to be very fine. Gauss–Hermite nodes placed on the
 population law would miss the peaks.
@@ -61,7 +67,9 @@ It then optionally places the nodes once more and refits.
 
 ## 8. Assumptions and limits
 
-Every assumption of the manual, and what would show that it fails:
+Every **assumption** of the manual is listed below, with the page that introduces it and the signs that it fails.
+Most can be checked on the data with the package itself: a posterior mass at the edge of the band, a small effective
+sample size, per-stem terms that disagree with each other.
 
 | assumption | where | what would break it, and how to check |
 |---|---|---|
@@ -71,13 +79,14 @@ Every assumption of the manual, and what would show that it fails:
 | displacements bounded by ``k = 4`` | [§3.2](orders.md) | posterior mass at ``\lvert d\rvert = k``; refit with a larger ``k`` |
 | sites ready at a regular pace commit independently, with i.i.d. delays (Level 0) | [§5.2](timing.md) | cascades of permutations, a drifting timeline; stems that differ in their off-time rate |
 | the same delay law all along the stem | [§5.2](timing.md) | an off-time rate that changes along the stem (e.g. at the base) |
-| the delay law is a Gaussian core with exponential tails | [§5.5](timing.md) | discrete slot errors (organs exactly one plastochron off) are fitted as short tails |
-| the timing law is scored at the propensity model's angle nuisances and band | [§5.4](timing.md) | a small effective sample size of the weights; refit with a larger ``k`` |
+| the delay law is a Gaussian core with exponential tails | [§5.6](timing.md) | discrete slot errors (organs exactly one plastochron off) are fitted as short tails |
+| the timing law is scored at the propensity model's angle nuisances and band | [§5.5](timing.md) | a small effective sample size of the weights; refit with a larger ``k`` |
 | flowers open at the pace they were initiated; piecewise-linear opening rate | `Plastochron` | a maturation delay that changes during flowering; a curved rise or decline |
 
-Some questions are beyond the reach of the angles alone:
+Some questions are beyond the reach of the angles alone, whatever the model:
+
 - they confound angular noise with permutations (a lower ``\kappa`` or more permutations);
-- they identify the shape of the delay law only through the tail masses ([§5.5](timing.md));
+- they identify the shape of the delay law only through the tail masses ([§5.6](timing.md));
 - they cannot separate a noisier readiness from a noisier commitment, since only their sum enters the order.
 
 Timing data (internodes, imaging of primordia) are needed for those questions.

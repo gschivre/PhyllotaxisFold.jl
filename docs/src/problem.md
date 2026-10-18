@@ -98,7 +98,7 @@ gets a page:
    ([§3](orders.md)).
 3. Does ``P_f`` have that form? Not exactly. Whether site ``i`` comes before site ``j`` depends on both of their
    delays, so the event "``\sigma(p) = j``" is tied to all the other positions. A product of one term per organ can
-   approach this, but not reproduce it ([§5.2](timing.md)).
+   approach this, but not reproduce it ([§5.3](timing.md)).
 
 So we cannot compute ``p(y \mid f)`` by the easy sum. But there is a way around. Suppose we fit an order law ``A``
 that *does* have the product form, and is flexible enough to follow the data. Then we can compute exactly which orders
@@ -107,7 +107,7 @@ high probability to those orders.
 
 This intuition is exact. Since ``A`` and ``f`` describe the angles in the same way, and differ only in the law of the
 order, the likelihood ratio of ``f`` against ``A`` is an average over the orders reconstructed under ``A``
-([§5.4](timing.md)):
+([§5.5](timing.md)):
 
 ```math
 \frac{p(y \mid f)}{p(y \mid A)} = \mathbb{E}_{\sigma \sim p(\sigma \mid y, A)}\left[\frac{P_f(\sigma)}{P_A(\sigma)}\right].

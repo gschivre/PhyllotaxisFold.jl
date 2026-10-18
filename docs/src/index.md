@@ -74,4 +74,4 @@ inf.estimate.off, inf.se.off                  # the fraction of organs more than
 
 To compare two groups of plants, for instance a mutant and its wild type, fit each group separately. Then compare
 their off-time fractions with the standard errors, or compare the likelihood of separate and shared laws.
-[§5.5](timing.md) and [§6](validation.md) explain which quantities the orders identify well.
+[§5.6](timing.md) and [§6](validation.md) explain which quantities the orders identify well.
