@@ -17,6 +17,7 @@
 | ``X``, ``\mu`` | switch variable and margin above the fold, in noise units ([§5.1](timing.md)) |
 | ``\tau_i``, ``e_i``, ``f`` | commitment time and delay of site ``i`` (plastochrons), delay law |
 | ``s``, ``\pi_L``, ``m_L``, ``\pi_E``, ``m_E`` | core sd; fraction and mean extra delay of late sites; of early sites |
+| ``q_d`` | overtaking profile: ``P(\text{site } i + d \text{ commits before site } i)`` ([§5.6](timing.md)) |
 | ``\Delta\ell``, ``\Delta\ell_s`` | ``\log p(y \mid f) - \log p(y \mid A)``, summed over stems; for stem ``s`` |
 | ``t_p`` | commitment time of the organ at height ``p``, ``t_p = \tau_{\sigma(p)}`` |
 

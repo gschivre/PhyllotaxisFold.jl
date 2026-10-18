@@ -426,6 +426,38 @@ end
     @test abs(i2.estimate.off - tail_masses(DelayLaw(0.42)).off) < 3 * i2.se.off
 end
 
+@testset "CommitmentTiming: the overtaking profile" begin
+    # Gaussian delays: q_d = Φ(−d / (s√2)); a tailed law against simulated pairs
+    @test overtaking(DelayLaw(0.42)) ≈ [cdf(Normal(), -d / (0.42 * sqrt(2))) for d in 1:4] rtol = 0.01
+    f = DelayLaw(0.42; πL = 0.06, mL = 1.5, πE = 0.06, mE = 1.0)
+    rng = Xoshiro(17)
+    e = [rand(rng, f) - rand(rng, f) for _ in 1:400_000]
+    @test overtaking(f) ≈ [mean(e .> d) for d in 1:4] atol = 0.001
+    @test_throws ArgumentError overtaking(f; d = [0.33]) # not a multiple of the grid step
+    # model-free from known orders: the fraction of inverted pairs, with clustered standard errors
+    η = [-1.0 * abs(d) for d in -8:8]
+    orders = simulate_stems(f; plants = 150, organs = 40, rng = Xoshiro(23)).orders
+    known = order_samples([(; samples = [σ]) for σ in orders], η)
+    pf = overtaking_profile(known)
+    @test pf.d == 1:4 && size(pf.V) == (4, 4)
+    @test pf.q[1] ≈ mean(count(invperm(σ)[i + 1] < invperm(σ)[i] for i in 1:39) / 39 for σ in orders)
+    @test all(abs.(pf.q .- overtaking(f)) .< 3 .* pf.se .+ 1e-4)
+    # the fitted law's profile, with its covariance, agrees with the model-free one
+    fit = fit_delay_law(known, :both)
+    inf = delay_law_inference(known, fit)
+    @test inf.profile.q ≈ overtaking(fit.law)
+    @test [inf.estimate.q1, inf.estimate.q2] ≈ inf.profile.q[1:2]
+    @test all(abs.(inf.profile.q[1:3] .- pf.q[1:3]) .< 3 .* pf.se[1:3])
+    # comparison: a group against itself (no difference) and against a law with more overtaking
+    t0 = compare_profiles(pf, pf)
+    @test t0.diff == zeros(3) && t0.df == 3
+    g = DelayLaw(0.42; πL = 0.2, mL = 1.5, πE = 0.2, mE = 1.0)
+    # (the profile needs only the orders and their weights, not the propensity costs)
+    pg = overtaking_profile([(; orders = [σ], w = [1.0]) for σ in simulate_stems(g; plants = 150, organs = 40, rng = Xoshiro(24)).orders])
+    t1 = compare_profiles(pf, pg)
+    @test all(t1.diff .> 0) && t1.p < 1e-6
+end
+
 @testset "CommitmentTiming: exact derivatives and the shared core" begin
     CT = PhyllotaxisFold.CommitmentTiming
     η = [-1.0 * abs(d) for d in -8:8]
@@ -452,6 +484,8 @@ end
         @test abs(inf.estimate[g].off - tail_masses(f).off) < 3 * inf.se[g].off + 0.01
     end
     @test inf.Δoff[1].estimate ≈ inf.estimate[2].off - inf.estimate[1].off
+    @test inf.Δprofile[1].diff ≈ inf.profile[2].q .- inf.profile[1].q
+    @test inf.Δprofile[1].p < 0.01 # the heavier tails overtake more
     @test abs(inf.Δoff[1].estimate - (tail_masses(fB).off - tail_masses(fA).off)) < 3 * inf.Δoff[1].se + 0.01
 end
 

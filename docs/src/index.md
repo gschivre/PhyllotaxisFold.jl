@@ -73,11 +73,11 @@ post = order_posterior(m, r; nsamples = 200)  # exact posterior of the order: ma
 smp = order_samples(post, r.fit.θ.η)
 fit = fit_delay_law(smp, :both)               # a precise core and two tails (late, early)
 inf = delay_law_inference(smp, fit)           # estimates with standard errors clustered by stem
-inf.estimate.off, inf.se.off                  # the fraction of organs more than one plastochron off their turn
+prof = overtaking_profile(smp)                # q_d = P(site i + d commits before site i), read from the orders
+prof.q, prof.se                               # the result to report; inf.profile is that of the fitted law
 ```
 
-To compare two groups of plants, for instance a mutant and its wild type, fit each group separately. Then compare
-their off-time fractions with the standard errors, or compare the likelihood of separate and shared laws. When one
-group has many off-time organs, fit the groups together with a shared core sd (`fit_delay_law([smp_wt, smp_mutant])`,
-[§5.7](timing.md)).
-[§5.6](timing.md) and [§6](validation.md) explain which quantities the orders identify well.
+To compare two groups of plants, for instance a mutant and its wild type, compare their overtaking profiles:
+`compare_profiles(prof_wt, prof_mutant)`. The profile is what the orders identify. The parameters of the delay law
+(the precision of a typical commitment, the fraction of off-time organs) interpret it within the assumed shape of the
+law. [§5.6](timing.md) and [§6](validation.md) explain which quantities the orders identify well.

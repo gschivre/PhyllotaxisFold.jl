@@ -72,7 +72,11 @@ function timing_fits(v)
         w = exp.(lw .- maximum(lw))
         sum(w)^2 / sum(w .^ 2 ./ s.w ./ 200)
     end
-    return (; fits, inf, truth_ll = relative_loglik(smp, law), ess)
+    # the overtaking profile: of the fitted law (in inf), read from the posterior orders, and in the true orders
+    free = overtaking_profile(smp)
+    sample = [mean(count(invperm(σ)[i + d] < invperm(σ)[i] for i in 1:(length(σ) - d)) for σ in v.sim.orders) /
+              mean(length(σ) - d for σ in v.sim.orders) for d in 1:4]
+    return (; fits, inf, free, sample, truth_ll = relative_loglik(smp, law), ess)
 end
 
 # per replicate: the light- and heavy-tailed sets fitted together, with one core sd (their true cores, 0.42 and 0.39,
@@ -80,7 +84,8 @@ end
 function shared_fits(res, rep)
     groups = [res[(:light, rep)].smp, res[(:heavy, rep)].smp]
     t = shared_core_test(groups, :both)
-    return (; test = t, inf = delay_law_inference(groups, t.shared))
+    return (; test = t, inf = delay_law_inference(groups, t.shared),
+        free = compare_profiles(res[(:light, rep)].free, res[(:heavy, rep)].free))
 end
 
 function run_validation(; refit_timing = false)
@@ -90,7 +95,7 @@ function run_validation(; refit_timing = false)
             res[(key, rep)] = run_replicate(law, 1000 * rep + findfirst(s -> s[1] == key, SCENARIOS))
             serialize(VCACHE, res)
         end
-        if refit_timing || !haskey(res[(key, rep)], :fits)
+        if refit_timing || !haskey(res[(key, rep)], :free)
             v = res[(key, rep)]
             res[(key, rep)] = (; v[(:law, :sim, :x, :fit, :dec, :ρ, :k, :smp)]..., timing_fits(v)...)
             serialize(VCACHE, res)
@@ -303,6 +308,17 @@ function validation_table(res)
     return rows
 end
 
+# the overtaking profile q_1 … q_3 per replicate: the law's (population), the true orders' (sample), the fitted law's
+# and the model-free estimate, with standard errors
+function profile_table(res)
+    r4(x) = round(x; digits = 4)
+    map([(key, rep) for (key, _, _) in SCENARIOS for rep in 1:NREP]) do (key, rep)
+        v = res[(key, rep)]
+        (; key, rep, law = r4.(overtaking(v.law)[1:3]), sample = r4.(v.sample[1:3]),
+            fitted = (r4.(v.inf.profile.q[1:3]), r4.(v.inf.profile.se[1:3])), free = (r4.(v.free.q[1:3]), r4.(v.free.se[1:3])))
+    end
+end
+
 # the shared-core fits of the light- and heavy-tailed sets, per replicate
 function shared_table(res)
     r3(x) = round(x; digits = 3)
@@ -310,7 +326,9 @@ function shared_table(res)
         v = res[(:shared, rep)]
         e, se = v.inf.estimate, v.inf.se
         (; rep, s = (r3(e[1].s), r3(se[1].s)), off_light = (r3(e[1].off), r3(se[1].off)), off_heavy = (r3(e[2].off), r3(se[2].off)),
-            Δoff = (r3(v.inf.Δoff[1].estimate), r3(v.inf.Δoff[1].se)), lr = round(v.test.lr; digits = 2), p = round(v.test.p; digits = 3))
+            Δoff = (r3(v.inf.Δoff[1].estimate), r3(v.inf.Δoff[1].se)), lr = round(v.test.lr; digits = 2), p = round(v.test.p; digits = 3),
+            Δq_joint = (round.(v.inf.Δprofile[1].diff[1:3]; digits = 4), round.(v.inf.Δprofile[1].se[1:3]; digits = 4)),
+            Δq_free = (round.(v.free.diff; digits = 4), round.(v.free.se; digits = 4), round(v.free.chi2; digits = 1)))
     end
 end
 

@@ -263,22 +263,32 @@ Three nested variants are fitted: `:core` (``s``), `:late` (``s, \pi_L, m_L``) a
     late tail and ``x = -z`` for the early one. The mixture is evaluated in log space on `DELAY_GRID` and
     renormalised there.
 
-**What the orders can identify.** The five parameters are not equally visible in the orders.
+**What the orders can identify.** The five parameters of ``f`` are not what the orders measure. The orders do not
+see the delay of a site, only whom it overtakes. What they identify is the **overtaking profile**:
 
-- **The tail masses are.** The orders do not see the exact delay of a site, only whom it overtakes. A site committed
-  more than one plastochron late commits after its upper neighbour is ready, and it is likely to be overtaken. So the
-  orders measure the fractions of sites committed more than one plastochron late, early, or either:
-  ``P(e > 1)``, ``P(e < -1)`` and the **off-time fraction** ``P(|e| > 1)`` (`tail_masses`). These include the small
-  share of the core beyond ±1.
-- **``\pi`` and ``m`` one by one are not.** A frequent short tail and a rarer long one put about the same mass beyond
-  one plastochron, and predict nearly the same orders.
-- **The core sd and the late/early split are identified when the tails are light**, and lost when they are heavy. When
-  tens of percent of the sites sit in the tails, a narrower core plus more tail mass predicts nearly the same orders.
-  ``s`` and the split are then no longer identified, even though their standard errors may look small. A core
-  shared with a group whose tails are light can restore it ([§5.7](timing.md), [§6.5](validation.md)).
-- **When there are no tails, the two-tail law is too flexible.** A short "tail" that holds most of the sites only
-  reshapes the core, and the off-time fraction of the `:both` fit can then drift by about one standard error. If the
-  tails gain little over `:core`, read the off-time fraction from `:core`.
+```math
+q_d = P(\text{site } i + d \text{ commits before site } i) = P(e_i - e_{i+d} > d), \qquad d = 1, 2, 3, \dots
+```
+
+- **The profile is read directly off the stems.** With independent delays, whether the organs of sites ``i`` and
+  ``i + d`` are inverted on the stem depends only on their own two delays. So ``q_d`` is the probability that any two
+  sites ``d`` apart are inverted, whatever the other sites do, and the fraction of inverted pairs estimates it. Every
+  delay law that predicts the same orders has the same profile. ``q_1`` is the rate of neighbour swaps; ``q_2`` and
+  ``q_3`` are the longer displacements, which are where tails show.
+- **It has no direction.** ``q_d`` depends on ``f`` only through the law of a *difference* of two delays, which is
+  the same whether the off-time sites are late or early. The late/early split rests on rarer patterns of three
+  organs (2 3 1 against 3 1 2), and is only weakly identified.
+- **The parameters of ``f`` are readings of its shape.** The core sd ``s``, the tail masses ``\pi`` and ``m``, and
+  properties of ``f`` itself such as the **off-time fraction** ``P(|e| > 1)`` (`tail_masses`) are not seen directly.
+  They follow from the profile only through the assumed shape (a Gaussian core with exponential tails). When that
+  shape is unambiguous they are well determined: for light tails, the core and the off-time fraction are recovered.
+  When it is not, they drift with no change in the orders. Without tails, a short "tail" holding most of the sites
+  only reshapes the core. With heavy tails, a narrower core plus more tail mass predicts the same orders, and the core
+  collapses. In both cases the profile does not move.
+
+So the profile is the result to report and to compare between groups (`overtaking_profile` reads it from the
+posterior orders, with no delay law; `delay_law_inference` gives that of the fitted law). The fitted law interprets
+it: how precise a typical commitment is, and how many sites are off time, within the assumed shape.
 
 The validation ([§6.4](validation.md)) measures each of these statements on simulated stems.
 
@@ -287,7 +297,7 @@ The validation ([§6.4](validation.md)) measures each of these statements on sim
 - **Fit.** `fit_delay_law(samples, variant)` maximises ``\Delta\ell`` by Newton's method with a trust region, on
   unconstrained parameters: ``\log s``; for `:both`, ``\operatorname{logit}(\pi_L + \pi_E)``, the logit of the late
   share ``\pi_L/(\pi_L + \pi_E)``, ``\log m_L`` and ``\log m_E``. The tail mass and the late share are separate
-  coordinates because the first is well identified and the second may not be. The grid is fixed, so ``\Delta\ell``
+  coordinates because the first is better determined than the second. The grid is fixed, so ``\Delta\ell``
   is a smooth function of the parameters. Its gradient and Hessian are exact: forward-mode dual numbers pass through
   the delay density and the recursion of [§5.4](timing.md).
 - **Robust standard errors.** The stem is the unit of replication: each stem contributes its own term
@@ -295,12 +305,17 @@ The validation ([§6.4](validation.md)) measures each of these statements on sim
   therefore measures the uncertainty from the spread of the per-stem slopes ``g_s`` of these terms, not from the
   curvature ``H`` of their sum alone. This is the sandwich covariance
   ``H^{-1}\big(\sum_s g_s g_s^\top\big)H^{-1}``, with exact derivatives. The delta method then gives the standard
-  errors of ``s`` and of the tail masses.
-- **Two groups** (a mutant and its co-segregant wild type). Fit each group separately. Then compare the off-time
-  fractions with their standard errors (independent groups), or compare separate laws with one shared law by the
-  difference of their summed ``\Delta\ell`` (a likelihood ratio). The terms of ``A`` cancel in these differences,
-  because each stem's term is relative to its own group's fit of ``A``.
-- **A shared core.** When one group has heavy tails, its own core sd is not identified (§5.6). The groups can then be
+  errors of ``s``, of the tail masses and of the profile ``q_1, \dots, q_4`` (`overtaking`).
+- **The profile without a delay law.** `overtaking_profile(samples)` averages, over each stem's posterior samples,
+  the fraction of pairs ``d`` apart that are inverted, and pools the stems. Its standard errors are clustered by
+  stem. It needs no delay law, so it is also a check of the fitted one: the two profiles should agree.
+- **Two groups** (a mutant and its co-segregant wild type). Compare their **profiles**: `compare_profiles(a, b)`
+  gives the differences ``q_d`` by lag with standard errors, and a Wald test over ``q_1, q_2, q_3``. The profiles can
+  come from `overtaking_profile` (no delay law) or from each group's fitted law. Separate laws can also be compared
+  with one shared law by the difference of their summed ``\Delta\ell`` (a likelihood ratio). The terms of ``A``
+  cancel in these differences, because each stem's term is relative to its own group's fit of ``A``.
+- **A shared core.** To read the off-time fraction of a group with heavy tails, whose own core sd is not identified
+  (§5.6), the groups can be
   fitted together with **one core sd and their own tails**: `fit_delay_law([smp_wt, smp_mutant], :both)`. This states
   a biological hypothesis, *the mutant changes the off-time organs, not the precision of a typical commitment*, and
   the group with light tails carries the core. `shared_core_test` tests it, by the likelihood ratio of one core
@@ -315,6 +330,7 @@ The validation ([§6.4](validation.md)) measures each of these statements on sim
 **Code.** `DelayLaw(s; πL, mL, πE, mE)`, `rand(rng, f)`, `delay_logdensity(f)`, `tail_masses(f; a = 1)`;
 `loglik_order_exact(σ, f)` (or `(σ, logg, grid, γ)`); `order_samples(order_posterior(m, fit; nsamples), η)`,
 `stem_terms(samples, f)`, `relative_loglik(samples, f)` (`stem_terms(samples, logP)` scores any law of the order given
-as ``\sigma \mapsto \log P(\sigma)``); `fit_delay_law`, `delay_law_inference`, `shared_core_test`;
+as ``\sigma \mapsto \log P(\sigma)``); `fit_delay_law`, `delay_law_inference`, `shared_core_test`; the profile:
+`overtaking(f)`, `overtaking_profile(samples)`, `compare_profiles(a, b)`;
 `simulate_stems(f::DelayLaw; ...)`;
 `flowering_rate`, `fit_flowering`, `plastochron_by_rank`, `plant_plastochron`, `relative_plastochron`.

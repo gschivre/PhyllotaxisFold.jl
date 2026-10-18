@@ -67,7 +67,7 @@ against truth. (b) The twist population: mean and sd, truth in black. (c) The po
 
 One stem in 540 gets a twist at a secondary mode of its likelihood (figure 1a, the point far from the diagonal). It is
 a reminder that the twist likelihood of a stem can have several peaks. This is why the twist is integrated out rather
-than fixed at its best value ([§2.3](angles.md), [§4.5](propensity.md)).
+than fixed at its best value ([§2.6](angles.md), [§4.5](propensity.md)).
 
 ## 6.3 The orders
 
@@ -94,7 +94,35 @@ of each true displacement. (c) The fraction of displaced organs per stem, decode
 ## 6.4 The delay law
 
 **What could go wrong.** The delay law is seen only through the orders it produces, and different laws can produce
-nearly the same orders ([§5.6](timing.md)). Which of its features are recovered, and which are not?
+nearly the same orders ([§5.6](timing.md)). Is the overtaking profile, which the orders identify, recovered? And how
+far can the parameters of the fitted law be trusted?
+
+**The overtaking profile.** Truth (the law), then the three replicates: the profile read from the posterior orders
+(`overtaking_profile`, no delay law) and that of the fitted `:both` law, with the typical standard error.
+
+| scenario | | ``q_1`` | ``q_2`` | ``q_3`` |
+|---|---|---|---|---|
+| no tails | truth | 0.046 | 0.0004 | 0.0000 |
+| | from the orders | 0.038, 0.049, 0.047 (± 0.004) | 0.0009, 0.0004, 0.0007 (± 0.0005) | ≤ 0.0002 |
+| | fitted law | 0.038, 0.049, 0.046 | 0.0008, 0.0006, 0.0006 | 0.0000 |
+| light tails | truth | 0.087 | 0.024 | 0.011 |
+| | from the orders | 0.087, 0.089, 0.087 (± 0.005) | 0.025, 0.025, 0.024 (± 0.003) | 0.012, 0.011, 0.008 (± 0.002) |
+| | fitted law | 0.082, 0.087, 0.085 | 0.022, 0.023, 0.022 | 0.010, 0.010, 0.008 |
+| heavy tails | truth | 0.183 | 0.075 | 0.032 |
+| | from the orders | 0.187, 0.191, 0.190 (± 0.006) | 0.078, 0.078, 0.088 (± 0.005) | 0.031, 0.028, 0.034 (± 0.003) |
+| | fitted law | 0.184, 0.187, 0.185 | 0.073, 0.071, 0.076 | 0.028, 0.026, 0.031 |
+
+- **The profile is recovered in every scenario.** Most of the scatter between replicates is real: each replicate's
+  own orders differ from the law by chance (the first no-tails replicate has a neighbour-swap rate of 0.038 in its
+  true orders, and both estimates find 0.038).
+- **It does not depend on the shape of the law.** Without tails, the ridge of the `:both` fit (point 1 below) moves
+  the off-time fraction but leaves the profile where it is.
+- **The fitted law can miss the longest overtakings.** For heavy tails, the fitted law's ``q_3`` is below the rate in
+  each replicate's own true orders by 0.005–0.007 (about 2 standard errors), while the profile read from the orders is
+  not: the exponential tails do not quite fit the longest displacements. The two profiles differ by 0.002–0.004 there,
+  which is the check of [§5.7](timing.md).
+
+**The parameters of the fitted law.**
 
 ![Timing recovery](figures/v3_timing_recovery.png)
 
@@ -103,7 +131,7 @@ masses: estimate ± 2 robust se for each replicate, truth in black. (e) The fitt
 (dashed). (f) Log-likelihood gains: what the two tails add to a core-only law (circles), and how much the fitted law
 beats the true one (triangles, the optimism of the fit).*
 
-Truth, then the `:both` fits of the three replicates:
+Truth, then the `:both` fits of the three replicates (the readings of [§5.6](timing.md)):
 
 | scenario | ``s`` | ``P(e > 1)`` | ``P(e < -1)`` | ``P(\lvert e\rvert > 1)`` | tails gain (``\Delta\ell``) |
 |---|---|---|---|---|---|
@@ -119,9 +147,9 @@ Truth, then the `:both` fits of the three replicates:
    0.2 plastochron) that only reshapes the core, and its off-time fraction drifts to 0.031–0.034, about one standard
    error (0.015) above the truth. When the tails gain little, read the `:core` fit.
 2. **Real tails are found without doubt.** For both tailed laws, the tails add 58 to 131 units.
-3. **The off-time fraction ``P(|e| > 1)`` is the best estimated quantity.** It is recovered within its standard error
-   for the light-tailed law. For the heavy-tailed law it is about 0.02 too high in all three replicates (about 2 se): a
-   10 % overestimate when a fifth of the organs are off time.
+3. **The off-time fraction ``P(|e| > 1)`` is reliable only for light tails.** It is recovered within its standard
+   error for the light-tailed law. For the heavy-tailed law it is about 0.02 too high in all three replicates (about
+   2 se): a 10 % overestimate when a fifth of the organs are off time. Without tails it drifts (point 1).
 4. **The core sd is recovered when the tails are light** (0.38–0.41 for 0.42), **but not when they are heavy.** For
    the heavy-tailed law (47 % of the sites in a tail), the fitted core collapses: ``s`` falls to about 0.01, below the
    step of the delay grid (0.05), where a narrower core no longer changes anything. Its standard error is
@@ -136,13 +164,15 @@ Truth, then the `:both` fits of the three replicates:
    than the true law does: by 0.4 to 5 units. Differences of ``\Delta\ell`` below about 5 between two laws are
    therefore not meaningful on their own.
 
-**In short:** the off-time fraction is the quantity to compare between groups. The core sd and the late/early split
-are informative for laws with light tails, and should be read with the caveats of points 4 and 5.
+**In short:** the overtaking profile is the quantity to report and to compare between groups. The parameters of the
+fitted law interpret it: the off-time fraction, the core sd and the late/early split are informative for laws with
+light tails, and should be read with the caveats of points 1, 3, 4 and 5.
 
 ## 6.5 A shared core
 
-**What could go wrong.** Point 4 is a real limitation for comparisons: a mutant with many off-time organs has a core
-that cannot be estimated, and its off-time fraction is biased with it. But the core can be borrowed. If the mutant
+**What could go wrong.** Comparing two groups by their profiles needs no core sd. But to *read* a group with heavy
+tails in terms of the law (how precise a typical commitment is, how many organs are off time), point 4 is a real
+limitation: its core cannot be estimated, and its off-time fraction is biased with it. The core can be borrowed. If the mutant
 changes *which* organs are off time, and not the precision of a typical commitment, the mutant and its wild type share
 one core sd. The wild type, whose tails are light, then carries it ([§5.7](timing.md)).
 
@@ -163,6 +193,11 @@ Truth, then the shared-core fit of each replicate (estimate ± se):
 With separate fits ([§6.4](validation.md)), the heavy-tailed off-time fraction was 0.216–0.218 and the difference
 0.149–0.155.
 
+For comparison, the difference between the two groups' profiles (heavy minus light, truth 0.096, 0.052, 0.021) read
+from the orders, with no delay law: 0.101, 0.102, 0.102 for ``q_1`` (± 0.008), 0.053, 0.052, 0.064 for ``q_2``
+(± 0.006) and 0.019, 0.017, 0.026 for ``q_3`` (± 0.003), with a Wald χ² of 173 to 190 on 3 degrees of freedom
+(`compare_profiles`). The joint fit gives the same, even in replicate 3 (0.100, 0.053, 0.024).
+
 **What we find.**
 
 - **When the light-tailed group holds the core, the shared core removes the bias** (replicates 1 and 2). The shared
@@ -176,8 +211,8 @@ With separate fits ([§6.4](validation.md)), the heavy-tailed off-time fraction 
   0.01, while the heavy-tailed one gains 3. Its own fit gave ``s`` = 0.38 ± 0.04, but the standard error hides a
   lopsided profile: the data bound the core from above, not from below.
 
-**In practice.** Fit each group alone, then together. If the shared ``s`` stays close to the light-tailed group's own
-``s``, report the shared-core estimates. If it collapses far below it, the light-tailed group does not hold the core:
+**In practice.** Compare the groups by their profiles. To read them in terms of the law, fit each group alone, then
+together. If the shared ``s`` stays close to the light-tailed group's own ``s``, report the shared-core estimates. If it collapses far below it, the light-tailed group does not hold the core:
 report the separate fits, with the caveat of [§6.4](validation.md) point 4.
 
 ## 6.6 The exact order likelihood and the weights

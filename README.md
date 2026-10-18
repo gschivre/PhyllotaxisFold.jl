@@ -10,8 +10,9 @@ alone, it:
 1. **reconstructs the order** in which the organs were initiated, stem by stem, with its uncertainty. It accounts for
    the noise of the measurement, the unknown spiral of each stem (orientation, golden or Lucas angle) and the twist of
    the stem;
-2. **estimates the law of the initiation delay**: how precise the timing of a typical organ is, and how often an organ
-   is initiated out of its turn, early or late;
+2. **measures how often organs are overtaken**: for each distance d, the probability that the organ initiated d places
+   later commits first (the *overtaking profile*), which is what the orders identify. A law of the initiation delay
+   interprets it: how precise the timing of a typical organ is, and how often an organ is initiated out of its turn;
 3. **compares groups of plants**, for instance a mutant and its wild type, with standard errors that treat the stem as
    the unit of replication.
 
@@ -50,21 +51,23 @@ r = fit_map_torsion!(m; prior = TorsionPrior(m0 = 0.0, sm = 2.0, νs = 4.0, τs 
 dec = decode_orders(m, r; full = true)       # the most probable order of each stem, with its twist and spiral
 post = order_posterior(m, r; nsamples = 200) # the full posterior of the order: probabilities and samples
 
-# 2. estimate the delay law
+# 2. the timing of initiation
 smp = order_samples(post, r.fit.θ.η)
 fit = fit_delay_law(smp, :both)              # a precise core, plus late and early organs
 inf = delay_law_inference(smp, fit)          # estimates with standard errors
-inf.estimate.off, inf.se.off                 # the fraction of organs more than one plastochron off their turn
+prof = overtaking_profile(smp)               # how often an organ is overtaken by the one d places up, d = 1…4
+prof.q, prof.se                              # the result to report; inf.profile is that of the fitted law
 ```
 
 ## Comparing groups
 
-Fit each group on its own (for a mutant, against its own co-segregant wild type). Then compare the **off-time
-fraction** `inf.estimate.off` of the two groups with their standard errors. This is the quantity the angles identify
-best. The precision of a typical organ (`inf.estimate.s`) and the split between late and early organs are reliable
-only when off-time organs are rare. When one group has many, fit the two groups together with one shared precision
-and their own off-time organs: `fit_delay_law([smp_wt, smp_mutant])`, tested by `shared_core_test`. The manual
-explains why, and shows how well each quantity is recovered on simulated stems.
+Fit each group on its own (for a mutant, against its own co-segregant wild type). Then compare their **overtaking
+profiles**, `compare_profiles(prof_wt, prof_mutant)`: how often an organ is overtaken by the one 1, 2 or 3 places
+up. This is what the angles identify, with no assumption on the shape of the delay law. The fitted law interprets
+it: the precision of a typical organ (`inf.estimate.s`) and the fraction of organs off their turn
+(`inf.estimate.off`) are reliable only when off-time organs are rare. When one group has many, fitting the two groups
+together with one shared precision (`fit_delay_law([smp_wt, smp_mutant])`, tested by `shared_core_test`) can recover
+them. The manual explains why, and shows how well each quantity is recovered on simulated stems.
 
 ## Learn more
 
@@ -91,7 +94,8 @@ the author's direction:
 
 - the commitment-timing approach: scoring a delay law on the orders reconstructed in step 1, with the exact order
   likelihood and the re-weighting identity;
-- its implementation (`CommitmentTiming`), its tests and its validation on simulated stems;
+- its implementation (`CommitmentTiming`: the delay-law fit with exact derivatives, the shared-core option and the
+  overtaking profile), its tests and its validation on simulated stems;
 - the code review and cleanup of version 0.3, and the manual.
 
 The author chose the questions, reviewed the results and the code, made the modelling decisions, and is responsible

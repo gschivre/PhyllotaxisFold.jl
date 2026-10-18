@@ -19,7 +19,10 @@ the angle model.
 - `order_samples`, `stem_terms`, `relative_loglik`: the re-weighting estimate, per stem and summed
 - `fit_delay_law`: maximum of the summed terms for the :core, :late or :both law (Newton trust region, ForwardDiff);
   given several groups of stems, one law per group with a shared core sd
-- `delay_law_inference`: robust (sandwich, clustered by stem) standard errors of s and of the tail masses
+- `overtaking`: the overtaking profile q_d = P(site i + d commits before site i) of a law, the quantity the orders
+  identify; `overtaking_profile`: the same read directly from the posterior orders, with no delay law;
+  `compare_profiles`: Wald test of two groups' profiles
+- `delay_law_inference`: robust (sandwich, clustered by stem) standard errors of s, the tail masses and the profile
 - `shared_core_test`: likelihood ratio of one core sd for all groups against one per group
 - `simulate_stems(f::DelayLaw; ...)`: stems whose order comes from independent delays f (for validation)
 
@@ -35,8 +38,9 @@ using ..Common: Golden_angle, Lucas_angle, _fullvalue
 using ..Permanents: PermanentWorkspace, logprob_permutation
 import ..AngleLikelihood: simulate_stems
 
-export DelayLaw, DELAY_GRID, delay_logdensity, tail_masses, loglik_order_exact, order_diagnostics, order_samples,
-       stem_terms, relative_loglik, fit_delay_law, delay_law_inference, shared_core_test, simulate_stems
+export DelayLaw, DELAY_GRID, delay_logdensity, tail_masses, overtaking, loglik_order_exact, order_diagnostics, order_samples,
+       stem_terms, relative_loglik, fit_delay_law, delay_law_inference, shared_core_test, overtaking_profile,
+       compare_profiles, simulate_stems
 
 """
 default delay grid (plastochrons). The density is renormalised on the grid, so the mass it cuts off,
@@ -104,11 +108,34 @@ end
 """
     tail_masses(f; a = 1, grid)
 
-P(e > a), P(e < −a) and their sum: the fractions of sites committed more than `a` plastochrons late or early. Unlike
-π and m one by one, these are well identified from organ orders (a frequent short tail and a rarer long one give nearly
-the same orders).
+P(e > a), P(e < −a) and their sum: the fractions of sites committed more than `a` plastochrons late or early. They
+are properties of f itself, read from the orders only through the shape of the law: better determined than π and m
+one by one, but not identified like the overtaking profile (`overtaking`).
 """
 tail_masses(f::DelayLaw; a::Real = 1.0, grid = DELAY_GRID) = _tail_masses(f, a, grid)
+
+# q_d = P(e_i − e_{i+d} > d) = Σ_y g(y) P(e > y + d): each grid value stands for a cell, and the cell of y + d counts
+# for one half (ties). d must be a multiple of the grid step (an integer d with a step that divides 1).
+function _overtaking(f, ds, grid)
+    g = exp.(_logdensity(f, grid)) .* step(grid)
+    sur = reverse(cumsum(reverse(g))) .- g ./ 2 # P(e > z) at each grid value, half of its own cell
+    map(ds) do d
+        sh = round(Int, d / step(grid))
+        isapprox(sh * step(grid), d; atol = 1e-9) || throw(ArgumentError("d must be a multiple of the grid step"))
+        sum(g[i] * sur[i + sh] for i in 1:(length(g) - sh))
+    end
+end
+
+"""
+    overtaking(f; d = 1:4, grid)
+
+The overtaking profile of a delay law: q_d = P(site i + d commits before site i) = P(e_i − e_{i+d} > d), for each lag
+in `d`. With independent delays, q_d is the probability that the organs of any two sites d apart are inverted on the
+stem, whatever the other sites do: unlike the parameters of f, it is identified by the orders (q_1: neighbour swaps;
+q_2, q_3: the longer displacements that tails produce). It depends on f only through the law of a difference of two
+delays, so it carries no late/early asymmetry.
+"""
+overtaking(f::DelayLaw; d = 1:4, grid = DELAY_GRID) = _overtaking(f, d, grid)
 
 """
     loglik_order_exact(σ, logg, z_grid, γ)
@@ -258,7 +285,9 @@ function _v(f::DelayLaw, variant::Symbol)
     return [log(f.s), logit(clamp(πt, 1e-6, 1 - 1e-6)), logit(clamp(f.πL / max(πt, 1e-12), 1e-6, 1 - 1e-6)), log(f.mL), log(f.mE)]
 end
 _delaylaw(p) = DelayLaw(p.s; πL = p.πL, mL = p.mL, πE = p.πE, mE = p.mE)
-_derived(f, grid) = (t = _tail_masses(f, 1.0, grid); [f.s, t.late, t.early, t.off])
+const _NAMES = (:s, :late, :early, :off, :q1, :q2, :q3, :q4)
+const _NQ = 4 # the overtaking profile reported by delay_law_inference: q_1 … q_4
+_derived(f, grid) = (t = _tail_masses(f, 1.0, grid); [f.s, t.late, t.early, t.off, _overtaking(f, 1:_NQ, grid)...])
 
 # a tail longer than the grid can hold: the cut-off mass would bias the fit (DELAY_GRID)
 function _check_tails(f::DelayLaw, grid)
@@ -336,31 +365,100 @@ end
     delay_law_inference(samples, fit; grid)
     delay_law_inference(groups, fit; grid)
 
-Robust standard errors of the core sd s and of the tail masses P(e > 1), P(e < −1), P(|e| > 1) at a `fit_delay_law`
-result: sandwich covariance H⁻¹ (Σ_s g_s g_sᵀ) H⁻¹ of the unconstrained parameters (per-stem scores g_s, Hessian H of
-the summed terms, exact by ForwardDiff; clustered by stem, so heterogeneity between stems is allowed), then the delta
-method. `se_model` is the model-based (−H⁻¹) version. pinv: a tail with π ≈ 0 leaves its distance unidentified.
+Robust standard errors at a `fit_delay_law` result: sandwich covariance H⁻¹ (Σ_s g_s g_sᵀ) H⁻¹ of the unconstrained
+parameters (per-stem scores g_s, Hessian H of the summed terms, exact by ForwardDiff; clustered by stem, so
+heterogeneity between stems is allowed), then the delta method. `se_model` is the model-based (−H⁻¹) version. pinv: a
+tail with π ≈ 0 leaves its distance unidentified.
 
-For a shared-core fit of several groups, `estimate` and `se` are vectors (one entry per group), and `Δoff` gives the
-off-time fraction of each group minus that of group 1, with its standard error (the shared core correlates the
-groups, so the joint covariance is used).
+`estimate` and `se` hold the core sd s, the tail masses P(e > 1), P(e < −1), P(|e| > 1), and the overtaking profile
+q_1 … q_4 (`overtaking`). `profile = (; d, q, se, V)` repeats the profile with its covariance, for `compare_profiles`.
+The profile is identified by the orders; s, the tail masses and the late/early split are readings of the parametric
+law, identified only through its shape.
+
+For a shared-core fit of several groups, `estimate`, `se` and `profile` are vectors (one entry per group), and
+`Δprofile` and `Δoff` give each group minus group 1, with standard errors from the joint covariance (the shared core
+correlates the groups); `Δprofile` also carries its Wald test.
 """
 function delay_law_inference(samples, fit; grid = DELAY_GRID)
-    names = (:s, :late, :early, :off)
+    names, K = _NAMES, length(_NAMES)
     nt(x) = NamedTuple{names}(Tuple(x))
+    qi = 5:K # the profile's entries in the derived vector
     variant = fit.variant
     if get(fit, :shared_core, false)
         G = length(samples)
         terms(w) = reduce(vcat, [_stem_terms(samples[g], _law(_group_v(w, g, variant), variant), grid) for g in 1:G])
         derived(w) = reduce(vcat, [_derived(_law(_group_v(w, g, variant), variant), grid) for g in 1:G])
         r = _sandwich(terms, derived, fit.v)
-        blk(x, g) = nt(x[(4g - 3):(4g)])
-        Δoff = [(estimate = r.est[4g] - r.est[4], se = sqrt(max(r.Vd[4g, 4g] + r.Vd[4, 4] - 2r.Vd[4g, 4], 0.0))) for g in 2:G]
+        at(g, i) = K * (g - 1) .+ i
+        blk(x, g) = nt(x[at(g, 1:K)])
+        profile = [(; d = 1:_NQ, q = r.est[at(g, qi)], se = r.se[at(g, qi)], V = r.Vd[at(g, qi), at(g, qi)]) for g in 1:G]
+        Δprofile = map(2:G) do g
+            a, b = at(1, qi), at(g, qi)
+            _wald(r.est[b] .- r.est[a], r.Vd[b, b] .+ r.Vd[a, a] .- r.Vd[b, a] .- r.Vd[a, b], 1:_NQ)
+        end
+        Δoff = [(estimate = r.est[at(g, 4)] - r.est[4], se = sqrt(max(r.Vd[at(g, 4), at(g, 4)] + r.Vd[4, 4] - 2r.Vd[at(g, 4), 4], 0.0))) for g in 2:G]
         return (; names, estimate = [blk(r.est, g) for g in 1:G], se = [blk(r.se, g) for g in 1:G],
-            se_model = [blk(r.se_model, g) for g in 1:G], Δoff, r.V)
+            se_model = [blk(r.se_model, g) for g in 1:G], profile, Δprofile, Δoff, r.V)
     end
     r = _sandwich(w -> _stem_terms(samples, _law(w, variant), grid), w -> _derived(_law(w, variant), grid), fit.v)
-    return (; names, estimate = nt(r.est), se = nt(r.se), se_model = nt(r.se_model), r.V)
+    profile = (; d = 1:_NQ, q = r.est[qi], se = r.se[qi], V = r.Vd[qi, qi])
+    return (; names, estimate = nt(r.est), se = nt(r.se), se_model = nt(r.se_model), profile, r.V)
+end
+
+# difference Δ with covariance V over lags d: estimates, standard errors and the Wald χ² test (pinv: a lag with no
+# overtaking at all carries no information)
+function _wald(Δ, V, d)
+    V = (V + V') / 2
+    chi2 = max(Δ' * pinv(V; rtol = 1e-10) * Δ, 0.0)
+    df = rank(V; rtol = 1e-10)
+    return (; d, diff = Δ, se = sqrt.(max.(diag(V), 0.0)), V, chi2, df, p = df > 0 ? ccdf(Chisq(df), chi2) : 1.0)
+end
+
+"""
+    overtaking_profile(samples; d = 1:4)
+
+The overtaking profile read directly from the posterior orders, with no delay law: q_d is the fraction of pairs of
+sites d apart whose organs are inverted on the stem, averaged over each stem's posterior samples (`order_samples`)
+and pooled over stems (Σ expected inversions / Σ pairs). Standard errors and the covariance `V` across lags are
+clustered by stem (linearised ratio estimator), so they allow heterogeneity between stems. Returns (; d, q, se, V).
+
+Under independent delays this estimates `overtaking(f)` for the true law, whatever f is: a check of the fitted law,
+and a comparison between groups (`compare_profiles`) that needs no delay law at all.
+"""
+function overtaking_profile(samples; d = 1:4)
+    ds = collect(d)
+    S = length(samples)
+    c = zeros(S, length(ds)) # expected inversions per stem and lag
+    m = zeros(S, length(ds)) # pairs per stem and lag
+    for (s, smp) in enumerate(samples)
+        n = length(first(smp.orders))
+        for (σ, w) in zip(smp.orders, smp.w)
+            pos = invperm(σ)
+            for (k, dd) in enumerate(ds)
+                c[s, k] += w * count(pos[i + dd] < pos[i] for i in 1:(n - dd))
+            end
+        end
+        m[s, :] .= max.(n .- ds, 0)
+    end
+    M = vec(sum(m; dims = 1))
+    q = vec(sum(c; dims = 1)) ./ M
+    R = (c .- m .* q') ./ M' # linearised contribution of each stem
+    V = S / max(S - 1, 1) .* (R' * R)
+    return (; d = ds, q, se = sqrt.(diag(V)), V)
+end
+
+"""
+    compare_profiles(a, b; d = 1:3)
+
+Wald test of two independent groups' overtaking profiles (each from `overtaking_profile` or the `profile` of
+`delay_law_inference`), over the lags `d`: `diff` = b − a with its standard errors, χ² with one degree of freedom per
+informative lag, and its p-value. For groups fitted jointly with a shared core, use the `Δprofile` of
+`delay_law_inference` instead (it accounts for their correlation).
+"""
+function compare_profiles(a, b; d = 1:3)
+    ia, ib = [findfirst(==(x), a.d) for x in d], [findfirst(==(x), b.d) for x in d]
+    (any(isnothing, ia) || any(isnothing, ib)) && throw(ArgumentError("lags $(d) not in both profiles"))
+    return _wald(b.q[ib] .- a.q[ia], b.V[ib, ib] .+ a.V[ia, ia], collect(d))
 end
 
 """

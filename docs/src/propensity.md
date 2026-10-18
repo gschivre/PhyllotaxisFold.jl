@@ -92,7 +92,7 @@ reconstruct.
 ## 4.5 Fitting with the twist integrated out
 
 The twist rate of each stem is integrated out of its likelihood by an adaptive quadrature, whose nodes are placed on
-the peaks of that stem's own likelihood ([§2.3](angles.md)). The nodes depend on the parameters at which they are
+the peaks of that stem's own likelihood ([§2.6](angles.md)). The nodes depend on the parameters at which they are
 placed, so the fit and the nodes are updated in turn. The nodes stay fixed during a Newton fit, so the objective is a
 smooth function of all the parameters, including ``(m_\omega, \log s_\omega)``. `fit_map_torsion!` alternates the
 two:
