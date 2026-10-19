@@ -25,6 +25,8 @@
 
 - Besnard F. et al. (2014) Cytokinin signalling inhibitory fields provide robustness to phyllotaxis. *Nature* 505,
   417–421.
+- Galvan-Ampudia C. S. et al. (2020) Temporal integration of auxin information for the regulation of patterning.
+  *eLife* 9, e55832.
 - Landrein B. et al. (2013) Impaired cellulose synthase guidance leads to stem torsion and twists phyllotactic patterns
   in *Arabidopsis*. *Curr. Biol.* 23, 895–900.
 - Refahi Y. et al. (2016) A stochastic multicellular model identifies biological watermarks from disorders in
