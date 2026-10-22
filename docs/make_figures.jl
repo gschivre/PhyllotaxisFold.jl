@@ -42,6 +42,7 @@ function draw_mask!(ax, mask, k, x0, y0; w = 0.18, used = C_USED, free = C_FREE)
         c = ((mask >> b) & 1 == 1) ? used : free
         poly!(ax, Rect2f(x0 + b * w, y0 - w / 2, w * 0.9, w * 0.9); color = c, strokecolor = :black, strokewidth = 0.8)
     end
+    return
 end
 
 #################################################################################################################
@@ -77,8 +78,10 @@ let k = 2, n = 8, σ = [2, 1, 3, 5, 6, 4, 7, 8], irow = 5
     fig = Figure(size = (1500, 560))
 
     # (a) assignment grid
-    ax = Axis(fig[1, 1]; title = "(a) An order is an assignment of stem positions to sites", xlabel = "canonical site j (spiral order)",
-        ylabel = "stem position p (bottom → top)", xticks = 1:n, yticks = 1:n, aspect = DataAspect(), titlesize = 15)
+    ax = Axis(
+        fig[1, 1]; title = "(a) An order is an assignment of stem positions to sites", xlabel = "canonical site j (spiral order)",
+        ylabel = "stem position p (bottom → top)", xticks = 1:n, yticks = 1:n, aspect = DataAspect(), titlesize = 15
+    )
     for p in 1:n, j in 1:n
         abs(j - p) ≤ k && poly!(ax, Rect2f(j - 0.5, p - 0.5, 1, 1); color = C_BAND, strokecolor = (:gray, 0.4), strokewidth = 0.5)
     end
@@ -96,8 +99,10 @@ let k = 2, n = 8, σ = [2, 1, 3, 5, 6, 4, 7, 8], irow = 5
     xlims!(ax, 0.4, n + 0.6); ylims!(ax, 0.4, n + 1.4)
 
     # (b) the window states along σ
-    ax2 = Axis(fig[1, 2]; title = "(b) The only memory needed: which window columns are used", titlesize = 15,
-        xlabel = "", ylabel = "before row p", yreversed = true, yticks = 1:(n + 1))
+    ax2 = Axis(
+        fig[1, 2]; title = "(b) The only memory needed: which window columns are used", titlesize = 15,
+        xlabel = "", ylabel = "before row p", yreversed = true, yticks = 1:(n + 1)
+    )
     hidexdecorations!(ax2); hidespines!(ax2, :t, :r, :b)
     for (step, s) in enumerate(path)
         draw_mask!(ax2, masks[s], k, 0.0, step; w = 0.5)
@@ -107,16 +112,30 @@ let k = 2, n = 8, σ = [2, 1, 3, 5, 6, 4, 7, 8], irow = 5
         end
         if step ≤ n
             d = σ[step] - step
-            text!(ax2, 2.3, step + 0.5; text = "row $step → site $(σ[step])  (d = $(d ≥ 0 ? "+" : "")$d)", fontsize = 12,
-                align = (:left, :center), color = (step == irow ? C_PATH : :black))
+            text!(
+                ax2, 2.3, step + 0.5; text = "row $step → site $(σ[step])  (d = $(d ≥ 0 ? "+" : "")$d)", fontsize = 12,
+                align = (:left, :center), color = (step == irow ? C_PATH : :black)
+            )
         end
     end
     text!(ax2, 0.0, 0.25; text = "filled = used, numbers = sites in the window", fontsize = 11, color = :gray30)
     xlims!(ax2, -0.2, 6.2); ylims!(ax2, n + 1.6, -0.1)
 
     # (c) the trellis: every banded permutation is one path from start to end
-    ax3 = Axis(fig[1, 3]; title = "(c) All $(round(Int, exp(PF.Permanents.forward!(let ws = PermanentWorkspace(k, n); toeplitz_weights!(ws, zeros(2k + 1), n); ws end, n)))) banded orders = all paths of this graph", titlesize = 15,
-        xlabel = "step p (row being assigned)", xticks = 1:(n + 1), yticks = (1:g.M, fill("", g.M)))
+    ax3 = Axis(
+        fig[1, 3]; title = "(c) All $(
+            round(
+                Int, exp(
+                    PF.Permanents.forward!(
+                        let ws = PermanentWorkspace(k, n)
+                            toeplitz_weights!(ws, zeros(2k + 1), n); ws
+                        end, n
+                    )
+                )
+            )
+        ) banded orders = all paths of this graph", titlesize = 15,
+        xlabel = "step p (row being assigned)", xticks = 1:(n + 1), yticks = (1:g.M, fill("", g.M))
+    )
     for i in 1:n, s in 1:g.M, e in g.edge_ptr[s]:(g.edge_ptr[s + 1] - 1)
         d = g.edge_d[e]
         (1 ≤ i + d ≤ n) || continue
@@ -125,7 +144,7 @@ let k = 2, n = 8, σ = [2, 1, 3, 5, 6, 4, 7, 8], irow = 5
     # reachable states only (forward from start and backward from end, with unit weights)
     ws = PermanentWorkspace(k, n); toeplitz_weights!(ws, zeros(2k + 1), n); forward!(ws, n); backward!(ws, n)
     for i in 1:(n + 1), s in 1:g.M
-        reach = isfinite(ws.F[s, i]) && ws.F[s, i] > -1e300 && (i == n + 1 ? s == g.end_s : isfinite(ws.B[s, i]) && ws.B[s, i] > -1e300)
+        reach = isfinite(ws.F[s, i]) && ws.F[s, i] > -1.0e300 && (i == n + 1 ? s == g.end_s : isfinite(ws.B[s, i]) && ws.B[s, i] > -1.0e300)
         scatter!(ax3, [i], [s]; color = (reach ? :black : (:gray, 0.25)), markersize = 7)
     end
     lines!(ax3, 1:(n + 1), path; color = C_PATH, linewidth = 4)
@@ -145,22 +164,28 @@ end
 #################################################################################################################
 let ns = 2:60
     fig = Figure(size = (1100, 420))
-    ax = Axis(fig[1, 1]; xlabel = "number of organs n", ylabel = "log₁₀(count)", title = "(a) Orders to sum over vs work done by the DP",
-        titlesize = 15)
+    ax = Axis(
+        fig[1, 1]; xlabel = "number of organs n", ylabel = "log₁₀(count)", title = "(a) Orders to sum over vs work done by the DP",
+        titlesize = 15
+    )
     lines!(ax, ns, [loggamma(n + 1) / log(10) for n in ns]; color = :black, linewidth = 3, label = "all orders (n!)")
     cols = Makie.wong_colors()
     for (c, k) in enumerate(1:4)
-        cnt = [begin
-            ws = PermanentWorkspace(k, n); toeplitz_weights!(ws, zeros(2k + 1), n); forward!(ws, n) / log(10)
-        end for n in ns]
+        cnt = [
+            begin
+                ws = PermanentWorkspace(k, n); toeplitz_weights!(ws, zeros(2k + 1), n); forward!(ws, n) / log(10)
+            end for n in ns
+        ]
         g = PermutationGraph(k)
         ops = [log10(n * length(g.edge_d)) for n in ns]
         lines!(ax, ns, cnt; color = cols[c], linewidth = 2.5, label = "orders with |d| ≤ $k")
         lines!(ax, ns, ops; color = cols[c], linewidth = 2, linestyle = :dash, label = "DP operations, k = $k")
     end
     axislegend(ax; position = :lt, framevisible = false, labelsize = 11, nbanks = 1)
-    ax2 = Axis(fig[1, 2]; xlabel = "maximum displacement k", ylabel = "", title = "(b) Size of the DP for one stem of n = 50",
-        xticks = 1:6, titlesize = 15, yscale = log10)
+    ax2 = Axis(
+        fig[1, 2]; xlabel = "maximum displacement k", ylabel = "", title = "(b) Size of the DP for one stem of n = 50",
+        xticks = 1:6, titlesize = 15, yscale = log10
+    )
     ks = 1:6
     states = [binomial(2k, k) for k in ks]
     edges = [length(PermutationGraph(k).edge_d) for k in ks]
@@ -184,8 +209,10 @@ let n = 12
     y = [mod2pi((σ[p] - 1) * ψ) for p in 1:n]
     div = [mod(rad2deg(y[p + 1] - y[p]), 360) for p in 1:(n - 1)]
     fig = Figure(size = (1400, 430))
-    ax = Axis(fig[1, 1]; xlabel = "time (plastochrons)", ylabel = "site j (canonical order)", yticks = 1:n, titlesize = 15,
-        title = "(a) Ready at j (○), commits at τ_j (★)")
+    ax = Axis(
+        fig[1, 1]; xlabel = "time (plastochrons)", ylabel = "site j (canonical order)", yticks = 1:n, titlesize = 15,
+        title = "(a) Ready at j (○), commits at τ_j (★)"
+    )
     for j in 1:n
         lines!(ax, [j, τ[j]], [j, j]; color = :gray)
     end
@@ -193,13 +220,17 @@ let n = 12
     scatter!(ax, τ, 1:n; color = [j ∈ (6, 7) ? C_PATH : :seagreen for j in 1:n], marker = :star5, markersize = 18)
     text!(ax, 1, n + 0.3; text = "stem order σ = " * join(σ, " "), fontsize = 13, align = (:left, :bottom))
     ylims!(ax, 0.3, n + 1.2)
-    ax2 = Axis(fig[1, 2]; xlabel = "internode between stem positions p and p + 1", ylabel = "internode (mm)", xticks = 1:(n - 1),
-        title = "(b) Internodes: ≈ 2 plastochrons, near zero, just under 1", titlesize = 15)
+    ax2 = Axis(
+        fig[1, 2]; xlabel = "internode between stem positions p and p + 1", ylabel = "internode (mm)", xticks = 1:(n - 1),
+        title = "(b) Internodes: ≈ 2 plastochrons, near zero, just under 1", titlesize = 15
+    )
     barplot!(ax2, 1:(n - 1), ℓ; color = [p ∈ (5, 6, 7) ? C_PATH : :seagreen for p in 1:(n - 1)])
     hlines!(ax2, [5.5]; color = :gray, linestyle = :dash)
     text!(ax2, 0.6, 5.7; text = "one plastochron", fontsize = 12, color = :gray30)
-    ax3 = Axis(fig[1, 3]; xlabel = "divergence between positions p and p + 1", ylabel = "divergence angle (°)", xticks = 1:(n - 1),
-        title = "(c) Angles: 2ψ, −ψ, 2ψ instead of ψ, ψ, ψ", titlesize = 15, yticks = 0:45:360)
+    ax3 = Axis(
+        fig[1, 3]; xlabel = "divergence between positions p and p + 1", ylabel = "divergence angle (°)", xticks = 1:(n - 1),
+        title = "(c) Angles: 2ψ, −ψ, 2ψ instead of ψ, ψ, ψ", titlesize = 15, yticks = 0:45:360
+    )
     scatterlines!(ax3, 1:(n - 1), div; color = [p ∈ (5, 6, 7) ? C_PATH : :seagreen for p in 1:(n - 1)], markersize = 14, linewidth = 1)
     hlines!(ax3, [rad2deg(ψ)]; color = :gray, linestyle = :dash)
     ylims!(ax3, 0, 360)
@@ -239,8 +270,10 @@ end
 
 # the example stem: a few displaced organs, of both kinds (late and early), and a clear twist
 function example_stem(ex)
-    score(s) = (σ = ex.sim.orders[s]; nd = count(σ .!= eachindex(σ));
-        (4 ≤ nd ≤ 9) * (any(σ .- eachindex(σ) .≤ -2) || any(σ .- eachindex(σ) .≥ 2)) * abs(ex.sim.torsion[s]))
+    score(s) = (
+        σ = ex.sim.orders[s]; nd = count(σ .!= eachindex(σ));
+        (4 ≤ nd ≤ 9) * (any(σ .- eachindex(σ) .≤ -2) || any(σ .- eachindex(σ) .≥ 2)) * abs(ex.sim.torsion[s])
+    )
     return argmax(score, eachindex(ex.sim.orders))
 end
 
@@ -258,22 +291,32 @@ function fig_examples(ex = example_fit())
 
     # e1. the stem, its divergences and the timeline behind them
     let fig = Figure(size = (1500, 470))
-        ax = Axis(fig[1, 1]; title = "(a) The organs: azimuth against height", xlabel = "stem length below the organ (mm)",
-            ylabel = "azimuth (°)", yticks = 0:90:360, titlesize = 15)
-        scatter!(ax, x, mod.(rad2deg.(ϕ .+ o .* (0:(n - 1)) .* ψ .+ deg2rad(dec.τ) .* x), 360); color = :white,
-            strokecolor = :gray50, strokewidth = 1.2, markersize = 13, label = "site of the spiral at this height")
+        ax = Axis(
+            fig[1, 1]; title = "(a) The organs: azimuth against height", xlabel = "stem length below the organ (mm)",
+            ylabel = "azimuth (°)", yticks = 0:90:360, titlesize = 15
+        )
+        scatter!(
+            ax, x, mod.(rad2deg.(ϕ .+ o .* (0:(n - 1)) .* ψ .+ deg2rad(dec.τ) .* x), 360); color = :white,
+            strokecolor = :gray50, strokewidth = 1.2, markersize = 13, label = "site of the spiral at this height"
+        )
         scatter!(ax, x, mod.(rad2deg.(y), 360); color = [off[p] ? C_PATH : :black for p in 1:n], markersize = 8, label = "organ")
         axislegend(ax; position = :rt, framevisible = true, backgroundcolor = (:white, 0.85), labelsize = 11)
         ylims!(ax, 0, 400)
-        ax2 = Axis(fig[1, 2]; title = "(b) Divergence between consecutive organs", xlabel = "height p (between p and p + 1)",
-            ylabel = "divergence (°)", yticks = 0:45:360, titlesize = 15)
+        ax2 = Axis(
+            fig[1, 2]; title = "(b) Divergence between consecutive organs", xlabel = "height p (between p and p + 1)",
+            ylabel = "divergence (°)", yticks = 0:45:360, titlesize = 15
+        )
         dv = [mod(o * rad2deg(y[p + 1] - y[p]), 360) for p in 1:(n - 1)]
         hlines!(ax2, [rad2deg(ψ)]; color = :gray, linestyle = :dash)
-        scatterlines!(ax2, 1:(n - 1), dv; color = [(off[p] || off[p + 1]) ? C_PATH : :black for p in 1:(n - 1)], markersize = 9,
-            linewidth = 0.8)
+        scatterlines!(
+            ax2, 1:(n - 1), dv; color = [(off[p] || off[p + 1]) ? C_PATH : :black for p in 1:(n - 1)], markersize = 9,
+            linewidth = 0.8
+        )
         ylims!(ax2, 0, 360)
-        ax3 = Axis(fig[1, 3]; title = "(c) Hidden: ready at j (○), commits at j + eⱼ (★)", xlabel = "time (plastochrons)",
-            ylabel = "site j", titlesize = 15)
+        ax3 = Axis(
+            fig[1, 3]; title = "(c) Hidden: ready at j (○), commits at j + eⱼ (★)", xlabel = "time (plastochrons)",
+            ylabel = "site j", titlesize = 15
+        )
         for j in 1:n
             lines!(ax3, [j, j + e[j]], [j, j]; color = :gray)
         end
@@ -288,13 +331,17 @@ function fig_examples(ex = example_fit())
         r = [circdeg(y[p] - ϕ - o * (σ[p] - 1) * ψ) for p in 1:n]
         r .-= circdeg(atan(mean(sin.(deg2rad.(r .- ω .* x))), mean(cos.(deg2rad.(r .- ω .* x))))) # centre
         r = circdeg.(deg2rad.(r .- ω .* x)) .+ ω .* x # unwrapped around the twist line
-        ax = Axis(fig[1, 1]; title = "(a) Error of each angle with respect to its true site", xlabel = "stem length below the organ (mm)",
-            ylabel = "error (°)", titlesize = 15)
+        ax = Axis(
+            fig[1, 1]; title = "(a) Error of each angle with respect to its true site", xlabel = "stem length below the organ (mm)",
+            ylabel = "error (°)", titlesize = 15
+        )
         scatter!(ax, x, r; color = :black, markersize = 8)
         lines!(ax, [0, x[end]], [0, ω * x[end]]; color = C_PATH, linewidth = 2, label = "twist: $(round(ω; digits = 2)) °/mm")
         axislegend(ax; position = :lt, framevisible = false)
-        ax2 = Axis(fig[1, 2]; title = "(b) The same once the twist is removed", xlabel = "stem length below the organ (mm)",
-            ylabel = "error (°)", titlesize = 15)
+        ax2 = Axis(
+            fig[1, 2]; title = "(b) The same once the twist is removed", xlabel = "stem length below the organ (mm)",
+            ylabel = "error (°)", titlesize = 15
+        )
         scatter!(ax2, x, circdeg.(deg2rad.(r .- ω .* x)); color = :black, markersize = 8)
         hlines!(ax2, [0.0]; color = :gray, linestyle = :dash)
         linkyaxes!(ax, ax2)
@@ -310,8 +357,10 @@ function fig_examples(ex = example_fit())
             ax = Axis(fig[1, c]; title = ttl, xlabel = "height p", ylabel = "displacement d = σ(p) − p", yticks = -k:k, titlesize = 15)
             hm = heatmap!(ax, 1:n, -k:k, ρ; colormap = :Blues, colorrange = (0, 1))
             scatter!(ax, 1:n, d; color = :transparent, strokecolor = C_PATH, strokewidth = 2, markersize = 14, label = "true d")
-            c == 2 && scatter!(ax, 1:n, dec.σ .- (1:n); color = :white, strokecolor = :black, strokewidth = 0.5, marker = :xcross,
-                markersize = 10, label = "most probable order")
+            c == 2 && scatter!(
+                ax, 1:n, dec.σ .- (1:n); color = :white, strokecolor = :black, strokewidth = 0.5, marker = :xcross,
+                markersize = 10, label = "most probable order"
+            )
             c == 2 && Colorbar(fig[1, 3], hm; label = "probability")
             axislegend(ax; position = :rb, framevisible = true, backgroundcolor = (:white, 0.8))
         end
@@ -324,14 +373,18 @@ function fig_examples(ex = example_fit())
         barplot!(ax, -k:k, ex.θ.η; color = :steelblue, strokewidth = 0, gap = 0.25)
         fd, _ = estimate_displacement_frequencies(ex.m, [ex.θ]; N = 1, n)
         tr = [mean(count(abs.(σs .- (1:n)) .== a) / n for σs in ex.sim.orders) for a in 0:k]
-        ax2 = Axis(fig[1, 2]; title = "(b) Frequency of |d|: model vs truth", xlabel = "|d|", ylabel = "fraction of organs",
-            yscale = log10, xticks = 0:k, titlesize = 15)
-        scatterlines!(ax2, 0:k, max.(fd, 1e-5); label = "fitted model", color = :steelblue, markersize = 12)
-        scatterlines!(ax2, 0:k, max.(tr, 1e-5); label = "true orders", color = C_PATH, markersize = 12)
+        ax2 = Axis(
+            fig[1, 2]; title = "(b) Frequency of |d|: model vs truth", xlabel = "|d|", ylabel = "fraction of organs",
+            yscale = log10, xticks = 0:k, titlesize = 15
+        )
+        scatterlines!(ax2, 0:k, max.(fd, 1.0e-5); label = "fitted model", color = :steelblue, markersize = 12)
+        scatterlines!(ax2, 0:k, max.(tr, 1.0e-5); label = "true orders", color = C_PATH, markersize = 12)
         axislegend(ax2; position = :rt, framevisible = false)
         acc = sort([mean(dd.σ .== σs) for (dd, σs) in zip(ex.dec, ex.sim.orders)])
-        ax3 = Axis(fig[1, 3]; title = "(c) Organs on their correct site, per stem", xlabel = "stems (sorted)",
-            ylabel = "fraction correct", titlesize = 15)
+        ax3 = Axis(
+            fig[1, 3]; title = "(c) Organs on their correct site, per stem", xlabel = "stems (sorted)",
+            ylabel = "fraction correct", titlesize = 15
+        )
         barplot!(ax3, 1:length(acc), acc; color = :steelblue, strokewidth = 0, gap = 0.2)
         ylims!(ax3, 0, 1.02)
         save(joinpath(FIG, "e4_example_propensity.png"), fig)
@@ -342,19 +395,25 @@ function fig_examples(ex = example_fit())
         smp = order_samples(ex.post, ex.θ.η)
         ss = smp[s]
         ordr = sortperm(ss.w; rev = true)
-        ax = Axis(fig[1, 1]; title = "(a) Distinct posterior orders of the stem", xlabel = "order (by frequency)",
-            ylabel = "frequency among 200 samples", titlesize = 15, xticks = 1:length(ordr))
+        ax = Axis(
+            fig[1, 1]; title = "(a) Distinct posterior orders of the stem", xlabel = "order (by frequency)",
+            ylabel = "frequency among 200 samples", titlesize = 15, xticks = 1:length(ordr)
+        )
         barplot!(ax, 1:length(ordr), ss.w[ordr]; color = [ss.orders[j] == σ ? C_PATH : :steelblue for j in ordr], strokewidth = 0)
         lw = [loglik_order_exact(ss.orders[j], EX_LAW) - ss.logA[j] for j in ordr]
-        ax2 = Axis(fig[1, 2]; title = "(b) log P_f(σ) − log P_A(σ), true delay law", xlabel = "order (by frequency)",
-            ylabel = "log weight", titlesize = 15, xticks = 1:length(ordr))
+        ax2 = Axis(
+            fig[1, 2]; title = "(b) log P_f(σ) − log P_A(σ), true delay law", xlabel = "order (by frequency)",
+            ylabel = "log weight", titlesize = 15, xticks = 1:length(ordr)
+        )
         barplot!(ax2, 1:length(ordr), lw; color = [ss.orders[j] == σ ? C_PATH : :steelblue for j in ordr], strokewidth = 0)
         sgrid = range(0.2, 0.8; length = 25)
         withs(sd) = DelayLaw(sd; πL = EX_LAW.πL, mL = EX_LAW.mL, πE = EX_LAW.πE, mE = EX_LAW.mE)
         tot = [relative_loglik(smp, withs(sd)) for sd in sgrid]
         one = [stem_terms([ss], withs(sd))[1] for sd in sgrid]
-        ax3 = Axis(fig[1, 3]; title = "(c) Δℓ against the core sd (tails at their true values)", xlabel = "core sd s (plastochrons)",
-            ylabel = "Δℓ, 40 stems", titlesize = 15)
+        ax3 = Axis(
+            fig[1, 3]; title = "(c) Δℓ against the core sd (tails at their true values)", xlabel = "core sd s (plastochrons)",
+            ylabel = "Δℓ, 40 stems", titlesize = 15
+        )
         lines!(ax3, sgrid, tot; color = :black, linewidth = 3, label = "sum over the 40 stems")
         vlines!(ax3, [EX_LAW.s]; color = :gray, linestyle = :dash)
         ax3b = Axis(fig[1, 3]; yaxisposition = :right, ylabel = "Δℓ_s, example stem", ylabelcolor = C_PATH, yticklabelcolor = C_PATH)

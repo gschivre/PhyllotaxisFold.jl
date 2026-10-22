@@ -3,7 +3,7 @@
 # like a random walk) and Gaussian commitment c_i ~ N(0, σc²). The delay law is fitted on the TRUE orders (one sample
 # per stem, log P_A = 0), so the objective is Σ log P_f(σ_true): no angles, only the question of the timing model.
 # Under independent jitter the lag-1 swap rate matches s² = σc² + σξ²/2; a random-walk clock has more lag-2 swaps.
-# Run in the docs environment with threads (≈ 10 min on 18 threads; results cached in clock_drift.jls):
+# Run in the docs environment with threads (≈ 2 min on 18 threads; results cached in clock_drift.jls):
 #   include("docs/validation_clock_drift.jl"); CD = run_clock_drift(); clock_row(CD[(0.4, 1)])
 
 using PhyllotaxisFold, Random, Statistics, Serialization
@@ -11,7 +11,7 @@ using PhyllotaxisFold, Random, Statistics, Serialization
 const CD_FILE = joinpath(@__DIR__, "clock_drift.jls")
 
 function clock_orders(rng, S, n, σξ, σc)
-    map(1:S) do _
+    return map(1:S) do _
         r = [0.0; cumsum(1.0 .+ σξ .* randn(rng, n - 1))]
         sortperm(r .+ σc .* randn(rng, n))
     end
@@ -21,8 +21,10 @@ true_samples(orders) = [(; orders = [σ], w = [1.0], logA = [0.0]) for σ in ord
 
 function displacement_counts(orders)
     d = reduce(vcat, [σ .- (1:length(σ)) for σ in orders])
-    return (; n = length(d), d1 = count(==(1), abs.(d)) / length(d), d2 = count(==(2), abs.(d)) / length(d),
-        d3 = count(>=(3), abs.(d)) / length(d))
+    return (;
+        n = length(d), d1 = count(==(1), abs.(d)) / length(d), d2 = count(==(2), abs.(d)) / length(d),
+        d3 = count(>=(3), abs.(d)) / length(d),
+    )
 end
 
 function fit_clock(orders, σc, σξ)
@@ -51,8 +53,10 @@ end
 
 function clock_row(r)
     b, t = r.both.law, r.tails
-    return (; s = round(b.s; digits = 3), late = round(t.late; digits = 4), early = round(t.early; digits = 4),
+    return (;
+        s = round(b.s; digits = 3), late = round(t.late; digits = 4), early = round(t.early; digits = 4),
         off = round(t.off; digits = 4), se_off = round(r.inf.se[4]; digits = 4),
         gain = round(r.both.rel_ll - r.core.rel_ll; digits = 1), core_s = round(r.core.law.s; digits = 3),
-        d1 = round(r.disp.d1; digits = 4), d2 = round(r.disp.d2; digits = 5), d3 = round(r.disp.d3; digits = 5))
+        d1 = round(r.disp.d1; digits = 4), d2 = round(r.disp.d2; digits = 5), d3 = round(r.disp.d3; digits = 5),
+    )
 end

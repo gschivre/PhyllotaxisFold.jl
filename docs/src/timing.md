@@ -434,7 +434,7 @@ The validation ([§6.4](validation.md)) measures each of these statements on sim
 - **Delays in hours.** The delays are in plastochrons. The `Plastochron` module estimates the plastochron at each
   flower rank from daily counts of open flowers, to convert them.
 
-**Code.** `DelayLaw(s; πL, mL, πE, mE)`, `rand(rng, f)`, `delay_logdensity(f)`, `tail_masses(f; a = 1)`;
+**Code.** `DelayLaw(s; πL, mL, πE, mE)`, `rand([rng,] f)`, `delay_logdensity(f)`, `tail_masses(f; a = 1)`;
 `loglik_order_exact(σ, f)` (or `(σ, logg, grid, γ)`); `order_samples(order_posterior(m, fit; nsamples), η)`,
 `stem_terms(samples, f)`, `relative_loglik(samples, f)` (`stem_terms(samples, logP)` scores any law of the order given
 as ``\sigma \mapsto \log P(\sigma)``); `fit_delay_law`, `delay_law_inference`, `shared_core_test`; the profile:

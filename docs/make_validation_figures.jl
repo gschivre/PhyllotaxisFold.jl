@@ -34,27 +34,37 @@ const NREP = 3
 
 # twist coordinate of each stem (mm below each organ): internodes from ≈ 9 mm at the base to ≈ 3 mm, log-normal noise
 function stem_coordinates(rng)
-    map(1:NSTEMS) do _
+    return map(1:NSTEMS) do _
         ℓ = [exp(log(9.0 - 6.0 * (p - 1) / (NORGANS - 2)) + 0.35 * randn(rng)) for p in 1:(NORGANS - 1)]
         [0.0; cumsum(ℓ)]
     end
 end
 
+# in Kaimon, a message per stage (a replicate takes ≈ 10 min; Kaimon stops waiting after 10 min without any message)
+stage(msg) = isdefined(Main, :KaimonGate) && Main.KaimonGate.progress(msg)
+
 function run_replicate(law, seed)
+    stage("seed $(seed): simulating and fitting")
     rng = Xoshiro(seed)
     x = stem_coordinates(rng)
-    sim = simulate_stems(law; plants = NSTEMS, organs = NORGANS, x, KAPPA..., α = 0.95, torsion_mean = TWIST.mean,
-        torsion_sd = TWIST.sd, rng)
+    sim = simulate_stems(
+        law; plants = NSTEMS, organs = NORGANS, x, KAPPA..., α = 0.95, torsion_mean = TWIST.mean,
+        torsion_sd = TWIST.sd, rng
+    )
     m = PhyllotaxisModelAD(sim.angles; torsion_x = x)
     r = fit_map_torsion!(m; prior = TPRIOR)
     G = length(r.fit.u) - 2
     θ = constrained_parameters(m, r.fit.u[1:G])
+    stage("seed $(seed): decoding")
     dec = decode_orders(m, r; full = true)
+    stage("seed $(seed): posterior orders")
     post = order_posterior(m, r; nsamples = 200, rng = Xoshiro(seed + 1))
     smp = order_samples(post, θ.η)
-    return (; law, sim = (; sim.orders, sim.delays, sim.torsion, sim.κ, sim.ψ, sim.o), x,
+    return (;
+        law, sim = (; sim.orders, sim.delays, sim.torsion, sim.κ, sim.ψ, sim.o), x,
         fit = (; θ, r.m_ω, r.s_ω, r.τ_mean, r.τ_sd, r.loglik), dec = [(; d.σ, d.o, d.ψ) for d in dec],
-        ρ = [p.ρ for p in post], k = m.k, smp)
+        ρ = [p.ρ for p in post], k = m.k, smp,
+    )
 end
 
 # the delay laws of one replicate, from its cached order samples
@@ -74,8 +84,10 @@ function timing_fits(v)
     end
     # the overtaking profile: of the fitted law (in inf), read from the posterior orders, and in the true orders
     free = overtaking_profile(smp)
-    sample = [mean(count(invperm(σ)[i + d] < invperm(σ)[i] for i in 1:(length(σ) - d)) for σ in v.sim.orders) /
-              mean(length(σ) - d for σ in v.sim.orders) for d in 1:4]
+    sample = [
+        mean(count(invperm(σ)[i + d] < invperm(σ)[i] for i in 1:(length(σ) - d)) for σ in v.sim.orders) /
+            mean(length(σ) - d for σ in v.sim.orders) for d in 1:4
+    ]
     return (; fits, inf, free, sample, truth_ll = relative_loglik(smp, law), ess)
 end
 
@@ -84,8 +96,10 @@ end
 function shared_fits(res, rep)
     groups = [res[(:light, rep)].smp, res[(:heavy, rep)].smp]
     t = shared_core_test(groups, :both)
-    return (; test = t, inf = delay_law_inference(groups, t.shared),
-        free = compare_profiles(res[(:light, rep)].free, res[(:heavy, rep)].free))
+    return (;
+        test = t, inf = delay_law_inference(groups, t.shared),
+        free = compare_profiles(res[(:light, rep)].free, res[(:heavy, rep)].free),
+    )
 end
 
 function run_validation(; refit_timing = false)
@@ -112,14 +126,18 @@ end
 # the nine replicates (the cache also holds the shared-core fits, under (:shared, rep))
 replicates(res) = [res[(key, rep)] for (key, _, _) in SCENARIOS for rep in 1:NREP]
 
-const VTHEME = Theme(fontsize = 15, Axis = (xgridvisible = false, ygridcolor = (:black, 0.07), topspinevisible = false,
-    rightspinevisible = false, titlefont = :bold, titlesize = 15))
+const VTHEME = Theme(
+    fontsize = 15, Axis = (
+        xgridvisible = false, ygridcolor = (:black, 0.07), topspinevisible = false,
+        rightspinevisible = false, titlefont = :bold, titlesize = 15,
+    )
+)
 
 #################################################################################################################
 # v1. fitting: the angle parameters and the per-stem twist
 #################################################################################################################
 function fig_v1(res)
-    with_theme(VTHEME) do
+    return with_theme(VTHEME) do
         fig = Figure(size = (1500, 430))
         R = [(key, res[(key, rep)]) for (key, _, _) in SCENARIOS for rep in 1:NREP]
         ax = Axis(fig[1, 1]; title = "(a) Twist rate of each stem", xlabel = "true twist (°/mm)", ylabel = "estimated (posterior mean)")
@@ -142,14 +160,22 @@ function fig_v1(res)
         end
         scatter!(ax, [1, 2], [KAPPA.logμκ, KAPPA.σκ]; color = :black, marker = :hline, markersize = 40)
         xlims!(ax, 0.5, 2.5)
-        ax = Axis(fig[1, 4]; title = "(d) Spiral of each stem", xticks = (1:2, ["orientation", "golden / Lucas"]),
-            ylabel = "decoded correctly (fraction of stems)", limits = (0.5, 2.5, 0.8, 1.01))
+        ax = Axis(
+            fig[1, 4]; title = "(d) Spiral of each stem", xticks = (1:2, ["orientation", "golden / Lucas"]),
+            ylabel = "decoded correctly (fraction of stems)", limits = (0.5, 2.5, 0.8, 1.01)
+        )
         for (j, (key, v)) in enumerate(R)
-            scatter!(ax, [1, 2] .+ 0.04 .* (j - 5), [mean(d.o == o for (d, o) in zip(v.dec, v.sim.o)),
-                mean(d.ψ == ψ for (d, ψ) in zip(v.dec, v.sim.ψ))]; color = SCOL[key], markersize = 9)
+            scatter!(
+                ax, [1, 2] .+ 0.04 .* (j - 5), [
+                    mean(d.o == o for (d, o) in zip(v.dec, v.sim.o)),
+                    mean(d.ψ == ψ for (d, ψ) in zip(v.dec, v.sim.ψ)),
+                ]; color = SCOL[key], markersize = 9
+            )
         end
-        Legend(fig[1, 5], [MarkerElement(marker = :circle, color = SCOL[k], markersize = 10) for (k, _, _) in SCENARIOS],
-            [l for (_, l, _) in SCENARIOS], "delay law"; framevisible = false)
+        Legend(
+            fig[1, 5], [MarkerElement(marker = :circle, color = SCOL[k], markersize = 10) for (k, _, _) in SCENARIOS],
+            [l for (_, l, _) in SCENARIOS], "delay law"; framevisible = false
+        )
         save(joinpath(VFIG, "v1_fitting.png"), fig; px_per_unit = 2)
         fig
     end
@@ -159,13 +185,15 @@ end
 # v2. decoding: calibration of the posterior marginals, decoded vs true displacements
 #################################################################################################################
 function fig_v2(res)
-    with_theme(VTHEME) do
+    return with_theme(VTHEME) do
         fig = Figure(size = (1500, 450))
         k = first(replicates(res)).k
         # (a) reliability: predicted P(σ[p] = p + d) against the frequency with which it is true
         edges = [0.0, 0.01, 0.05, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 0.95, 0.99, 1.0]
-        ax = Axis(fig[1, 1]; title = "(a) Posterior of the order is calibrated", xlabel = "predicted probability",
-            ylabel = "observed frequency", aspect = 1)
+        ax = Axis(
+            fig[1, 1]; title = "(a) Posterior of the order is calibrated", xlabel = "predicted probability",
+            ylabel = "observed frequency", aspect = 1
+        )
         lines!(ax, [0, 1], [0, 1]; color = :black, linestyle = :dash)
         for (key, _, _) in SCENARIOS
             pr, ob = Float64[], Bool[]
@@ -193,25 +221,33 @@ function fig_v2(res)
             (abs(dt) ≤ k && abs(dd) ≤ k) && (C[dt + k + 1, dd + k + 1] += 1)
         end
         Cn = C ./ sum(C; dims = 2)
-        ax = Axis(fig[1, 2]; title = "(b) Decoded vs true displacement", xlabel = "true displacement d", ylabel = "decoded d",
-            xticks = -k:k, yticks = -k:k, aspect = 1)
+        ax = Axis(
+            fig[1, 2]; title = "(b) Decoded vs true displacement", xlabel = "true displacement d", ylabel = "decoded d",
+            xticks = -k:k, yticks = -k:k, aspect = 1
+        )
         hm = heatmap!(ax, -k:k, -k:k, Cn; colormap = :Blues, colorrange = (0, 1))
         for i in -k:k, j in -k:k
-            C[i + k + 1, j + k + 1] > 0 && Cn[i + k + 1, j + k + 1] ≥ 0.01 && text!(ax, i, j; text = string(round(Int, 100 * Cn[i + k + 1, j + k + 1])),
-                align = (:center, :center), fontsize = 10, color = Cn[i + k + 1, j + k + 1] > 0.5 ? :white : :black)
+            C[i + k + 1, j + k + 1] > 0 && Cn[i + k + 1, j + k + 1] ≥ 0.01 && text!(
+                ax, i, j; text = string(round(Int, 100 * Cn[i + k + 1, j + k + 1])),
+                align = (:center, :center), fontsize = 10, color = Cn[i + k + 1, j + k + 1] > 0.5 ? :white : :black
+            )
         end
         Colorbar(fig[1, 3], hm; label = "fraction of the true displacement")
         # (c) per stem: fraction of displaced organs, decoded vs true
         ax = Axis(fig[1, 4]; title = "(c) Displaced organs per stem", xlabel = "true fraction", ylabel = "decoded (MAP)", aspect = 1)
         for (key, _, _) in SCENARIOS, rep in 1:NREP
             v = res[(key, rep)]
-            scatter!(ax, [mean(σ .!= eachindex(σ)) for σ in v.sim.orders], [mean(d.σ .!= eachindex(d.σ)) for d in v.dec];
-                color = (SCOL[key], 0.45), markersize = 6)
+            scatter!(
+                ax, [mean(σ .!= eachindex(σ)) for σ in v.sim.orders], [mean(d.σ .!= eachindex(d.σ)) for d in v.dec];
+                color = (SCOL[key], 0.45), markersize = 6
+            )
         end
         lines!(ax, [0, 0.8], [0, 0.8]; color = :black, linestyle = :dash)
         acc = mean(mean(d.σ .== σ) for v in replicates(res) for (d, σ) in zip(v.dec, v.sim.orders))
-        text!(ax, 0.03, 0.97; text = "positions decoded correctly: $(round(100acc; digits = 1)) %", space = :relative,
-            align = (:left, :top), fontsize = 12)
+        text!(
+            ax, 0.03, 0.97; text = "positions decoded correctly: $(round(100acc; digits = 1)) %", space = :relative,
+            align = (:left, :top), fontsize = 12
+        )
         save(joinpath(VFIG, "v2_decoding.png"), fig; px_per_unit = 2)
         fig
     end
@@ -221,10 +257,12 @@ end
 # v3. commitment timing through the re-weighting: the delay law recovered
 #################################################################################################################
 function fig_v3(res)
-    with_theme(VTHEME) do
+    return with_theme(VTHEME) do
         fig = Figure(size = (1800, 820))
-        quantities = [(:s, "core sd s (plastochron)", f -> f.s), (:late, "P(e > 1): late by > 1", f -> tail_masses(f).late),
-            (:early, "P(e < −1): early by > 1", f -> tail_masses(f).early), (:off, "P(|e| > 1): off-time", f -> tail_masses(f).off)]
+        quantities = [
+            (:s, "core sd s (plastochron)", f -> f.s), (:late, "P(e > 1): late by > 1", f -> tail_masses(f).late),
+            (:early, "P(e < −1): early by > 1", f -> tail_masses(f).early), (:off, "P(|e| > 1): off-time", f -> tail_masses(f).off),
+        ]
         for (c, (q, lab, tf)) in enumerate(quantities)
             ax = Axis(fig[1, c]; title = "($('a' + c - 1)) $(lab)", xticks = (1:3, [l for (_, l, _) in SCENARIOS]), ylabel = "estimate ± 2 se")
             for (i, (key, _, law)) in enumerate(SCENARIOS)
@@ -240,8 +278,10 @@ function fig_v3(res)
             end
         end
         # (e) the fitted delay densities against the truth (log scale), replicate 1
-        ax = Axis(fig[2, 1:2]; title = "(e) Delay density: truth (black) and fits (replicates)", xlabel = "delay e (plastochrons)",
-            ylabel = "density", yscale = log10, limits = (-4, 5, 1e-4, 2))
+        ax = Axis(
+            fig[2, 1:2]; title = "(e) Delay density: truth (black) and fits (replicates)", xlabel = "delay e (plastochrons)",
+            ylabel = "density", yscale = log10, limits = (-4, 5, 1.0e-4, 2)
+        )
         z = collect(DELAY_GRID)
         sel = -4 .≤ z .≤ 5
         for (key, _, law) in SCENARIOS
@@ -251,15 +291,19 @@ function fig_v3(res)
             lines!(ax, z[sel], exp.(delay_logdensity(law))[sel]; color = :black, linewidth = 1.5, linestyle = :dash)
         end
         # (f) what the tails add, and the optimism of the fit over the truth
-        ax = Axis(fig[2, 3:4]; title = "(f) Log-likelihood gains (Δℓ)", xticks = (1:3, [l for (_, l, _) in SCENARIOS]),
-            ylabel = "Δℓ", yscale = Makie.pseudolog10, yticks = [0, 1, 3, 10, 30, 100, 300])
+        ax = Axis(
+            fig[2, 3:4]; title = "(f) Log-likelihood gains (Δℓ)", xticks = (1:3, [l for (_, l, _) in SCENARIOS]),
+            ylabel = "Δℓ", yscale = Makie.pseudolog10, yticks = [0, 1, 3, 10, 30, 100, 300]
+        )
         for (i, (key, _, _)) in enumerate(SCENARIOS), rep in 1:NREP
             v = res[(key, rep)]
             scatter!(ax, [i - 0.12], [max(v.fits[:both].rel_ll - v.fits[:core].rel_ll, 0.0)]; color = SCOL[key], marker = :circle, markersize = 10)
             scatter!(ax, [i + 0.12], [max(v.fits[:both].rel_ll - v.truth_ll, 0.0)]; color = SCOL[key], marker = :utriangle, markersize = 10)
         end
-        axislegend(ax, [MarkerElement(marker = :circle, color = :gray30, markersize = 10), MarkerElement(marker = :utriangle, color = :gray30, markersize = 10)],
-            ["two tails − core only", "fitted − true law (optimism)"]; position = :lt, framevisible = false, labelsize = 12)
+        axislegend(
+            ax, [MarkerElement(marker = :circle, color = :gray30, markersize = 10), MarkerElement(marker = :utriangle, color = :gray30, markersize = 10)],
+            ["two tails − core only", "fitted − true law (optimism)"]; position = :lt, framevisible = false, labelsize = 12
+        )
         save(joinpath(VFIG, "v3_timing_recovery.png"), fig; px_per_unit = 2)
         fig
     end
@@ -269,10 +313,12 @@ end
 # v4. the exact order likelihood against Monte Carlo, and the weights of the re-weighting
 #################################################################################################################
 function fig_v4(res; N = 1_000_000, n = 7)
-    with_theme(VTHEME) do
+    return with_theme(VTHEME) do
         fig = Figure(size = (1100, 450))
-        ax = Axis(fig[1, 1]; title = "(a) Exact P(σ) vs frequency in $(N ÷ 1000)k draws ($(n) sites)", xlabel = "log P(σ), exact recursion",
-            ylabel = "log frequency", aspect = 1)
+        ax = Axis(
+            fig[1, 1]; title = "(a) Exact P(σ) vs frequency in $(N ÷ 1000)k draws ($(n) sites)", xlabel = "log P(σ), exact recursion",
+            ylabel = "log frequency", aspect = 1
+        )
         for (key, _, law) in SCENARIOS
             rng = Xoshiro(3)
             cnt = Dict{Vector{Int}, Int}()
@@ -300,10 +346,12 @@ function validation_table(res)
         v = res[(key, rep)]
         t = tail_masses(v.law)
         r3(x) = round(x; digits = 3)
-        (; key, rep, s = (v.law.s, r3(v.inf.estimate.s), r3(v.inf.se.s)), late = (r3(t.late), r3(v.inf.estimate.late), r3(v.inf.se.late)),
+        (;
+            key, rep, s = (v.law.s, r3(v.inf.estimate.s), r3(v.inf.se.s)), late = (r3(t.late), r3(v.inf.estimate.late), r3(v.inf.se.late)),
             early = (r3(t.early), r3(v.inf.estimate.early), r3(v.inf.se.early)), off = (r3(t.off), r3(v.inf.estimate.off), r3(v.inf.se.off)), tails_gain = round(v.fits[:both].rel_ll - v.fits[:core].rel_ll; digits = 1),
             optimism = round(v.fits[:both].rel_ll - v.truth_ll; digits = 1), twist = (r3(v.fit.m_ω), r3(v.fit.s_ω)), logμκ = r3(v.fit.θ.logμκ),
-            correct = round(mean(mean(d.σ .== σ) for (d, σ) in zip(v.dec, v.sim.orders)); digits = 3), ess_median = round(median(v.ess); digits = 1))
+            correct = round(mean(mean(d.σ .== σ) for (d, σ) in zip(v.dec, v.sim.orders)); digits = 3), ess_median = round(median(v.ess); digits = 1),
+        )
     end
     return rows
 end
@@ -312,23 +360,27 @@ end
 # and the model-free estimate, with standard errors
 function profile_table(res)
     r4(x) = round(x; digits = 4)
-    map([(key, rep) for (key, _, _) in SCENARIOS for rep in 1:NREP]) do (key, rep)
+    return map([(key, rep) for (key, _, _) in SCENARIOS for rep in 1:NREP]) do (key, rep)
         v = res[(key, rep)]
-        (; key, rep, law = r4.(overtaking(v.law)[1:3]), sample = r4.(v.sample[1:3]),
-            fitted = (r4.(v.inf.profile.q[1:3]), r4.(v.inf.profile.se[1:3])), free = (r4.(v.free.q[1:3]), r4.(v.free.se[1:3])))
+        (;
+            key, rep, law = r4.(overtaking(v.law)[1:3]), sample = r4.(v.sample[1:3]),
+            fitted = (r4.(v.inf.profile.q[1:3]), r4.(v.inf.profile.se[1:3])), free = (r4.(v.free.q[1:3]), r4.(v.free.se[1:3])),
+        )
     end
 end
 
 # the shared-core fits of the light- and heavy-tailed sets, per replicate
 function shared_table(res)
     r3(x) = round(x; digits = 3)
-    map(1:NREP) do rep
+    return map(1:NREP) do rep
         v = res[(:shared, rep)]
         e, se = v.inf.estimate, v.inf.se
-        (; rep, s = (r3(e[1].s), r3(se[1].s)), off_light = (r3(e[1].off), r3(se[1].off)), off_heavy = (r3(e[2].off), r3(se[2].off)),
+        (;
+            rep, s = (r3(e[1].s), r3(se[1].s)), off_light = (r3(e[1].off), r3(se[1].off)), off_heavy = (r3(e[2].off), r3(se[2].off)),
             Δoff = (r3(v.inf.Δoff[1].estimate), r3(v.inf.Δoff[1].se)), lr = round(v.test.lr; digits = 2), p = round(v.test.p; digits = 3),
             Δq_joint = (round.(v.inf.Δprofile[1].diff[1:3]; digits = 4), round.(v.inf.Δprofile[1].se[1:3]; digits = 4)),
-            Δq_free = (round.(v.free.diff; digits = 4), round.(v.free.se; digits = 4), round(v.free.chi2; digits = 1)))
+            Δq_free = (round.(v.free.diff; digits = 4), round.(v.free.se; digits = 4), round(v.free.chi2; digits = 1)),
+        )
     end
 end
 

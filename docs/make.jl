@@ -12,8 +12,10 @@ makedocs(;
     sitename = "PhyllotaxisFold.jl",
     modules = [PhyllotaxisFold],
     authors = "Geoffrey Schivre",
-    format = Documenter.HTML(; prettyurls = get(ENV, "CI", "false") == "true", mathengine = Documenter.MathJax3(),
-        size_threshold_ignore = ["api.md"]),
+    format = Documenter.HTML(;
+        prettyurls = get(ENV, "CI", "false") == "true", mathengine = Documenter.MathJax3(),
+        size_threshold_ignore = ["api.md"]
+    ),
     pages = [
         "Home" => "index.md",
         "Method" => [
