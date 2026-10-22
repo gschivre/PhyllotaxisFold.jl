@@ -21,7 +21,7 @@ using Random, LogExpFunctions
 using ..Common: _isneginf, _logaddexp, _fullvalue
 
 export PermutationGraph, PermanentWorkspace, toeplitz_weights!, forward!, backward!, sample_permutation!, map_permutation,
-       logprob_permutation, cycle_lengths
+    logprob_permutation, cycle_lengths
 
 struct PermutationGraph
     k::Int
@@ -42,7 +42,7 @@ the column entering the window (d = +k). The window then slides by one column (>
 """
 function PermutationGraph(k::Int)
     states = Int[]
-    for mask in 0:(1 << (2 * k)) - 1
+    for mask in 0:((1 << (2 * k)) - 1)
         count_ones(mask) == k && push!(states, mask)
     end
     M = length(states)
@@ -96,8 +96,10 @@ end
 function PermanentWorkspace(::Type{T}, k::Int, n_max::Int; logspace::Bool = true) where {T}
     g = PermutationGraph(k)
     K = 2 * k + 1
-    return PermanentWorkspace{T}(g, n_max, logspace, zeros(T, g.M, n_max + 1), zeros(T, g.M, n_max + 1), zeros(T, n_max, K),
-        zeros(T, n_max, K), zeros(T, n_max, K), Ref(logspace), Ref(0))
+    return PermanentWorkspace{T}(
+        g, n_max, logspace, zeros(T, g.M, n_max + 1), zeros(T, g.M, n_max + 1), zeros(T, n_max, K),
+        zeros(T, n_max, K), zeros(T, n_max, K), Ref(logspace), Ref(0)
+    )
 end
 PermanentWorkspace(k::Int, n_max::Int; kwargs...) = PermanentWorkspace(Float64, k, n_max; kwargs...)
 
@@ -119,7 +121,7 @@ end
 # total; afterwards it can gain at most a factor 1 / c_j per step on the surviving paths (rescaled weights are ≤ 1),
 # so its relative error on the result is < e^(-708 + D), D = Σ_j max(0, −log c_j). D ≤ 600 keeps it below e^-108.
 # A single c_j below e^-345 ≈ 1e-150 would also overflow inv(c) or its dual partials (−c'/c²).
-const SCALED_STEP_MIN = 1e-150
+const SCALED_STEP_MIN = 1.0e-150
 const SCALED_DEFICIT_MAX = 600.0
 
 """

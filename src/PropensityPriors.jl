@@ -17,6 +17,13 @@ using Bijectors: Bijectors
 
 export LogNormalSoftPlus, η_prior, marginal_quantiles
 
+"""
+    LogNormalSoftPlus(μΔ, σΔ)
+
+Distribution of the free log-propensities (η_1, …, η_k), η_d = −(Δ_1 + … + Δ_d) with independent gaps
+Δ_j ~ LogNormal(μΔ_j, σΔ_j): negative and decreasing in d. Supports `rand`, `logpdf`, `mean` and `marginal_quantiles`;
+its bijector to ℝ^k is θ_j = softplus⁻¹(Δ_j). `η_prior(m, v)` gives (μΔ, σΔ) from the mean and variance of each gap.
+"""
 struct LogNormalSoftPlus{V <: AbstractVector} <: ContinuousMultivariateDistribution
     μΔ::V
     σΔ::V

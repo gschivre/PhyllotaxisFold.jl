@@ -30,10 +30,11 @@ module Plastochron
 
 using Statistics
 using LinearAlgebra: diag
-using LogExpFunctions, ForwardDiff, Optim, NLSolversBase
+using LogExpFunctions, ForwardDiff, Optim
+using ..Common: _ad_objective
 
 export flowering_rate, flowering_cumulative, fit_flowering, plastochron_by_rank, plant_plastochron, tau_posterior,
-       relative_plastochron
+    relative_plastochron
 
 # (a, b, d) from p and the end of the rise phase for a change point τ
 _abd(p) = (p[1], exp(p[2]), exp(p[3]))
@@ -62,8 +63,8 @@ function flowering_cumulative(t, p, τ)
 end
 
 # quadrature on z = (log τ − μ_τ) / σ_τ: a dense grid, robust to the kinks of the piecewise rate
-const ZGRID = collect(-6.0:0.05:6.0)
-const LOGWZ = log.(exp.(-ZGRID .^ 2 ./ 2) ./ sqrt(2π) .* 0.05)
+const ZGRID = -6.0:0.05:6.0
+const LOGWZ = -ZGRID .^ 2 ./ 2 .- log(2π) / 2 .+ log(step(ZGRID))
 
 # log-likelihood of one plant's counts given τ (Poisson increments, constant terms dropped)
 function _plant_loglik(p, c, τ)
@@ -73,7 +74,7 @@ function _plant_loglik(p, c, τ)
         isnan(v) && continue
         F = flowering_cumulative(Float64(k), p, τ)
         μ = F - prevF
-        ℓ += (v - prev) * log(μ + 1e-10) - μ
+        ℓ += (v - prev) * log(μ + 1.0e-10) - μ
         prev, prevF = v, F
     end
     return ℓ
@@ -92,18 +93,16 @@ the end of each day (day 1 = first day of observation; `NaN` for a day without r
 Newton trust region with the ForwardDiff gradient and Hessian, best of the starting points `starts` (vectors
 p = (a, log b, log d, μ_τ, log σ_τ)). Returns (; p, nll, se, converged), `se` the standard errors of p (inverse Hessian).
 """
-function fit_flowering(counts::AbstractVector{<:AbstractVector{<:Real}};
-        starts = [[a, log(3.0), log(0.5), log(t), log(0.2)] for t in (10.0, 15.0, 20.0) for a in (0.0, 0.1)])
+function fit_flowering(
+        counts::AbstractVector{<:AbstractVector{<:Real}};
+        starts = [[a, log(3.0), log(0.5), log(t), log(0.2)] for t in (10.0, 15.0, 20.0) for a in (0.0, 0.1)]
+    )
     cs = [Float64.(c) for c in counts]
     f = p -> _nll(p, cs)
-    fgh! = (F, G, H, p) -> begin
-        (H !== nothing) && (H .= ForwardDiff.hessian(f, p))
-        (G !== nothing) && (G .= ForwardDiff.gradient(f, p))
-        return f(p)
-    end
     best = nothing
     for p0 in starts
-        res = optimize(NLSolversBase.only_fgh!(fgh!), collect(Float64, p0), NewtonTrustRegion())
+        v0 = collect(Float64, p0)
+        res = optimize(_ad_objective(f, v0), v0, NewtonTrustRegion())
         (best === nothing || Optim.minimum(res) < Optim.minimum(best)) && (best = res)
     end
     p = Optim.minimizer(best)
@@ -126,14 +125,14 @@ function plastochron_by_rank(p::AbstractVector, K::Integer; τ = nothing)
     for k in 1:K
         y = k - 0.5
         λ² = (y ≤ Fτ ? b^2 + 2a * y : ρ^2 - 2d * (y - Fτ))
-        TP[k] = (λ² > 1e-12 ? 1 / sqrt(λ²) : (k > 1 ? TP[k - 1] : 1 / b))
+        TP[k] = (λ² > 1.0e-12 ? 1 / sqrt(λ²) : (k > 1 ? TP[k - 1] : 1 / b))
     end
     return TP
 end
 
 "posterior of a plant's change point given its counts: (; τ, w) on the quadrature grid"
-function tau_posterior(fit, c::AbstractVector)
-    p = fit isa NamedTuple ? fit.p : fit
+tau_posterior(fit::NamedTuple, c::AbstractVector) = tau_posterior(fit.p, c)
+function tau_posterior(p::AbstractVector, c::AbstractVector)
     a = _plant_terms(p, Float64.(c))
     return (; τ = exp.(p[4] .+ exp(p[5]) .* ZGRID), w = exp.(a .- logsumexp(a)))
 end
@@ -144,10 +143,10 @@ end
 T_P(k) of one plant, k = 1..K, from the posterior of its own change point given its counts `c` (geometric posterior
 mean over τ).
 """
-function plant_plastochron(fit, c::AbstractVector, K::Integer)
-    p = fit isa NamedTuple ? fit.p : fit
+plant_plastochron(fit::NamedTuple, c::AbstractVector, K::Integer) = plant_plastochron(fit.p, c, K)
+function plant_plastochron(p::AbstractVector, c::AbstractVector, K::Integer)
     post = tau_posterior(p, c)
-    keep = findall(>(1e-8), post.w)
+    keep = findall(>(1.0e-8), post.w)
     lT = sum(post.w[q] .* log.(plastochron_by_rank(p, K; τ = post.τ[q])) for q in keep) ./ sum(post.w[keep])
     return exp.(lT)
 end

@@ -25,29 +25,43 @@ unconstrained parameters u (`constrained_parameters`, `unconstrained_parameters`
 module PropensityModel
 
 using Random, Statistics
-using Distributions, LogExpFunctions, StatsBase, FastGaussQuadrature, AdditionalDistributions
+using Distributions, LogExpFunctions, StatsBase, FastGaussQuadrature
 using ForwardDiff, Optim
 using LogDensityProblems: LogDensityProblems
 using Bijectors: Bijectors
-using ..Common: Golden_angle, Lucas_angle
+using ..Common: Golden_angle, Lucas_angle, _halft, _halft_mean
 import ..Common: fit_map
-using ..Permanents: PermutationGraph, PermanentWorkspace, toeplitz_weights!, forward!, backward!, sample_permutation!,
-                    cycle_lengths
+using ..Permanents: PermanentWorkspace, toeplitz_weights!, forward!, backward!, sample_permutation!, cycle_lengths
 using ..PropensityPriors: LogNormalSoftPlus, η_prior, marginal_quantiles
-using ..Torsion: StemTorsion, TorsionPrior, torsion_coordinate, torsion_corrected
+using ..Torsion: StemTorsion, TorsionPrior, MAP_OPTIONS, torsion_coordinate, torsion_corrected
 import ..Torsion: corrected_angles, update_torsion!, torsion_nodes, fit_map_torsion!
-using ..AngleLikelihood: StemWorkspace, stem_loglik!, angle_fit_map, angle_update_torsion!, angle_torsion_nodes, angle_fit_map_torsion!
+using ..AngleLikelihood: StemWorkspace, stem_loglik!, angle_fit_map, angle_update_torsion!, angle_torsion_nodes,
+    angle_fit_map_torsion!, _chunks, _workspace, _simulate_angles
 import ..AngleLikelihood: stem_value_grad, global_logprior, angle_model, stem_etas, angle_nuisance, stem_grid, simulate_stems,
     constrained_parameters, unconstrained_parameters, prior_mean_parameters
 
 export PhyllotaxisPrior, PhyllotaxisModelAD, TransformedLogDensityProblem, full_eta, prior_mean, rand_priorparameters,
-       prior_CIs, log_propensity, displacement_probability, estimate_displacement_frequencies,
-       estimate_permutation_frequencies, sample_prior
+    prior_CIs, log_propensity, displacement_probability, estimate_displacement_frequencies,
+    estimate_permutation_frequencies, sample_prior
 
+# default gap prior: (μΔ, σΔ) of gaps with means (0.5, 1.25, 2, 3.75) and variances (0.1, 0.75, 2, 4)
+const _DEFAULT_GAPS = η_prior((0.5, 1.25, 2.0, 3.75), (0.1, 0.75, 2.0, 4.0))
+
+"""
+    PhyllotaxisPrior(; μΔ, σΔ, mκ = 1.5, sκ = 0.5, νκ = 4, τκ = 0.25, aα = 95, bα = 5, aπ = 1, bπ = 49)
+
+Prior of the propensity model; its band k is the length N of the gap tuples (k = 4 by default):
+
+- η_1..η_k: `LogNormalSoftPlus(μΔ, σΔ)`, gaps with means (0.5, 1.25, 2, 3.75) and variances (0.1, 0.75, 2, 4) by
+  default (`η_prior`);
+- log μκ ~ N(mκ, sκ²) and σκ ~ half-t(νκ, τκ): the log-normal population of the per-stem κ;
+- α ~ Beta(aα, bα): the probability of the golden spiral (else the Lucas one);
+- π_o ~ Beta(aπ, bπ): the outlier probability (mean 2 %), used only with `outlier = true`.
+"""
 Base.@kwdef struct PhyllotaxisPrior{N}
     # LogNormal prior on the gaps Δ_d = η_{d−1} − η_d (mean m, variance v of each gap)
-    μΔ::NTuple{N, Float64} = η_prior((0.5, 1.25, 2.0, 3.75), (0.1, 0.75, 2.0, 4.0))[1]
-    σΔ::NTuple{N, Float64} = η_prior((0.5, 1.25, 2.0, 3.75), (0.1, 0.75, 2.0, 4.0))[2]
+    μΔ::NTuple{N, Float64} = _DEFAULT_GAPS[1]
+    σΔ::NTuple{N, Float64} = _DEFAULT_GAPS[2]
 
     # log(μκ) mean and standard deviation
     mκ::Float64 = 1.5
@@ -75,7 +89,6 @@ struct PhyllotaxisModelAD{T, N, B}
     κ_logweights::Vector{Float64}
     logspace::Bool
     n_max::Int
-    graph::PermutationGraph
     prior::PhyllotaxisPrior{N}
     torsion::StemTorsion # per-stem torsion coordinates and rates (rates 0 until fitted)
     outlier::Bool # angles are a mixture with uniform outliers (one more parameter, π_o)
@@ -91,8 +104,10 @@ coordinate of each stem (`torsion_coordinate(ℓ)` from its internodes, in mm, o
 the default). The rates start at 0; `fit_map_torsion!(model)` fits them. `outlier`: each angle is an outlier (uniform on
 the circle) with probability π_o, fitted (prior Beta(aπ, bπ)).
 """
-function PhyllotaxisModelAD(data::Vector{Vector{T}}, prior::PhyllotaxisPrior{N} = PhyllotaxisPrior(); ngrid_ϕ::Int = 32, ngrid_κ::Int = 16,
-        logspace::Bool = false, torsion_x = nothing, outlier::Bool = false) where {T, N}
+function PhyllotaxisModelAD(
+        data::Vector{Vector{T}}, prior::PhyllotaxisPrior{N} = PhyllotaxisPrior(); ngrid_ϕ::Int = 32, ngrid_κ::Int = 16,
+        logspace::Bool = false, torsion_x = nothing, outlier::Bool = false
+    ) where {T, N}
     n_min, n_max = extrema(length.(data))
     N ≤ n_min || throw(ArgumentError("the band k = $(N) (length of the prior tuples) exceeds the shortest stem ($(n_min) organs)"))
     tx = (torsion_x === nothing ? [torsion_coordinate(length(y)) for y in data] : torsion_x)
@@ -100,8 +115,10 @@ function PhyllotaxisModelAD(data::Vector{Vector{T}}, prior::PhyllotaxisPrior{N} 
         throw(ArgumentError("torsion_x: one coordinate per organ of each stem"))
     κ_nodes, κ_weights = gausshermite(ngrid_κ; normalize = true)
     binv = Bijectors.inverse(_bijector(N, outlier))
-    return PhyllotaxisModelAD{T, N, typeof(binv)}(data, N, ngrid_ϕ, ngrid_κ, κ_nodes, log.(κ_weights), logspace, n_max,
-        PermutationGraph(N), prior, StemTorsion(tx), outlier, binv)
+    return PhyllotaxisModelAD{T, N, typeof(binv)}(
+        data, N, ngrid_ϕ, ngrid_κ, κ_nodes, log.(κ_weights), logspace, n_max,
+        prior, StemTorsion(tx), outlier, binv
+    )
 end
 
 corrected_angles(model::PhyllotaxisModelAD, s::Int; τ::Real = model.torsion.τ[s]) = torsion_corrected(model.data[s], model.torsion.x[s], τ)
@@ -133,38 +150,39 @@ function full_eta(model::PhyllotaxisModelAD, θ::AbstractVector{T}) where {T}
 end
 
 # prior of (η_1..η_k)
-_eta_dist(model) = LogNormalSoftPlus([model.prior.μΔ...], [model.prior.σΔ...])
+_eta_dist(model) = LogNormalSoftPlus(collect(model.prior.μΔ), collect(model.prior.σΔ))
+
+# priors of the nuisance parameters, in the order of θ: log μκ, σκ, α (and π_o with outliers)
+function _nuisance_dists(model::PhyllotaxisModelAD)
+    (; mκ, sκ, νκ, τκ, aα, bα, aπ, bπ) = model.prior
+    d = (Normal(mκ, sκ), _halft(νκ, τκ), Beta(aα, bα))
+    return (model.outlier ? (d..., Beta(aπ, bπ)) : d)
+end
 
 "prior mean in the constrained space"
 function prior_mean(model::PhyllotaxisModelAD)
-    (; mκ, νκ, τκ, aα, bα, aπ, bπ) = model.prior
-    return vcat(mean(_eta_dist(model)), [mκ, mean(HalfTDist(νκ, τκ)), mean(Beta(aα, bα))], (model.outlier ? [mean(Beta(aπ, bπ))] : Float64[]))
+    (; νκ, τκ) = model.prior
+    dists = _nuisance_dists(model)
+    return vcat(mean(_eta_dist(model)), mean(dists[1]), _halft_mean(νκ, τκ), [mean(d) for d in dists[3:end]])
 end
 
 "one parameter vector drawn from the prior"
-function rand_priorparameters(model::PhyllotaxisModelAD; rng::AbstractRNG = Random.default_rng())
-    (; mκ, sκ, νκ, τκ, aα, bα, aπ, bπ) = model.prior
-    return vcat(rand(rng, _eta_dist(model)), [rand(rng, Normal(mκ, sκ)), rand(rng, HalfTDist(νκ, τκ)), rand(rng, Beta(aα, bα))],
-        (model.outlier ? [rand(rng, Beta(aπ, bπ))] : Float64[]))
-end
+rand_priorparameters(model::PhyllotaxisModelAD; rng::AbstractRNG = Random.default_rng()) =
+    vcat(rand(rng, _eta_dist(model)), [rand(rng, d) for d in _nuisance_dists(model)])
 
 "prior (α/2, 1 − α/2) intervals of each parameter, dim × 2"
 function prior_CIs(model::PhyllotaxisModelAD; α = 0.05)
-    (; mκ, sκ, νκ, τκ, aα, bα, aπ, bπ) = model.prior
-    q1, q2 = 0.5 * α, 1 - 0.5 * α
-    ηq(q) = marginal_quantiles(_eta_dist(model), q)
-    nq(q) = vcat([quantile(Normal(mκ, sκ), q), quantile(HalfTDist(νκ, τκ), q), quantile(Beta(aα, bα), q)],
-        (model.outlier ? [quantile(Beta(aπ, bπ), q)] : Float64[]))
-    return hcat(vcat(ηq(q1), nq(q1)), vcat(ηq(q2), nq(q2)))
+    dists = _nuisance_dists(model)
+    ci(q) = vcat(marginal_quantiles(_eta_dist(model), q), [quantile(d, q) for d in dists])
+    return hcat(ci(0.5 * α), ci(1 - 0.5 * α))
 end
 
 "log prior density of the constrained parameters"
 function _logprior(model::PhyllotaxisModelAD, θ::AbstractVector)
-    (; mκ, sκ, νκ, τκ, aα, bα, aπ, bπ) = model.prior
-    logμκ, σκ, α, πo = _nuisance(model, θ)
-    lp = logpdf(_eta_dist(model), view(θ, 1:(model.k)))
-    lp += logpdf(Normal(mκ, sκ), logμκ) + logpdf(HalfTDist(νκ, τκ), σκ) + logpdf(Beta(aα, bα), α)
-    return (πo === nothing ? lp : lp + logpdf(Beta(aπ, bπ), πo))
+    k = model.k
+    d = _nuisance_dists(model)
+    lp = logpdf(_eta_dist(model), view(θ, 1:k)) + logpdf(d[1], θ[k + 1]) + logpdf(d[2], θ[k + 2]) + logpdf(d[3], θ[k + 3])
+    return (model.outlier ? lp + logpdf(d[4], θ[k + 4]) : lp)
 end
 
 """
@@ -175,7 +193,7 @@ A_{i, i+d} = exp(η_d + κ cos(y_i − ϕ − o (i + d − 1) ψ)); rectangle ru
 written as η_d + κ (cos − 1) and n κ is added back (no overflow in linear mode).
 """
 function LogDensityProblems.logdensity(model::PhyllotaxisModelAD, θ::AbstractVector{T}) where {T}
-    (; data, k, ngrid_ϕ, ngrid_κ, logspace, n_max) = model
+    data = model.data
     logμκ, σκ, α, πo = _nuisance(model, θ)
     logdens = _logprior(model, θ)
     isfinite(logdens) || return logdens
@@ -183,15 +201,10 @@ function LogDensityProblems.logdensity(model::PhyllotaxisModelAD, θ::AbstractVe
     η = full_eta(model, θ)
     grid = stem_grid(model)
     # plants are split in chunks, each processed by one task with its own workspace
-    chunks = collect(Iterators.partition(eachindex(data), max(1, cld(length(data), 2 * Threads.nthreads()))))
-    tasks = map(chunks) do idxs
+    tasks = map(_chunks(length(data))) do idxs
         Threads.@spawn begin
-            local fws = StemWorkspace(T, k, n_max, ngrid_ϕ, ngrid_κ; logspace)
-            local acc = zero(T)
-            for s in idxs
-                acc += stem_loglik!(fws, grid, corrected_angles(model, s), η, logμκ, σκ, α, false; outlier = πo)
-            end
-            acc
+            local fws = _workspace(model, T, maximum(length, view(data, idxs)))
+            sum(s -> stem_loglik!(fws, grid, corrected_angles(model, s), η, logμκ, σκ, α, false; outlier = πo), idxs)
         end
     end
     for t in tasks
@@ -201,12 +214,14 @@ function LogDensityProblems.logdensity(model::PhyllotaxisModelAD, θ::AbstractVe
 end
 
 "the nuisance grid of the model, in the form `stem_loglik!` reads"
-stem_grid(model::PhyllotaxisModelAD) = (; model.k, model.ngrid_ϕ, model.ngrid_κ, ϕ_grid = collect(range(0, 2π; length = model.ngrid_ϕ + 1)[1:model.ngrid_ϕ]),
-    model.κ_nodes, model.κ_logweights)
+stem_grid(model::PhyllotaxisModelAD) = (;
+    model.k, model.ngrid_ϕ, model.ngrid_κ, ϕ_grid = collect(range(0, 2π; length = model.ngrid_ϕ + 1)[1:model.ngrid_ϕ]),
+    model.κ_nodes, model.κ_logweights,
+)
 
 # Stacked bijector of the constrained parameters: softplus gaps for η, identity, log, logit (α, and π_o with outliers)
 function _bijector(k::Int, outlier::Bool)
-    nd = vcat([Normal(0.0, 1.0), HalfTDist(1.0, 1.0), Beta(1.0, 1.0)], (outlier ? [Beta(1.0, 1.0)] : []))
+    nd = vcat([Normal(0.0, 1.0), _halft(1.0, 1.0), Beta(1.0, 1.0)], (outlier ? [Beta(1.0, 1.0)] : []))
     nr = [(k + i):(k + i) for i in eachindex(nd)]
     return Bijectors.Stacked(Bijectors.bijector.(vcat([LogNormalSoftPlus(zeros(k), ones(k))], nd)), vcat([1:k], nr))
 end
@@ -243,7 +258,7 @@ MAP by Newton trust region in the unconstrained space, with the analytic gradien
 it (`AngleLikelihood.angle_fit_map`). Returns (; θ, u, H, result): θ = `constrained_parameters(model, u)`, H the Hessian of
 the log posterior in u (−inv(H) is the Laplace covariance of u). Also accepts a `TransformedLogDensityProblem`.
 """
-function fit_map(model::PhyllotaxisModelAD; u0 = prior_mean_parameters(model), options = Optim.Options(g_tol = 1e-5, iterations = 100))
+function fit_map(model::PhyllotaxisModelAD; u0 = prior_mean_parameters(model), options = MAP_OPTIONS)
     r = angle_fit_map(model; u0, options)
     return (; θ = constrained_parameters(model, r.u), r.u, r.H, r.result)
 end
@@ -292,8 +307,10 @@ function angle_nuisance(model::PhyllotaxisModelAD, u::AbstractVector)
     logμκ, σκ, α, πo = _nuisance(model, model.binv(u))
     return (; logμκ, σκ, α, outlier = πo)
 end
-function stem_value_grad(model::PhyllotaxisModelAD, u::AbstractVector, s::Int; τ::Real = model.torsion.τ[s], with_grad::Bool = false,
-        fws::StemWorkspace = StemWorkspace(eltype(u), model.k, length(model.data[s]), model.ngrid_ϕ, model.ngrid_κ; logspace = model.logspace))
+function stem_value_grad(
+        model::PhyllotaxisModelAD, u::AbstractVector, s::Int; τ::Real = model.torsion.τ[s], with_grad::Bool = false,
+        fws::StemWorkspace = StemWorkspace(eltype(u), model.k, length(model.data[s]), model.ngrid_ϕ, model.ngrid_κ; logspace = model.logspace)
+    )
     k, K = model.k, 2 * model.k + 1
     θ = model.binv(u)
     logμκ, σκ, α, πo = _nuisance(model, θ)
@@ -332,8 +349,10 @@ torsion_nodes(model::PhyllotaxisModelAD, u::AbstractVector; kw...) = angle_torsi
 MAP with the twist rates integrated out (ω_s ~ N(m_ω, s_ω²), hyperprior `prior`). Returns (; fit, m_ω, s_ω, τ, τ_mean,
 τ_sd, loglik, nodes); fit = (; θ, u, H, result), fit.u = [model parameters; m_ω; log s_ω].
 """
-function fit_map_torsion!(model::PhyllotaxisModelAD; prior::TorsionPrior = TorsionPrior(), u0 = prior_mean_parameters(model), recenter::Int = 1,
-        nodes_kw = (;), options = Optim.Options(g_tol = 1e-5, iterations = 100))
+function fit_map_torsion!(
+        model::PhyllotaxisModelAD; prior::TorsionPrior = TorsionPrior(), u0 = prior_mean_parameters(model), recenter::Int = 1,
+        nodes_kw = (;), options = MAP_OPTIONS
+    )
     r = angle_fit_map_torsion!(model; u0, prior, recenter, nodes_kw, options)
     G = length(u0)
     fit = (; θ = constrained_parameters(model, r.u[1:G]), r.u, r.H, r.result)
@@ -413,14 +432,14 @@ end
 Prior predictive: η, κ, ψ, ϕ, o from the prior, σ from the permanent model, angles from the von Mises emission.
 """
 function sample_prior(model::PhyllotaxisModelAD{T}; n::Int = round(Int, mean(map(length, model.data))), Nsample::Int = 1, rng::AbstractRNG = Random.default_rng()) where {T}
-    (; k, logspace, prior) = model
-    (; mκ, sκ, νκ, τκ, aα, bα) = prior
+    (; k, logspace) = model
+    dlogμκ, dσκ, dα = _nuisance_dists(model)
     ws = PermanentWorkspace(Float64, k, n; logspace = logspace)
     return map(1:Nsample) do _
         toeplitz_weights!(ws, full_eta(model, rand(rng, _eta_dist(model))), n)
         σ = sample_permutation!(rng, ws, n)
-        κ = clamp(rand(rng, LogNormal(rand(rng, Normal(mκ, sκ)), rand(rng, HalfTDist(νκ, τκ)))), 1e-3, 1e3) # for numerical stability
-        ψ = (rand(rng, Bernoulli(rand(rng, Beta(aα, bα)))) ? Golden_angle : Lucas_angle)
+        κ = clamp(rand(rng, LogNormal(rand(rng, dlogμκ), rand(rng, dσκ))), 1.0e-3, 1.0e3) # for numerical stability
+        ψ = (rand(rng, Bernoulli(rand(rng, dα))) ? Golden_angle : Lucas_angle)
         ϕ = rand(rng, Uniform(0.0, 2π))
         o = (rand(rng, Bernoulli(0.5)) ? 1 : -1)
         y = T[rand(rng, VonMises(mod2pi(ϕ + o * (σ[i] - 1) * ψ), κ)) for i in 1:n]
@@ -433,34 +452,32 @@ end
         torsion_mean = 0.0, torsion_sd = 0.0, rng)
 
 Simulate from the propensity model: the order of each stem is an exact draw from the banded permanent with
-log-propensities η (η_1..η_k, symmetric, or the full 2k + 1 vector), κ_s ~ LogNormal(logμκ, σκ) per stem, and
+log-propensities η (η_1..η_k, symmetric, or the full 2k + 1 vector, recognised by its middle entry η_0 = 0),
+κ_s ~ LogNormal(logμκ, σκ) per stem, and
 the angles are y_p ~ vM(ϕ + o (σ[p] − 1) ψ + τ_s x_p, κ_s), replaced with probability `outlier` by a uniform angle.
 `x`: the twist coordinate of each stem (default: the positions 0, 1, …); twist τ_s ~ Normal(torsion_mean, torsion_sd)
 degrees per unit of x. Returns (; angles, orders, torsion, κ, outliers, ψ, o) (outliers: the positions whose angle is
 uniform; ψ, o: the spiral of each stem).
 """
-function simulate_stems(η::AbstractVector{<:Real}; plants::Int = 100, organs::Int = 50, x = nothing, logμκ::Real = 1.5, σκ::Real = 0.0,
-        α::Real = 0.95, outlier::Real = 0.0, torsion_mean::Real = 0.0, torsion_sd::Real = 0.0, rng::AbstractRNG = Random.default_rng())
-    ηf = (isodd(length(η)) ? collect(Float64, η) : vcat(reverse(η), 0.0, η))
+function simulate_stems(
+        η::AbstractVector{<:Real}; plants::Int = 100, organs::Int = 50, x = nothing, logμκ::Real = 1.5, σκ::Real = 0.0,
+        α::Real = 0.95, outlier::Real = 0.0, torsion_mean::Real = 0.0, torsion_sd::Real = 0.0, rng::AbstractRNG = Random.default_rng()
+    )
+    # a cost η_d (d ≠ 0) is negative, never 0: an η_1..η_k of odd length is not taken for the full vector
+    ηf = (isodd(length(η)) && iszero(η[(end + 1) ÷ 2]) ? collect(Float64, η) : vcat(reverse(η), 0.0, η))
     k = length(ηf) ÷ 2
-    xs = (x === nothing ? fill(collect(0.0:(organs - 1)), plants) : x)
+    xs = (x === nothing ? fill(torsion_coordinate(organs), plants) : x)
     (length(xs) == plants && all(length.(xs) .== organs)) || throw(ArgumentError("x: one coordinate per organ of each stem"))
     ws = PermanentWorkspace(Float64, k, organs; logspace = true)
-    angles, orders, outs = Vector{Vector{Float64}}(undef, plants), Vector{Vector{Int}}(undef, plants), Vector{Vector{Int}}(undef, plants)
-    torsion, κs, ψs, os = zeros(plants), zeros(plants), zeros(plants), zeros(Int, plants)
-    for s in 1:plants
-        toeplitz_weights!(ws, ηf, organs)
-        σ = copy(sample_permutation!(rng, ws, organs))
-        κ = exp(logμκ + σκ * randn(rng))
-        ψ = (rand(rng) < α ? Golden_angle : Lucas_angle)
-        ϕ = 2π * rand(rng)
-        o = (rand(rng) < 0.5 ? 1 : -1)
-        τ = torsion_mean + torsion_sd * randn(rng)
-        bad = [rand(rng) < outlier for _ in 1:organs]
-        angles[s] = [bad[p] ? 2π * rand(rng) : rand(rng, VonMises(mod2pi(ϕ + o * (σ[p] - 1) * ψ + deg2rad(τ) * xs[s][p]), κ)) for p in 1:organs]
-        orders[s], torsion[s], κs[s], outs[s], ψs[s], os[s] = σ, τ, κ, findall(bad), ψ, o
+    toeplitz_weights!(ws, ηf, organs)
+    out = map(1:plants) do s
+        σ = sample_permutation!(rng, ws, organs)
+        (; σ, _simulate_angles(rng, σ, xs[s]; logμκ, σκ, α, outlier, torsion_mean, torsion_sd)...)
     end
-    return (; angles, orders, torsion, κ = κs, outliers = outs, ψ = ψs, o = os)
+    return (;
+        angles = [z.y for z in out], orders = [z.σ for z in out], torsion = [z.τ for z in out], κ = [z.κ for z in out],
+        outliers = [z.outliers for z in out], ψ = [z.ψ for z in out], o = [z.o for z in out],
+    )
 end
 
 end # module PropensityModel

@@ -19,14 +19,18 @@ Gaussian-mixture proposal, `TorsionNodes`). The fitted objective is then a smoot
 """
 module Torsion
 
-using Statistics, LinearAlgebra
+using Statistics
+using Distributions: Normal, logpdf
 using LogExpFunctions, FastGaussQuadrature
 using Optim, NLSolversBase
-using ..Common: logpdf_halft
+using ..Common: _halft
+
+# default options of the Newton MAP fits
+const MAP_OPTIONS = Optim.Options(g_tol = 1.0e-5, iterations = 100)
 
 export StemTorsion, TorsionPrior, TorsionNodes, torsion_coordinate, torsion_corrected, torsion_step, torsion_hyperprior,
-       scan_rate, stem_nodes, node_logterms, node_posterior, newton_map, corrected_angles, update_torsion!,
-       torsion_nodes, fit_map_torsion!, golden_section_max
+    scan_rate, stem_nodes, node_logterms, node_posterior, newton_map, corrected_angles, update_torsion!,
+    torsion_nodes, fit_map_torsion!, golden_section_max
 
 """
     corrected_angles(model, s; τ)
@@ -91,7 +95,7 @@ Base.@kwdef struct TorsionPrior
 end
 
 "log hyperprior of (m_ω, log s_ω), Jacobian of the log included"
-torsion_hyperprior(p::TorsionPrior, m, logs) = -0.5 * ((m - p.m0) / p.sm)^2 - log(p.sm) - 0.5 * log(2π) + logpdf_halft(exp(logs), p.νs, p.τs) + logs
+torsion_hyperprior(p::TorsionPrior, m, logs) = logpdf(Normal(p.m0, p.sm), m) + logpdf(_halft(p.νs, p.τs), exp(logs)) + logs
 
 "x_p = p − 1 (degrees per stem position) for a stem of n organs, or the stem length below p from its n − 1 internodes"
 torsion_coordinate(n::Integer) = collect(0.0:(n - 1))
@@ -123,7 +127,7 @@ end
 Maximum of a unimodal f on [a, b] by golden-section search, to an interval narrower than `tol`. `score(f(x))` is the
 number compared (for an f that returns a richer object). Returns (x, f(x)) of the best point evaluated.
 """
-function golden_section_max(f, a::Real, b::Real; tol::Real = 1e-3, score = identity)
+function golden_section_max(f, a::Real, b::Real; tol::Real = 1.0e-3, score = identity)
     c = (sqrt(5) - 1) / 2
     x1, x2 = b - c * (b - a), a + c * (b - a)
     f1, f2 = f(x1), f(x2)
@@ -176,7 +180,7 @@ function stem_nodes(f, step::Real; scan = -25.0:0.5:25.0, Δ::Real = 8.0, maxmod
         any(m -> abs(m[1] - t) < 0.25, modes) && continue
         δ = 0.05
         c2 = (g(t + δ) - 2gt + g(t - δ)) / δ^2
-        sd = inflate * min(1 / sqrt(max(-c2, 1e-3)), 2.0)
+        sd = inflate * min(1 / sqrt(max(-c2, 1.0e-3)), 2.0)
         push!(modes, (t, sd, gt))
     end
     best = maximum(m -> m[3], modes)
@@ -188,7 +192,7 @@ function stem_nodes(f, step::Real; scan = -25.0:0.5:25.0, Δ::Real = 8.0, maxmod
     lπ .-= logsumexp(lπ)
     z, w = gausshermite(nnodes; normalize = true)
     comps = [(m[1] / step, m[2] / step) for m in modes]
-    logq(ω) = logsumexp([lπ[r] - 0.5 * ((ω - c) / h)^2 - log(h) - 0.5 * log(2π) for (r, (c, h)) in enumerate(comps)])
+    logq(ω) = logsumexp([lπ[r] + logpdf(Normal(c, h), ω) for (r, (c, h)) in enumerate(comps)])
     ω, logw = Float64[], Float64[]
     for (r, (c, h)) in enumerate(comps), j in eachindex(z)
         x = c + h * z[j]
@@ -199,7 +203,7 @@ function stem_nodes(f, step::Real; scan = -25.0:0.5:25.0, Δ::Real = 8.0, maxmod
 end
 
 "log terms a_j = logw_j + ℓ_j + log N(ω_j | m, s) of one stem's integral; the stem's integrated log-likelihood is logsumexp(a)"
-node_logterms(ω, logw, ℓ, m, s) = [logw[j] + ℓ[j] - 0.5 * ((ω[j] - m) / s)^2 - log(s) - 0.5 * log(2π) for j in eachindex(ω)]
+node_logterms(ω, logw, ℓ, m, s) = [logw[j] + ℓ[j] + logpdf(Normal(m, s), ω[j]) for j in eachindex(ω)]
 
 "posterior of one stem's rate from its node terms a (Float64): (mean, sd, most probable mode centre)"
 function node_posterior(ω, a, modes)
@@ -217,7 +221,7 @@ end
 Maximise f by Newton trust region, `vgh(v, order)` returning (f, ∇f or nothing, ∇²f or nothing) up to `order`. A
 non-finite evaluation is a rejected step. Returns (; v, H, result) with H the Hessian at the last Newton step.
 """
-function newton_map(vgh, v0::AbstractVector; options = Optim.Options(g_tol = 1e-5, iterations = 100))
+function newton_map(vgh, v0::AbstractVector; options = MAP_OPTIONS)
     H_last = zeros(length(v0), length(v0))
     fgh! = (F, G, H, v) -> begin
         order = (H !== nothing ? 2 : G !== nothing ? 1 : 0)

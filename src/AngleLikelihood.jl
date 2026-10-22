@@ -26,17 +26,25 @@ module AngleLikelihood
 
 using Random, Statistics
 using LogExpFunctions, ForwardDiff, Optim
+using Distributions: VonMises
 using ..Common: Golden_angle, Lucas_angle, logbesseli, besseliratio, _isneginf
-using ..Permanents: PermanentWorkspace, PermutationGraph, forward!, backward!, toeplitz_weights!, map_permutation,
-    sample_permutation!
-using ..Torsion: TorsionPrior, TorsionNodes, torsion_step, torsion_hyperprior, stem_nodes, node_logterms, node_posterior,
-    newton_map, scan_rate, golden_section_max, corrected_angles
+using ..Permanents: PermanentWorkspace, forward!, backward!, toeplitz_weights!, map_permutation, sample_permutation!
+using ..Torsion: TorsionPrior, TorsionNodes, MAP_OPTIONS, torsion_step, torsion_hyperprior, stem_nodes, node_logterms,
+    node_posterior, newton_map, scan_rate, golden_section_max, corrected_angles
 
 export StemWorkspace, stem_loglik!, stem_value_grad, global_logprior, angle_model, stem_etas, angle_nuisance, stem_grid,
-       angle_vgh, angle_fit_map, angle_update_torsion!, angle_torsion_nodes, torsion_vgh, angle_fit_map_torsion!,
-       stem_loglik, angle_loglikelihood, decode_orders, order_posterior, spiral_posterior, simulate_stems, constrained_parameters,
-       unconstrained_parameters, prior_mean_parameters
+    angle_vgh, angle_fit_map, angle_update_torsion!, angle_torsion_nodes, torsion_vgh, angle_fit_map_torsion!,
+    stem_loglik, angle_loglikelihood, decode_orders, order_posterior, spiral_posterior, simulate_stems, constrained_parameters,
+    unconstrained_parameters, prior_mean_parameters
 
+"""
+    StemWorkspace(T, k, n_max, ngrid_ϕ, ngrid_κ; logspace = false)
+
+Buffers of `stem_loglik!` for stems of at most `n_max` organs, band k and a nuisance grid of `ngrid_ϕ` offsets and
+`ngrid_κ` κ nodes, with element type T (Float64, or a ForwardDiff dual type for the Hessian pass): the banded-permanent
+workspace, the cosine table of the nuisance combinations, the per-combination log-permanents and the gradient
+accumulator `grad`. One per task; it is reused across stems and evaluations.
+"""
 struct StemWorkspace{T}
     perm::PermanentWorkspace{T}
     C::Array{Float64, 3} # cos(y_i - ϕ - o (j - 1) ψ) - 1 per (ϕ, o, ψ) combination, n_max × (2k + 1) × 4 ngrid_ϕ
@@ -60,16 +68,40 @@ function _combo(grid, c::Int, α)
     return (o = (io == 0 ? -1 : 1), ψ, lp, ϕ = grid.ϕ_grid[iϕ + 1])
 end
 
+# cosine table of the nuisance combinations (ϕ fastest, then o, then ψ) with log p(ψ) and ∂ log p(ψ) / ∂α of each: the
+# cosines depend on the angles (so on the twist rate), not on κ or η
+function _fill_cosines!(fws::StemWorkspace, grid, y::AbstractVector, α)
+    (; k, ϕ_grid) = grid
+    (; C, logp_c, galpha_c) = fws
+    n = length(y)
+    cidx = 0
+    for (o, (ψ, logp, galpha)) in Iterators.product((-1, 1), ((Golden_angle, log(α), 1 / α), (Lucas_angle, log1p(-α), -1 / (1 - α))))
+        for ϕ in ϕ_grid
+            cidx += 1
+            logp_c[cidx] = logp
+            galpha_c[cidx] = galpha
+            @inbounds for d in -k:k, i in max(1, 1 - d):min(n, n - d)
+                C[i, d + k + 1, cidx] = cos(y[i] - ϕ - o * (i + d - 1) * ψ) - 1
+            end
+        end
+    end
+    return fws
+end
+
+# the two log terms of the outlier mixture at κ, (log(1 − π), log π + log I₀(κ) − κ), or nothing without outliers
+_outlier_terms(::Nothing, κ) = nothing
+_outlier_terms(outlier, κ) = (log1p(-outlier), log(outlier) + logbesseli(0, κ) - κ)
+
 # edge log-weights of combination c at κ: η_d + log((1 − π) e^{κ (cos − 1)} + π I₀(κ) e^{−κ}) with outliers of probability
 # π (the von Mises density and the uniform one, both divided by e^κ / (2π I₀(κ)), which the caller adds back), and
-# η_d + κ (cos − 1) without
-function _fill_weights!(w, η, C, c::Int, κ, n::Int, k::Int, outlier)
-    if outlier === nothing
+# η_d + κ (cos − 1) without; ot = `_outlier_terms(π, κ)`
+function _fill_weights!(w, η, C, c::Int, κ, n::Int, k::Int, ot)
+    if ot === nothing
         @inbounds for d in -k:k, i in max(1, 1 - d):min(n, n - d)
             w[i, d + k + 1] = η[d + k + 1] + κ * C[i, d + k + 1, c]
         end
     else
-        la, lb = log1p(-outlier), log(outlier) + logbesseli(0, κ) - κ
+        la, lb = ot
         @inbounds for d in -k:k, i in max(1, 1 - d):min(n, n - d)
             w[i, d + k + 1] = η[d + k + 1] + logaddexp(la + κ * C[i, d + k + 1, c], lb)
         end
@@ -93,34 +125,28 @@ Pass 1 runs the forward pass on the whole (ϕ, o, ψ) × κ grid. Pass 2 runs fo
 posterior weight exceeds `prune` (the posterior over the grid is concentrated on a few points), and accumulates the
 expected displacement counts and expected cosines.
 """
-function stem_loglik!(fws::StemWorkspace{T}, grid, y::AbstractVector, η::AbstractVector, logμκ, σκ, α, with_grad::Bool;
-        prune::Real = 1e-14, outlier = nothing) where {T}
-    (; k, ngrid_ϕ, ngrid_κ, ϕ_grid, κ_nodes, κ_logweights) = grid
+function stem_loglik!(
+        fws::StemWorkspace{T}, grid, y::AbstractVector, η::AbstractVector, logμκ, σκ, α, with_grad::Bool;
+        prune::Real = 1.0e-14, outlier = nothing
+    ) where {T}
+    (; k, ngrid_ϕ, ngrid_κ, κ_nodes, κ_logweights) = grid
     (; perm, C, logp_c, galpha_c, log_Z, log_Zq, grad) = fws
     n = length(y)
     w = perm.w
     K = 2 * k + 1
     Nc = 4 * ngrid_ϕ
 
-    # cosines do not depend on κ: compute them once per plant
-    cidx = 0
-    for (o, (ψ, logp, galpha)) in Iterators.product((-1, 1), ((Golden_angle, log(α), 1 / α), (Lucas_angle, log1p(-α), -1 / (1 - α))))
-        for ϕ in ϕ_grid
-            cidx += 1
-            logp_c[cidx] = logp
-            galpha_c[cidx] = galpha
-            @inbounds for d in -k:k, i in max(1, 1 - d):min(n, n - d)
-                C[i, d + k + 1, cidx] = cos(y[i] - ϕ - o * (i + d - 1) * ψ) - 1
-            end
-        end
-    end
-    fill_weights! = (c, κ) -> _fill_weights!(w, η, C, c, κ, n, k, outlier)
+    # cosines do not depend on κ: compute them once per plant; the outlier terms depend on κ alone
+    _fill_cosines!(fws, grid, y, α)
+    κs = [exp(logμκ + σκ * z) for z in κ_nodes]
+    ots = [_outlier_terms(outlier, κ) for κ in κs]
+    fill_weights!(c, q) = _fill_weights!(w, η, C, c, κs[q], n, k, ots[q])
 
     # pass 1: forward passes
     for q in 1:ngrid_κ
-        κ = exp(logμκ + σκ * κ_nodes[q])
+        κ = κs[q]
         for c in 1:Nc
-            fill_weights!(c, κ)
+            fill_weights!(c, q)
             log_Z[c, q] = forward!(perm, n) + n * κ + logp_c[c]
         end
         log_Zq[q] = κ_logweights[q] + logsumexp(view(log_Z, :, q)) - n * logbesseli(0, κ)
@@ -133,7 +159,7 @@ function stem_loglik!(fws::StemWorkspace{T}, grid, y::AbstractVector, η::Abstra
     if with_grad
         logprune = log(prune)
         for q in 1:ngrid_κ
-            κ = exp(logμκ + σκ * κ_nodes[q])
+            κ = κs[q]
             v = exp(log_Zq[q] - lse_q)
             lse_c = logsumexp(view(log_Z, :, q))
             # a κ node where every combination underflowed (very large κ, scaled space) has zero weight
@@ -142,14 +168,14 @@ function stem_loglik!(fws::StemWorkspace{T}, grid, y::AbstractVector, η::Abstra
             gκ = -n * Aκ # ∂ / ∂κ of - n log I₀(κ)
             gπ = zero(T)
             # with outliers: ∂w/∂κ = r C + (1 − r)(A(κ) − 1) and ∂w/∂π = −r / (1 − π) + (1 − r) / π, r = P(von Mises | edge)
-            la, lb = (outlier === nothing ? (zero(T), zero(T)) : (log1p(-outlier), log(outlier) + logbesseli(0, κ) - κ))
+            la, lb = (ots[q] === nothing ? (zero(T), zero(T)) : ots[q])
             for c in 1:Nc
                 lu = log_Z[c, q] - lse_c
                 π_qc = v * exp(lu)
                 gκ += exp(lu) * n # from + n κ
                 grad[K + 3] += π_qc * galpha_c[c]
                 (log(v) + lu < logprune) && continue
-                fill_weights!(c, κ)
+                fill_weights!(c, q)
                 forward!(perm, n)
                 rho = backward!(perm, n)
                 cc, cπ = zero(T), zero(T)
@@ -248,16 +274,20 @@ _chunks(S) = collect(Iterators.partition(1:S, max(1, cld(S, 2 * Threads.nthreads
 # Σ over stems of the log-likelihood and its gradient in u, threaded, generic in eltype(u)
 function _data_value_grad(m, u::AbstractVector{T}, with_grad::Bool) where {T}
     am = angle_model(m)
-    parts = fetch.([Threads.@spawn begin
-        local fws = _workspace(m, T, maximum(length, view(am.data, idxs)))
-        local l, g = zero(T), zeros(T, length(u))
-        for s in idxs
-            ls, gs = stem_value_grad(m, u, s; with_grad, fws)
-            l += ls
-            with_grad && (g .+= gs)
-        end
-        (l, g)
-    end for idxs in _chunks(length(am.data))])
+    parts = fetch.(
+        [
+            Threads.@spawn begin
+                local fws = _workspace(m, T, maximum(length, view(am.data, idxs)))
+                local l, g = zero(T), zeros(T, length(u))
+                for s in idxs
+                    ls, gs = stem_value_grad(m, u, s; with_grad, fws)
+                    l += ls
+                    with_grad && (g .+= gs)
+                end
+                (l, g)
+            end for idxs in _chunks(length(am.data))
+        ]
+    )
     return sum(first, parts), (with_grad ? sum(last, parts) : nothing)
 end
 
@@ -288,7 +318,7 @@ function angle_vgh(m, u::AbstractVector, order::Int)
 end
 
 "MAP by Newton trust region with analytic gradient and dual-pass Hessian; returns (; u, H, result)"
-function angle_fit_map(m; u0, options = Optim.Options(g_tol = 1e-5, iterations = 100))
+function angle_fit_map(m; u0, options = MAP_OPTIONS)
     nf = newton_map((u, order) -> angle_vgh(m, u, order), u0; options)
     return (; u = nf.v, H = nf.H, result = nf.result)
 end
@@ -317,21 +347,24 @@ function angle_loglikelihood(m, tfit::NamedTuple)
     return sum(s -> logsumexp(_node_terms(m, tfit.fit.u, s, tfit.nodes, fws)), eachindex(angle_model(m).data))
 end
 
-# run f(s, fws) for every stem, one task and one Float64 workspace per stem, longest stems first (a scan evaluates its
-# stem's likelihood a few hundred times: the workspace is reused, and long stems do not finish last)
+# f(s, fws) for every stem, one task and one Float64 workspace per stem, longest stems first (a scan evaluates its
+# stem's likelihood a few hundred times: the workspace is reused, and long stems do not finish last); the results in
+# stem order
 function _per_stem(f, m)
     data = angle_model(m).data
-    @sync for s in sortperm(length.(data); rev = true)
-        Threads.@spawn f(s, _workspace(m, Float64, length(data[s])))
+    tasks = Vector{Task}(undef, length(data))
+    for s in sortperm(length.(data); rev = true)
+        tasks[s] = Threads.@spawn f(s, _workspace(m, Float64, length(data[s])))
     end
+    return [fetch(t) for t in tasks]
 end
 
 "each stem's rate set to the maximum of its own log-likelihood at u (scan + golden section)"
 function angle_update_torsion!(m, u; scan = -25.0:0.5:25.0)
     tor = angle_model(m).torsion
     uf = map(Float64, u)
-    _per_stem(m) do s, fws
-        tor.τ[s] = scan_rate(τ -> _stem_ll(m, uf, s, τ; fws), torsion_step(tor.x[s]); scan)
+    tor.τ .= _per_stem(m) do s, fws
+        scan_rate(τ -> _stem_ll(m, uf, s, τ; fws), torsion_step(tor.x[s]); scan)
     end
     return tor.τ
 end
@@ -340,9 +373,8 @@ end
 function angle_torsion_nodes(m, u; kw...)
     tor = angle_model(m).torsion
     uf = map(Float64, u)
-    res = Vector{Any}(undef, length(tor.τ))
-    _per_stem(m) do s, fws
-        res[s] = stem_nodes(τ -> _stem_ll(m, uf, s, τ; fws), torsion_step(tor.x[s]); kw...)
+    res = _per_stem(m) do s, fws
+        stem_nodes(τ -> _stem_ll(m, uf, s, τ; fws), torsion_step(tor.x[s]); kw...)
     end
     return TorsionNodes(getindex.(res, 1), getindex.(res, 2), getindex.(res, 3))
 end
@@ -384,20 +416,26 @@ its analytic gradient; nodes below e^-30 of the best skipped in the derivative p
 function torsion_vgh(m, prior::TorsionPrior, nodes::TorsionNodes, v::AbstractVector, order::Int)
     am = angle_model(m)
     G = length(v) - 2
-    parts = reduce(vcat, fetch.([Threads.@spawn begin
-        local nmax = maximum(length, view(am.data, idxs))
-        local fws = _workspace(m, Float64, nmax)
-        local fwd = (order == 2 ? _workspace(m, ForwardDiff.Dual{AngleHessianTag, Float64, G + 2}, nmax) : nothing)
-        map(idxs) do s
-            a = _node_terms(m, v, s, nodes, fws)
-            L0 = logsumexp(a)
-            order == 0 && return (L0, nothing, nothing)
-            keep = a .≥ maximum(a) - 30
-            order == 1 && return (L0, _stem_integrated(m, v, s, nodes, keep, fws)[2], nothing)
-            _, gd = _stem_integrated(m, _seed(v), s, nodes, keep, fwd)
-            (L0, ForwardDiff.value.(gd), _hessian_from(gd))
-        end
-    end for idxs in _chunks(length(am.data))]))
+    parts = reduce(
+        vcat, fetch.(
+            [
+                Threads.@spawn begin
+                    local nmax = maximum(length, view(am.data, idxs))
+                    local fws = _workspace(m, Float64, nmax)
+                    local fwd = (order == 2 ? _workspace(m, ForwardDiff.Dual{AngleHessianTag, Float64, G + 2}, nmax) : nothing)
+                    map(idxs) do s
+                        a = _node_terms(m, v, s, nodes, fws)
+                        L0 = logsumexp(a)
+                        order == 0 && return (L0, nothing, nothing)
+                        keep = a .≥ maximum(a) - 30
+                        order == 1 && return (L0, _stem_integrated(m, v, s, nodes, keep, fws)[2], nothing)
+                        _, gd = _stem_integrated(m, _seed(v), s, nodes, keep, fwd)
+                        (L0, ForwardDiff.value.(gd), _hessian_from(gd))
+                    end
+                end for idxs in _chunks(length(am.data))
+            ]
+        )
+    )
     lp = w -> global_logprior(m, w[1:G]) + torsion_hyperprior(prior, w[G + 1], w[G + 2])
     l = lp(v) + sum(first, parts)
     order == 0 && return (l, nothing, nothing)
@@ -414,8 +452,10 @@ The fit behind `fit_map_torsion!`: fit without torsion; nodes; fit with each rat
 (Newton on `torsion_vgh`); `recenter` times: nodes at the new fit and refit. Returns (; u, H, result, m_ω, s_ω, τ,
 τ_mean, τ_sd, loglik, nodes), u = [model u; m_ω; log s_ω].
 """
-function angle_fit_map_torsion!(m; u0, prior::TorsionPrior = TorsionPrior(), recenter::Int = 1, nodes_kw = (;),
-        options = Optim.Options(g_tol = 1e-5, iterations = 100))
+function angle_fit_map_torsion!(
+        m; u0, prior::TorsionPrior = TorsionPrior(), recenter::Int = 1, nodes_kw = (;),
+        options = MAP_OPTIONS
+    )
     tor = angle_model(m).torsion
     tor.τ .= 0
     u = angle_fit_map(m; u0, options).u
@@ -436,8 +476,10 @@ function angle_fit_map_torsion!(m; u0, prior::TorsionPrior = TorsionPrior(), rec
     terms = [_node_terms(m, v, s, nodes, fws) for s in eachindex(tor.τ)]
     post = [node_posterior(nodes.ω[s], a, nodes.modes[s]) for (s, a) in enumerate(terms)]
     tor.τ .= getindex.(post, 3)
-    return (; u = v, H = nf.H, result = nf.result, m_ω = v[G + 1], s_ω = exp(v[G + 2]), τ = copy(tor.τ),
-        τ_mean = getindex.(post, 1), τ_sd = getindex.(post, 2), loglik = sum(logsumexp, terms), nodes)
+    return (;
+        u = v, H = nf.H, result = nf.result, m_ω = v[G + 1], s_ω = exp(v[G + 2]), τ = copy(tor.τ),
+        τ_mean = getindex.(post, 1), τ_sd = getindex.(post, 2), loglik = sum(logsumexp, terms), nodes,
+    )
 end
 
 #################################################################################################################
@@ -447,27 +489,31 @@ end
 # State of stem s at twist rate τ, for every candidate log-propensity (rank offset): the cosine table of the nuisance
 # combinations stays in fws (it depends on τ, not on the candidate); per candidate c, its log prior weight plus its stem
 # log-likelihood (lc) and the within-candidate log posterior of each nuisance combination × κ node (P[c], Nc × ngrid_κ,
-# normalised) and log perm(e^η_c) (lperm).
+# normalised) and log perm(e^η_c) (lperm); per κ node, κ, its outlier terms (`_outlier_terms`) and n log I₀(κ).
+# `_refresh_cosines!(fws, st)` restores the cosine table of a state after other twist rates were evaluated.
 function _stem_state(m, u, s::Int, τ::Real, fws::StemWorkspace)
     grid = stem_grid(m)
     nu = angle_nuisance(m, u)
     y = corrected_angles(angle_model(m), s; τ)
     n = length(y)
+    κs = [exp(nu.logμκ + nu.σκ * z) for z in grid.κ_nodes]
+    ots = [_outlier_terms(nu.outlier, κ) for κ in κs]
+    nlI0 = [n * logbesseli(0, κ) for κ in κs]
     etas, logw = stem_etas(m, u, s)
     lc = zeros(length(etas))
     P = Vector{Matrix{Float64}}(undef, length(etas))
     lperm = zeros(length(etas))
     for (c, η) in enumerate(etas)
         ℓ = stem_loglik!(fws, grid, y, η, nu.logμκ, nu.σκ, nu.α, false; outlier = nu.outlier)
-        B = [fws.log_Z[j, q] + grid.κ_logweights[q] - n * logbesseli(0, exp(nu.logμκ + nu.σκ * grid.κ_nodes[q]))
-             for j in axes(fws.log_Z, 1), q in 1:grid.ngrid_κ]
+        B = [fws.log_Z[j, q] + grid.κ_logweights[q] - nlI0[q] for j in axes(fws.log_Z, 1), q in 1:grid.ngrid_κ]
         lB = logsumexp(B)
         lc[c] = logw[c] + ℓ
         P[c] = B .- lB
         lperm[c] = lB - log(2 * grid.ngrid_ϕ) - n * log(2π) - ℓ
     end
-    return (; y, n, etas, logw, lc, P, lperm, nu, grid)
+    return (; y, n, etas, logw, lc, P, lperm, nu, grid, κs, ots, nlI0)
 end
+_refresh_cosines!(fws::StemWorkspace, st) = _fill_cosines!(fws, st.grid, st.y, st.nu.α)
 
 # twist rule of stem s: the values of its rate and their log weights (with the population law)
 function _twist_rule(m, s::Int, tfit)
@@ -492,17 +538,17 @@ population law); with plain parameters u, at each stem's current rate. Per stem:
 exact draws of σ (a nuisance state drawn from its posterior, then σ by forward filtering, backward sampling).
 States of posterior weight below `prune` are skipped (their mass is renormalised away).
 """
-function order_posterior(m, ut; nsamples::Int = 0, rng::AbstractRNG = Random.default_rng(), prune::Real = 1e-8)
+function order_posterior(m, ut; nsamples::Int = 0, rng::AbstractRNG = Random.default_rng(), prune::Real = 1.0e-8)
     am = angle_model(m)
     u, tfit = _model_u(m, ut), _tfit(ut)
     k = am.k
     S = length(am.data)
     seeds = rand(rng, UInt64, S)
-    out = Vector{Any}(undef, S)
-    _per_stem(m) do s, fws
+    return _per_stem(m) do s, fws
         srng = Xoshiro(seeds[s])
         ω, lpω = _twist_rule(m, s, tfit)
-        lj = [lpω[j] + logsumexp(_stem_state(m, u, s, ω[j], fws).lc) for j in eachindex(ω)]
+        sts = [_stem_state(m, u, s, ω[j], fws) for j in eachindex(ω)]
+        lj = [lpω[j] + logsumexp(sts[j].lc) for j in eachindex(ω)]
         Pj = exp.(lj .- logsumexp(lj))
         # every retained state (node j, candidate c, combination, κ node q) with its posterior weight
         n = length(am.data[s])
@@ -510,13 +556,13 @@ function order_posterior(m, ut; nsamples::Int = 0, rng::AbstractRNG = Random.def
         states, wts = Tuple{Int, Int, Int, Int}[], Float64[]
         for j in eachindex(ω)
             Pj[j] < prune && continue
-            st = _stem_state(m, u, s, ω[j], fws) # also refreshes the cosine table of fws for this twist rate
+            st = sts[j]
+            _refresh_cosines!(fws, st)
             pc = exp.(st.lc .- logsumexp(st.lc))
             for c in eachindex(st.etas), q in 1:st.grid.ngrid_κ, cb in axes(st.P[c], 1)
                 wgt = Pj[j] * pc[c] * exp(st.P[c][cb, q])
                 wgt < prune && continue
-                κ = exp(st.nu.logμκ + st.nu.σκ * st.grid.κ_nodes[q])
-                _fill_weights!(fws.perm.w, st.etas[c], fws.C, cb, κ, n, k, st.nu.outlier)
+                _fill_weights!(fws.perm.w, st.etas[c], fws.C, cb, st.κs[q], n, k, st.ots[q])
                 forward!(fws.perm, n)
                 ρ .+= wgt .* backward!(fws.perm, n)
                 push!(states, (j, c, cb, q)); push!(wts, wgt)
@@ -527,19 +573,18 @@ function order_posterior(m, ut; nsamples::Int = 0, rng::AbstractRNG = Random.def
         if nsamples > 0
             cw = cumsum(wts)
             draws = sort([states[min(searchsortedfirst(cw, rand(srng) * cw[end]), length(cw))] for _ in 1:nsamples])
-            jlast, st = 0, nothing
-            for (j, c, cb, q) in draws # sorted by twist node: one _stem_state (and cosine table) per node
-                (j != jlast) && (st = _stem_state(m, u, s, ω[j], fws); jlast = j)
-                κ = exp(st.nu.logμκ + st.nu.σκ * st.grid.κ_nodes[q])
-                _fill_weights!(fws.perm.w, st.etas[c], fws.C, cb, κ, n, k, st.nu.outlier)
-                push!(samples, copy(sample_permutation!(srng, fws.perm, n)))
+            jlast = 0
+            for (j, c, cb, q) in draws # sorted by twist node: one cosine table per node
+                st = sts[j]
+                (j != jlast) && (_refresh_cosines!(fws, st); jlast = j)
+                _fill_weights!(fws.perm.w, st.etas[c], fws.C, cb, st.κs[q], n, k, st.ots[q])
+                push!(samples, sample_permutation!(srng, fws.perm, n))
             end
             shuffle!(srng, samples)
         end
         τm = sum(Pj .* ω)
-        out[s] = (; ρ, samples, τ_mean = τm, τ_sd = sqrt(max(sum(Pj .* (ω .- τm) .^ 2), 0.0)))
+        (; ρ, samples, τ_mean = τm, τ_sd = sqrt(max(sum(Pj .* (ω .- τm) .^ 2), 0.0)))
     end
-    return [out[s] for s in 1:S]
 end
 
 # best (order, nuisance state) of stem s at twist rate τ: max over the candidates, the nuisance combinations and the κ
@@ -552,15 +597,15 @@ function _joint_best(m, u, s::Int, τ::Real, lpτ::Real, fws::StemWorkspace; Δ:
     top = maximum(c -> st.lc[c] + maximum(st.P[c]), eachindex(st.etas))
     for c in eachindex(st.etas), q in 1:grid.ngrid_κ, cb in axes(st.P[c], 1)
         (st.lc[c] + st.P[c][cb, q] < top - Δ) && continue
-        κ = exp(nu.logμκ + nu.σκ * grid.κ_nodes[q])
+        κ = st.κs[q]
         cmb = _combo(grid, cb, nu.α)
-        w = _fill_weights!(fws.perm.w, st.etas[c], fws.C, cb, κ, n, k, nu.outlier)
+        w = _fill_weights!(fws.perm.w, st.etas[c], fws.C, cb, κ, n, k, st.ots[q])
         σ = map_permutation(fws.perm.g, w, n)
         v = sum(w[i, σ[i] - i + k + 1] for i in 1:n)
         # log p(σ, angles, state): edge weights + the constants removed from them, the state's prior (o: ½, ψ, ϕ: 1/ngrid_ϕ,
         # log κ: its log-normal density at the node), the candidate's prior and its normaliser, the twist's population law
-        score = v + n * κ - n * logbesseli(0, κ) - n * log(2π) + cmb.lp - log(2 * grid.ngrid_ϕ) - 0.5 * grid.κ_nodes[q]^2 -
-                st.lperm[c] + st.logw[c] + lpτ
+        score = v + n * κ - st.nlI0[q] - n * log(2π) + cmb.lp - log(2 * grid.ngrid_ϕ) - 0.5 * grid.κ_nodes[q]^2 -
+            st.lperm[c] + st.logw[c] + lpτ
         score > best.score && (best = (; score, σ, τ, cmb.ϕ, cmb.o, cmb.ψ, κ, candidate = c))
     end
     return best
@@ -575,11 +620,8 @@ result) the twist rate: one (; p_lucas, p_ccw) per stem, P(ψ = Lucas angle | an
 the site angles increase, a counter-clockwise spiral). Only forward passes (cheaper than `order_posterior`).
 """
 function spiral_posterior(m, ut)
-    am = angle_model(m)
     u, tfit = _model_u(m, ut), _tfit(ut)
-    S = length(am.data)
-    out = Vector{Any}(undef, S)
-    _per_stem(m) do s, fws
+    return _per_stem(m) do s, fws
         ω, lpω = _twist_rule(m, s, tfit)
         L = fill(-Inf, 2, 2) # [ψ golden / Lucas, o = −1 / +1]
         for j in eachindex(ω)
@@ -591,9 +633,8 @@ function spiral_posterior(m, ut)
             end
         end
         P = exp.(L .- logsumexp(L))
-        out[s] = (; p_lucas = P[2, 1] + P[2, 2], p_ccw = P[1, 2] + P[2, 2])
+        (; p_lucas = P[2, 1] + P[2, 2], p_ccw = P[1, 2] + P[2, 2])
     end
-    return [out[s] for s in 1:S]
 end
 
 """
@@ -610,13 +651,8 @@ orders σ (σ[i] = canonical index of the organ at position i), or with `full = 
 function decode_orders(m, ut; full::Bool = false, refine::Bool = true)
     am = angle_model(m)
     u, tfit = _model_u(m, ut), _tfit(ut)
-    S = length(am.data)
-    out = Vector{Any}(undef, S)
-    _per_stem(m) do s, fws
-        if tfit === nothing
-            out[s] = _joint_best(m, u, s, am.torsion.τ[s], 0.0, fws)
-            return
-        end
+    out = _per_stem(m) do s, fws
+        tfit === nothing && return _joint_best(m, u, s, am.torsion.τ[s], 0.0, fws)
         lpτ(τ) = -0.5 * ((τ - tfit.m_ω) / tfit.s_ω)^2
         f(τ) = _joint_best(m, u, s, τ, lpτ(τ), fws)
         cand = [f(τ) for τ in unique(tfit.nodes.ω[s])]
@@ -624,12 +660,30 @@ function decode_orders(m, ut; full::Bool = false, refine::Bool = true)
         if refine
             modes = tfit.nodes.modes[s]
             h = modes[argmin([abs(md[1] - best.τ) for md in modes])][2]
-            _, refined = golden_section_max(f, best.τ - h, best.τ + h; tol = 1e-5 * h, score = r -> r.score)
+            _, refined = golden_section_max(f, best.τ - h, best.τ + h; tol = 1.0e-5 * h, score = r -> r.score)
             refined.score > best.score && (best = refined)
         end
-        out[s] = best
+        best
     end
-    return full ? [out[s] for s in 1:S] : [out[s].σ for s in 1:S]
+    return full ? out : [b.σ for b in out]
+end
+
+# the angles of one stem of order σ (twist coordinate x): κ ~ LogNormal(logμκ, σκ), the golden spiral with probability
+# α (else the Lucas one), uniform ϕ and orientation, twist τ ~ N(torsion_mean, torsion_sd²) degrees per unit of x, and
+# each angle replaced with probability `outlier` by a uniform one (shared by the `simulate_stems` methods)
+function _simulate_angles(
+        rng::AbstractRNG, σ::AbstractVector{Int}, x::AbstractVector; logμκ, σκ, α, outlier, torsion_mean,
+        torsion_sd
+    )
+    n = length(σ)
+    κ = exp(logμκ + σκ * randn(rng))
+    ψ = (rand(rng) < α ? Golden_angle : Lucas_angle)
+    ϕ = 2π * rand(rng)
+    o = (rand(rng) < 0.5 ? 1 : -1)
+    τ = torsion_mean + torsion_sd * randn(rng)
+    bad = [rand(rng) < outlier for _ in 1:n]
+    y = [bad[p] ? 2π * rand(rng) : rand(rng, VonMises(mod2pi(ϕ + o * (σ[p] - 1) * ψ + deg2rad(τ) * x[p]), κ)) for p in 1:n]
+    return (; y, τ, κ, outliers = findall(bad), ψ, o)
 end
 
 end # module AngleLikelihood

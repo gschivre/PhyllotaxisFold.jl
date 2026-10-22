@@ -22,8 +22,6 @@ paced meristem are in the tagged version `with-model-B`.
 """
 module PhyllotaxisFold
 
-using Reexport
-
 include("Common.jl")
 include("Torsion.jl")
 include("Permanents.jl")
@@ -33,13 +31,12 @@ include("PropensityModel.jl")
 include("CommitmentTiming.jl")
 include("Plastochron.jl")
 
-@reexport using .Common
-@reexport using .Torsion
-@reexport using .Permanents
-@reexport using .AngleLikelihood
-@reexport using .PropensityPriors
-@reexport using .PropensityModel
-@reexport using .CommitmentTiming
-@reexport using .Plastochron
+# re-export every submodule's exported names (and the submodule itself)
+for mod in (Common, Torsion, Permanents, AngleLikelihood, PropensityPriors, PropensityModel, CommitmentTiming, Plastochron)
+    @eval using .$(nameof(mod))
+    for name in names(mod)
+        @eval export $name
+    end
+end
 
 end # module PhyllotaxisFold

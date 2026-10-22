@@ -16,7 +16,10 @@ The tests take about 4 minutes. They cover:
 - the re-weighting identity;
 - the exact derivatives of the delay-law fit, and the shared-core fit and test;
 - the overtaking profile (closed form, simulation, model-free estimate, comparison of groups);
-- the recovery of a delay law from the angles alone.
+- the recovery of a delay law from the angles alone;
+- code quality: [Aqua.jl](https://github.com/JuliaTesting/Aqua.jl) (method ambiguities, unbound type parameters,
+  undefined exports, stale dependencies, compat entries, type piracy) and no unused explicit imports
+  ([ExplicitImports.jl](https://github.com/JuliaTesting/ExplicitImports.jl)).
 
 ## The manual
 
@@ -39,7 +42,7 @@ All figures use simulated data only (GLMakie, in the `docs` environment) and are
 - `docs/make_validation_figures.jl`: the validation on simulated stems (manual §6; about 1.5 h on 18 threads, the
   replicates are cached in `docs/validation.jls` with their posterior order samples, and
   `run_validation(; refit_timing = true)` refits only the delay laws, in about 15 minutes).
-- `docs/validation_clock_drift.jl`: the drifting-clock simulation of manual §6.7 (about 10 minutes on 18 threads,
+- `docs/validation_clock_drift.jl`: the drifting-clock simulation of manual §6.7 (about 2 minutes on 18 threads,
   cached in `docs/clock_drift.jls`).
 
 The caches (`*.jls`) and `docs/build` are not committed.
@@ -48,5 +51,8 @@ The caches (`*.jls`) and `docs/build` are not committed.
 
 - No data and no analysis of real plants in this repository.
 - Julia code: generic in the number type wherever a function can see ForwardDiff duals. Optimisation is done in
-  unconstrained parameters, by Newton's method with a trust region (value, gradient and Hessian in one call).
+  unconstrained parameters, by Newton's method with a trust region (value, gradient and Hessian in one call): an
+  `only_fgh!` callback where the gradient is analytic (the angle model), `TwiceDifferentiable` with
+  `AutoForwardDiff()` otherwise (the delay law, the flowering rate).
+- Formatting: [Runic.jl](https://github.com/fredrikekre/Runic.jl) (`runic --inplace src test docs/*.jl`).
 - The earlier fold-commitment model and its variants are in the tag `with-model-B`.
