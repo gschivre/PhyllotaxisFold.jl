@@ -25,6 +25,10 @@ is in closed form. Ranks beyond the expected total keep the last plastochron.
 `fit_flowering` (maximum likelihood, Newton trust region with ForwardDiff gradient and Hessian), `plastochron_by_rank`
 (a plant with a given τ, by default the median plant), `plant_plastochron` (one plant, from the posterior of its own τ
 given its counts), and `relative_plastochron` (r = T_P / T̄_P for every organ of every stem).
+
+**Delays in hours.** `mean_plastochron` is the mean T_P of the measured organs, in hours, with its standard error (delta
+method through the covariance of the fit), and `in_hours` converts a delay in plastochrons (e.g. the core sd of a
+delay law) with its standard error.
 """
 module Plastochron
 
@@ -34,7 +38,7 @@ using LogExpFunctions, ForwardDiff, Optim
 using ..Common: _ad_objective
 
 export flowering_rate, flowering_cumulative, fit_flowering, plastochron_by_rank, plant_plastochron, tau_posterior,
-    relative_plastochron
+    relative_plastochron, mean_plastochron, in_hours
 
 # (a, b, d) from p and the end of the rise phase for a change point τ
 _abd(p) = (p[1], exp(p[2]), exp(p[3]))
@@ -91,7 +95,8 @@ _nll(p, counts) = -sum(logsumexp(_plant_terms(p, c)) for c in counts)
 Maximum-likelihood rate of a group of plants. `counts`: one vector per plant of the cumulative number of open flowers at
 the end of each day (day 1 = first day of observation; `NaN` for a day without record), up to the last recorded day.
 Newton trust region with the ForwardDiff gradient and Hessian, best of the starting points `starts` (vectors
-p = (a, log b, log d, μ_τ, log σ_τ)). Returns (; p, nll, se, converged), `se` the standard errors of p (inverse Hessian).
+p = (a, log b, log d, μ_τ, log σ_τ)). Returns (; p, nll, se, V, converged): `V` the covariance of p (inverse Hessian),
+`se` its standard errors.
 """
 function fit_flowering(
         counts::AbstractVector{<:AbstractVector{<:Real}};
@@ -107,8 +112,9 @@ function fit_flowering(
     end
     p = Optim.minimizer(best)
     H = ForwardDiff.hessian(f, p)
-    se = sqrt.(max.(diag(inv(H)), 0.0))
-    return (; p, nll = Optim.minimum(best), se, converged = Optim.converged(best))
+    V = inv(H)
+    se = sqrt.(max.(diag(V), 0.0))
+    return (; p, nll = Optim.minimum(best), se, V, converged = Optim.converged(best))
 end
 
 """
@@ -121,7 +127,7 @@ function plastochron_by_rank(p::AbstractVector, K::Integer; τ = nothing)
     τ = (τ === nothing ? exp(p[4]) : τ)
     a, b, d, τe, ρ, A = _phases(p, τ)
     Fτ = b * τe + a * τe^2 / 2
-    TP = zeros(K)
+    TP = zeros(typeof(ρ), K) # generic: ForwardDiff passes through it (mean_plastochron)
     for k in 1:K
         y = k - 0.5
         λ² = (y ≤ Fτ ? b^2 + 2a * y : ρ^2 - 2d * (y - Fτ))
@@ -165,5 +171,34 @@ function relative_plastochron(TP::AbstractVector, ranks::AbstractVector{<:Abstra
     T̄ = (Tref === nothing ? mean(reduce(vcat, T)) : Tref)
     return (; r = [t ./ T̄ for t in T], T̄)
 end
+
+"""
+    mean_plastochron(fit, ranks)
+
+Mean plastochron of the measured organs, in hours: T_P(k) of the median plant (`plastochron_by_rank`), averaged over
+the flower rank k of every organ of every stem (`ranks`: one vector of ranks per stem; ranks beyond the expected total
+keep the last plastochron). Its standard error is the delta method through the covariance `V` of `fit_flowering`.
+Returns (; T, se).
+
+It sets the scale of the delays when the plastochron varies little over the one or two plastochrons that a delay
+spans; `relative_plastochron` shows how much it varies along the stems.
+"""
+function mean_plastochron(fit::NamedTuple, ranks::AbstractVector{<:AbstractVector{<:Integer}})
+    rk = reduce(vcat, collect.(ranks))
+    K = maximum(rk)
+    g(p) = 24 * mean(plastochron_by_rank(p, K)[rk])
+    J = ForwardDiff.gradient(g, fit.p)
+    return (; T = g(fit.p), se = sqrt(max(J' * fit.V * J, 0.0)))
+end
+
+"""
+    in_hours(x, se, T)
+
+A delay `x ± se` in plastochrons (e.g. the core sd `s` of `delay_law_inference`), in hours, given the mean plastochron
+`T = mean_plastochron(fit, ranks)`: the estimate x T̄, and the standard error √((T̄ se)² + (x se_T̄)²). The two
+uncertainties are taken as independent, since they come from different data (the angles and the flower counts).
+Returns (; estimate, se).
+"""
+in_hours(x::Real, se::Real, T::NamedTuple) = (estimate = x * T.T, se = sqrt((T.T * se)^2 + (x * T.se)^2))
 
 end # module Plastochron

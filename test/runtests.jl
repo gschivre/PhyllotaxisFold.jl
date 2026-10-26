@@ -192,6 +192,16 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         @test rel.r[2][1] ≈ TP[3] / rel.T̄
         rel2 = relative_plastochron([TP, 2 .* TP], [1:10, 1:10])
         @test rel2.r[2] ≈ 2 .* rel2.r[1]
+        # delays in hours: the mean plastochron of the measured organs and its delta-method standard error
+        ranks = [1:20, 1:25]
+        T = mean_plastochron(fit, ranks)
+        Th(q) = 24 * mean(plastochron_by_rank(q, 25)[reduce(vcat, collect.(ranks))])
+        @test T.T ≈ Th(fit.p)
+        J = [(Th(fit.p .+ 1.0e-6 .* (1:5 .== i)) - Th(fit.p .- 1.0e-6 .* (1:5 .== i))) / 2.0e-6 for i in 1:5]
+        @test T.se ≈ sqrt(J' * fit.V * J) rtol = 1.0e-4
+        @test fit.se ≈ sqrt.(diag(fit.V))
+        h = in_hours(0.4, 0.05, T)
+        @test h.estimate ≈ 0.4 * T.T && h.se ≈ hypot(T.T * 0.05, 0.4 * T.se)
     end
 
     @testset "PropensityModel" begin
@@ -414,8 +424,8 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         post = [(; samples = [simulate_stems(η; plants = 1, organs = 30, rng = Xoshiro(100 * s + j)).orders[1] for j in 1:20]) for s in 1:5]
         smp = order_samples(post, η)
         @test all(sum(s.w) ≈ 1 for s in smp)
-        ws = PermanentWorkspace(k, 30)
-        @test all(abs.(stem_terms(smp, σ -> logprob_permutation(ws, η, σ))) .< 1.0e-10)
+        # one workspace per call: stem_terms is threaded over stems
+        @test all(abs.(stem_terms(smp, σ -> logprob_permutation(PermanentWorkspace(k, 30), η, σ))) .< 1.0e-10)
         @test_throws ArgumentError order_samples([(; samples = [[6, 1, 2, 3, 4, 5, 7]])], η) # beyond the band
         # stems whose order is known (a posterior concentrated on the true order): the scorer reduces to the exact
         # likelihood, so fit_delay_law is a maximum-likelihood fit of the law; tail masses and core sd recovered. The costs
