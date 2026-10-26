@@ -2,7 +2,7 @@
 #   julia --project=docs -e 'using Pkg; Pkg.instantiate()'   (once; PhyllotaxisFold is a [sources] path dependency)
 #   julia --project=docs docs/make.jl
 # The pages are in docs/src; the figures in docs/src/figures are made by docs/make_figures.jl (illustrations) and
-# docs/make_validation_figures.jl (§6, simulated stems).
+# docs/make_validation_figures.jl (§6, simulated stems), those of the worked analysis by docs/make_workflow.jl.
 
 using Documenter, PhyllotaxisFold
 
@@ -18,6 +18,7 @@ makedocs(;
     ),
     pages = [
         "Home" => "index.md",
+        "A worked analysis" => "workflow.md",
         "Method" => [
             "The problem" => "problem.md",
             "Angles given an order" => "angles.md",

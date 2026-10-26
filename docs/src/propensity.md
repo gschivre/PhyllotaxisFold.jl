@@ -1,8 +1,8 @@
 # 4. The propensity model
 
-Step 1 of the plan ([§1.5](problem.md)) needs a law of the order with two properties. It must have the product form of
-[§3.1](orders.md), so that the sum over orders is exact. And it must be flexible enough to follow the data, so that the
-orders it reconstructs are those the angles support, not those a narrow model imposes.
+Step 1 of the plan ([§1.5](problem.md)) needs a law of the order with the product form of [§3.1](orders.md), so that
+the sum over orders is exact, and flexible enough that the orders it reconstructs are those the angles support, not
+those a narrow model imposes.
 
 ## 4.1 The most general law that keeps the sum exact
 
@@ -25,9 +25,8 @@ per displacement ``d = -k, \dots, k``. With the angles, the weights of [§3](ord
 W_{p,j} = e^{\eta_{j-p}}\; e^{\kappa \cos(y_p - \phi - o\,(j-1)\,\psi - \omega_s x_p)} .
 ```
 
-The propensity model is close in spirit to the stochastic model of Refahi et al. (2016), where each candidate site
-fires at a rate set by the inhibitory field. It keeps what the orders of a stem can identify: how costly each
-displacement is.
+It is close in spirit to the stochastic model of Refahi et al. (2016), where each candidate site fires at a rate set
+by the inhibitory field, and keeps what the orders of a stem identify: how costly each displacement is.
 
 ## 4.2 What ``\eta`` means
 
@@ -42,8 +41,8 @@ displacement is.
     ``\sum_p \sigma(p) = \sum_p p``: the displacements of an order always sum to zero. Every order gains the same
     amount (zero), and ``P(\sigma \mid \eta)`` is unchanged. ∎
 
-The code therefore fixes ``\eta_0 = 0``, and uses **symmetric costs**, ``\eta_{-d} = \eta_d``. Free costs on the
-two sides would not pay for themselves:
+The code therefore fixes ``\eta_0 = 0`` and uses **symmetric costs**, ``\eta_{-d} = \eta_d``. Free costs on the two
+sides would not pay for themselves:
 
 - the tilt moves the overall balance between positive and negative displacements without changing any probability, so
   that balance would be set by the prior alone;
@@ -80,8 +79,7 @@ s_\omega`` and optionally ``\pi_o``) are fitted by maximum a posteriori.
 - **Cost.** One stem of about 45 organs takes about 50 ms (2048 nuisance nodes). A fit of 50–90 stems with the twist
   integrated takes 10–15 minutes on 18 threads.
 
-For the example stem and the other stems simulated with it, figure 1 shows the fitted costs and the orders they
-reconstruct.
+Figure 1 shows the fitted costs of the running example, and the orders they reconstruct.
 
 ![The propensity model fitted to the stems of the example](figures/e4_example_propensity.png)
 
@@ -91,11 +89,10 @@ reconstruct.
 
 ## 4.5 Fitting with the twist integrated out
 
-The twist rate of each stem is integrated out of its likelihood by an adaptive quadrature, whose nodes are placed on
-the peaks of that stem's own likelihood ([§2.6](angles.md)). The nodes depend on the parameters at which they are
-placed, so the fit and the nodes are updated in turn. The nodes stay fixed during a Newton fit, so the objective is a
-smooth function of all the parameters, including ``(m_\omega, \log s_\omega)``. `fit_map_torsion!` alternates the
-two:
+The twist of each stem is integrated out by a quadrature whose nodes sit on the peaks of that stem's own likelihood
+([§2.6](angles.md)). The nodes depend on the parameters where they were placed, so `fit_map_torsion!` updates the fit
+and the nodes in turn; during each Newton fit the nodes stay fixed, and the objective is a smooth function of all the
+parameters, ``(m_\omega, \log s_\omega)`` included:
 
 1. fit without twist;
 2. place the nodes;
@@ -108,9 +105,8 @@ It then optionally places the nodes once more and refits (`recenter`).
 ## 4.6 Why not stop here
 
 The propensity model reconstructs the orders well, but its parameters only describe them. A cost ``\eta_2 = -2.5``
-says that displacements by two positions are rare. It does not say why. It does not say whether they come from an
-organ initiated late, or from one initiated early. It does not predict how the displacements of neighbouring organs go
-together. Answering these questions needs a mechanism, and this is where [§5](timing.md) starts.
+says that displacements by two are rare, not why: whether they come from an organ initiated late or early, or how the
+displacements of neighbours go together. That needs a mechanism, the subject of [§5](timing.md).
 
 **Code.** `PhyllotaxisModelAD(angles, PhyllotaxisPrior(); outlier = false, torsion_x)`,
 `fit_map` (no twist), `fit_map_torsion!` (twist integrated out; overwrites the stored twist rates of the model),

@@ -74,6 +74,8 @@ them. The manual explains why, and shows how well each quantity is recovered on 
 The manual explains the method step by step, from the biology to the equations, with one simulated stem followed
 throughout. It is written in [`docs/src`](docs/src):
 
+- [a worked analysis](docs/src/workflow.md): a simulated wild type and mutant, analysed step by step, with the
+  checks to make and how to read the results;
 - [the problem](docs/src/problem.md): swaps, what is measured, and the two-step plan;
 - [angles given an order](docs/src/angles.md), [summing over all orders](docs/src/orders.md) and
   [the propensity model](docs/src/propensity.md): how the orders are reconstructed;

@@ -1,8 +1,8 @@
 # 2. Angles given an order
 
 Suppose for a moment that we know the order ``\sigma`` of a stem: the organ at height ``p`` comes from site
-``\sigma(p)``. How should its angle ``y_p`` be distributed? This page builds the answer one term at a time, from the
-three difficulties of [§1.3](problem.md).
+``\sigma(p)``. How is its angle ``y_p`` distributed? This page builds the answer one term at a time, one per
+difficulty of [§1.3](problem.md).
 
 ## 2.1 The spiral
 
@@ -17,9 +17,9 @@ divergence. The divergence is the golden angle (``\approx 137.5^\circ``) with pr
 angle (``\approx 99.5^\circ``) otherwise. ``\phi`` is uniform on the circle, and each orientation has probability ½.
 These three quantities are specific to each stem, unknown, and integrated out ([§2.6](angles.md)).
 
-A permutation moves *organs* between sites. It does not move the sites. The organ at height ``p`` is therefore expected
-at ``\phi + o\,(\sigma(p) - 1)\,\psi``. This separation, *where the sites are* versus *in which order their organs
-appear*, is the core of every model of the package.
+A permutation moves *organs* between sites, not the sites themselves: the organ at height ``p`` is expected at
+``\phi + o\,(\sigma(p) - 1)\,\psi``. This separation, *where the sites are* versus *in which order their organs
+appear*, is at the core of the package.
 
 ## 2.2 The noise
 
@@ -36,9 +36,8 @@ The concentration ``\kappa`` plays the role of an inverse variance: for large ``
 **assumption** — each stem has its own concentration, ``\log\kappa_s \sim \mathcal N(\log\mu_\kappa, \sigma_\kappa^2)``,
 integrated out of its likelihood ([§2.6](angles.md)).
 
-Why one ``\kappa`` per stem? A poorly measured stem must be allowed to be noisy. With a single ``\kappa`` for all stems,
-the model could only explain its scattered angles by many permutations, and these spurious permutations would bias
-everything downstream.
+Why one ``\kappa`` per stem? A poorly measured stem must be allowed to be noisy. With a single ``\kappa``, the model
+could only explain its scattered angles by spurious permutations, which would bias everything downstream.
 
 ## 2.3 The twist
 
@@ -56,12 +55,11 @@ When the internodes are not measured, ``x_p = p - 1`` and the rate is per organ.
 **assumption** — the rates are a random effect, ``\omega_s \sim \mathcal N(m_\omega, s_\omega^2)``, integrated out of
 each stem's likelihood ([§2.6](angles.md)).
 
-Could a twist be mistaken for a slightly different divergence? Both rotate the organs more and more going up the
-stem. A divergence ``\psi + \delta`` instead of ``\psi`` moves the organ of site ``j`` by ``o\,(j - 1)\,\delta``:
-*with the sign of the orientation*. A twist rotates the organ at height ``p`` by ``\omega_s x_p``, whatever the
-orientation of the spiral. So the two are told apart by comparing clockwise and counter-clockwise stems. A shifted
-divergence pushes them in opposite directions, a twist in the same direction. A twist also follows the length of the
-stem (long internodes rotate more), and a divergence follows the organ count.
+Could a twist pass for a slightly different divergence? Both rotate the organs more and more going up the stem. But
+a divergence ``\psi + \delta`` moves the organ of site ``j`` by ``o\,(j - 1)\,\delta``, *with the sign of the
+orientation*, while a twist rotates it by ``\omega_s x_p`` whatever the orientation. Clockwise and counter-clockwise
+stems tell them apart: a shifted divergence pushes them in opposite directions, a twist in the same one. A twist also
+follows the length of the stem (long internodes rotate more), a divergence the organ count.
 
 ![The twist of the example stem](figures/e2_example_twist.png)
 
@@ -83,8 +81,8 @@ rather than as a long displacement of its organ.
 
 ## 2.5 The likelihood of one stem
 
-Given the order, the angles are independent. The probability of the angles of a stem is the sum, over everything that
-is not observed, of the probability of the angles:
+Given the order, the angles are independent. The probability of the angles of a stem sums over everything that is not
+observed:
 
 ```math
 p(y) = \sum_{o,\,\psi} p(o)\,p(\psi) \int_0^{2\pi} \frac{d\phi}{2\pi} \int p(\kappa)\,d\kappa
@@ -92,23 +90,20 @@ p(y) = \sum_{o,\,\psi} p(o)\,p(\psi) \int_0^{2\pi} \frac{d\phi}{2\pi} \int p(\ka
 \;\sum_{\sigma} P(\sigma) \prod_{p=1}^{n} \mathrm{vM}\big(y_p \mid \phi + o\,(\sigma(p) - 1)\,\psi + \omega\, x_p,\ \kappa\big).
 ```
 
-Everything in this formula is fixed by this page except ``P(\sigma)``, the law of the order. The models of the
-package differ *only* in ``P(\sigma)``: the propensity model ([§4](propensity.md)) and the timing laws
-([§5](timing.md)). That is what makes the comparison of [§1.5](problem.md) possible.
-
-Two parts of the formula remain hard. The sum over ``\sigma`` is the subject of [§3](orders.md). The integrals over
-the unknowns of each stem are the subject of the next section.
+Everything here is fixed by this page except ``P(\sigma)``, the law of the order. The models of the package differ
+*only* in ``P(\sigma)`` (the propensity model of [§4](propensity.md), the timing laws of [§5](timing.md)), which is
+what makes the comparison of [§1.5](problem.md) possible. Two parts remain hard: the sum over ``\sigma``
+([§3](orders.md)) and the integrals over the unknowns of each stem (next section).
 
 ## 2.6 Integrating out the unknowns of each stem
 
-The spiral (``o``, ``\psi``, ``\phi``), the precision ``\kappa`` and the twist ``\omega`` of a stem are not known.
-Why integrate over them, rather than fix each at its best value? Because fixing them would make the orders look more
-certain than they are. A different offset or twist, combined with a few permutations, can explain the same angles;
-a precision fixed too high leaves no room for noise, and turns it into permutations. Integrating keeps every
-explanation, in proportion to its probability.
+Why integrate over the spiral, precision and twist of a stem, rather than fix each at its best value? Because fixing
+them makes the orders look more certain than they are: another offset or twist, with a few permutations, can explain
+the same angles, and a precision fixed too high turns noise into permutations. Integrating keeps every explanation, in
+proportion to its probability.
 
-The orientation and the divergence take four combinations, summed exactly. The three other integrals are
-one-dimensional, and each is computed by a rule suited to the shape of its integrand:
+The orientation and the divergence take four combinations, summed exactly. The other three integrals are
+one-dimensional, each with a rule suited to its integrand:
 
 - **the offset** ``\phi``, uniform on the circle: the rectangle rule on `ngrid_ϕ` equally spaced nodes (32 by
   default), which is very efficient for periodic functions;
@@ -117,10 +112,10 @@ one-dimensional, and each is computed by a rule suited to the shape of its integ
   multimodal, so a rule placed on the population law would miss its peaks. The nodes are placed on the peaks of each
   stem's own likelihood instead (5 per peak).
 
-All the terms are computed in log space, and ``\log I_0`` with a dedicated routine (`logbesseli`) that also accepts
-dual numbers for the derivatives. The cost is proportional to `ngrid_ϕ` × `ngrid_κ` × `nnodes` (the twist nodes per
-peak, set by `fit_map_torsion!(m; nodes_kw = (; nnodes))`).
-The boxes below derive each rule and measure its accuracy on the 40 stems of the running example.
+All terms are computed in log space, ``\log I_0`` by a routine (`logbesseli`) that also accepts dual numbers. The
+cost is proportional to `ngrid_ϕ` × `ngrid_κ` × `nnodes` (twist nodes per peak,
+`fit_map_torsion!(m; nodes_kw = (; nnodes))`). The boxes derive each rule and measure its accuracy on the 40 stems of
+the running example.
 
 !!! details "Integrating out the spiral: derivation and accuracy"
     **Orientation and divergence.** Four combinations, summed exactly with their probabilities (½ for each
@@ -225,20 +220,20 @@ The boxes below derive each rule and measure its accuracy on the 40 stems of the
     even with 128 nodes. For fine comparisons of integrated log-likelihoods, use 9 nodes per mode
     (`fit_map_torsion!(m; nodes_kw = (; nnodes = 9))`), at about twice the cost.
 
-**How accurate is accurate enough?** The default settings are chosen for *estimation*. An integration error that is
-nearly constant as the parameters move shifts the log-likelihood without moving its maximum or its curvature, so it
-leaves the estimates and their standard errors alone. The errors here are of that kind: they depend mostly on the
-data of each stem (where its peak in ``\phi`` falls between the nodes, how far its peak in ``\omega`` is from a
-Gaussian), and little on the parameters. On the running example, refitting with 64 ``\phi`` nodes and 9 twist nodes per peak moves
-every parameter by less than 0.1 standard error and leaves every decoded order, the fitted delay law and its overtaking
-profile unchanged; the posterior probabilities of the order change by less than 0.002, except on one stem (up to
-0.15). Only the integrated log-likelihood moves, by 0.9 over the 40 stems.
+**How accurate is accurate enough?** The defaults are chosen for *estimation*. An integration error that barely
+changes as the parameters move shifts the log-likelihood without moving its maximum or its curvature, so it leaves the
+estimates and their standard errors alone. The errors here are of that kind: they depend mostly on the data of each
+stem (where its peak in ``\phi`` falls between the nodes, how Gaussian its peak in ``\omega`` is), little on the
+parameters. On the running example, refitting with 64 ``\phi`` nodes and 9 twist nodes per peak moves every parameter
+by less than 0.1 standard error, and leaves every decoded order, the fitted delay law and its overtaking profile
+unchanged; the posterior probabilities of the order change by less than 0.002 (up to 0.15 on one stem). Only the
+integrated log-likelihood moves, by 0.9 over the 40 stems.
 
-They do not cancel when the integrated log-likelihoods of two *different* fitted models are compared, because the two
-fits can sit at parameters where the error differs. Such comparisons call for finer settings: 64 ``\phi`` nodes, 32
-``\kappa`` nodes if ``\sigma_\kappa`` exceeds 0.5, and 9 twist nodes per peak
-(`PhyllotaxisModelAD(angles; ngrid_ϕ = 64)`, `fit_map_torsion!(m; nodes_kw = (; nnodes = 9))`). The timing laws of
-[§5](timing.md) are compared on the orders, not through these integrals, and do not need them.
+Comparing the integrated log-likelihoods of two *different* fitted models is another matter: the two fits sit at
+different parameters, where the errors differ. Use finer settings for that: 64 ``\phi`` nodes, 32 ``\kappa`` nodes if
+``\sigma_\kappa > 0.5``, 9 twist nodes per peak (`PhyllotaxisModelAD(angles; ngrid_ϕ = 64)`,
+`fit_map_torsion!(m; nodes_kw = (; nnodes = 9))`). The timing laws of [§5](timing.md) are compared on the orders, not
+through these integrals, and do not need them.
 
 **Code.** `AngleLikelihood.stem_loglik!` (one stem, all grids, and its gradient), `stem_loglik`, `angle_loglikelihood`;
 the twist: `torsion_coordinate(ℓ)`, `corrected_angles`; simulation: `simulate_stems` (both laws of the order).

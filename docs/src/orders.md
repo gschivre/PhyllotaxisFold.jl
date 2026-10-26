@@ -1,9 +1,8 @@
 # 3. Summing over all orders
 
-The likelihood of a stem contains a sum over all its orders ([§2.5](angles.md)). This page shows that the sum can be
-computed exactly, in a few thousand operations, when the law of the order has a product form. The argument is
-elementary, and it is what makes everything else in the package possible: exact likelihoods, exact gradients,
-Newton's method, and exact samples of the order.
+The likelihood of a stem contains a sum over all its orders ([§2.5](angles.md)). When the law of the order has a
+product form, this sum is exact in a few thousand operations. The argument is elementary, and everything else rests on
+it: exact likelihoods, exact gradients, Newton's method and exact samples of the order.
 
 ## 3.1 The sum as a permanent
 
@@ -23,36 +22,33 @@ orders is
 \qquad W_{p,j} = h_{p,j}\, v_{p,j} .
 ```
 
-The sum on the right is the **permanent** of the matrix ``W``: the formula of the determinant, without the signs. And
-``Z`` is the permanent of ``h``. This looks like bad news. A determinant costs ``n^3`` operations, but a general
-permanent is among the hardest problems to compute (Valiant 1979).
+The sum on the right is the **permanent** of ``W``: the determinant without its signs (and ``Z`` is the permanent of
+``h``). Bad news at first sight: a determinant costs ``n^3`` operations, but a general permanent is among the hardest
+problems to compute (Valiant 1979).
 
 ## 3.2 The band
 
-The general permanent is hard because it allows every organ to come from every site. A stem does not. An organ is
-found near its canonical place, a few positions at most.
+A general permanent lets every organ come from every site. A stem does not: an organ sits a few positions at most
+from its canonical place.
 
 **assumption** — no organ is displaced by more than ``k`` positions: ``|\sigma(p) - p| \le k``, with ``k = 4``.
 
-This sets ``W_{p,j} = 0`` for ``|j - p| > k``: ``W`` is a band matrix. The assumption is checked afterwards: if the
-reconstructed orders put noticeable probability at ``|d| = k``, the band is too narrow.
+Then ``W_{p,j} = 0`` for ``|j - p| > k``: ``W`` is a band matrix. The assumption is checked afterwards: noticeable
+posterior probability at ``|d| = k`` means the band is too narrow.
 
-The band alone does not solve the problem. A stem of 45 organs still has ``1.8 \times 10^{25}`` banded orders (and
-``10^{56}`` orders in all). What solves it is a structure that the band creates.
+The band alone is not enough (a stem of 45 organs still has ``1.8 \times 10^{25}`` banded orders), but it creates a
+structure that is.
 
 ## 3.3 Reading the stem from the bottom
 
-Assign the organs one height at a time, from the bottom. Suppose heights ``1, \dots, i - 1`` have been assigned. What
-does the rest of the stem need to know about these choices?
-
-Not their order: the remaining organs only care about which sites are still free. And most of that is already
-decided by the band:
+Assign the organs one height at a time, from the bottom. Once heights ``1, \dots, i - 1`` are assigned, what does the
+rest of the stem need to know? Only which sites are still free, and the band decides most of that:
 
 - a site ``j \le i - k - 1`` *must* be taken already. The only heights that can hold it are ``\le j + k \le i - 1``.
 - a site ``j \ge i + k`` *cannot* be taken yet. The heights below ``i`` reach sites up to ``i - 1 + k`` at most.
 
-Only the ``2k`` sites in the window ``\{i - k, \dots, i + k - 1\}`` can go either way. So the whole past is
-summarised by *which sites of a window of ``2k`` are used*.
+Only the ``2k`` sites of the window ``\{i - k, \dots, i + k - 1\}`` can go either way: the whole past is summarised
+by *which sites of the window are used*.
 
 !!! note "result — the window lemma"
     For an order in the band, count the ``k`` virtual sites ``1 - k, \dots, 0`` as used. Before height ``i`` is
@@ -64,11 +60,11 @@ summarised by *which sites of a window of ``2k`` are used*.
     virtual sites make ``i - 1 + k`` used sites. Below the window lie the sites ``1 - k, \dots, i - k - 1``, which are
     all used and number ``i - 1``. The remaining ``k`` used sites are inside the window. ∎
 
-The past is therefore one of ``\binom{2k}{k}`` *states*: 70 for ``k = 4``, whatever the length of the stem. Height ``i``
-can take any free site of the window, or the site ``i + k`` that enters it. There is one forced move: if the lowest
-site of the window, ``i - k``, is still free, height ``i`` must take it, because no later height can reach it. Every
-banded order is then exactly one path through a graph. Its columns are the heights, its nodes are the states, and the
-weight of a path is the product of the ``W_{p,\sigma(p)}`` along it (figure 1).
+The past is one of ``\binom{2k}{k}`` *states*: 70 for ``k = 4``, whatever the length of the stem. Height ``i`` takes
+any free site of the window, or the site ``i + k`` entering it, with one forced move: if site ``i - k`` is still free,
+height ``i`` must take it, since no later height can reach it. Every banded order is then exactly one path through a
+graph whose columns are the heights and whose nodes are the states; the weight of a path is the product of the
+``W_{p,\sigma(p)}`` along it (figure 1).
 
 ![The DP state graph](figures/m1_dp_paths.png)
 
@@ -81,8 +77,8 @@ choice. Every banded order of 8 organs is one path from start to end; the orange
 
 ## 3.4 Merging the paths
 
-Two partial orders that reach the same state have exactly the same possible futures. Their weights can be added into
-one number before going on. This is the whole trick.
+Two partial orders reaching the same state have the same possible futures, so their weights can be added before going
+on. This is the whole trick.
 
 !!! note "result — the forward recursion"
     Let ``F_i(s)`` be the total weight of all the ways of assigning heights ``1, \dots, i - 1`` that end in state
@@ -94,10 +90,9 @@ one number before going on. This is the whole trick.
     ```
     where the sum runs over the edges into ``s'``, and an edge labelled ``d`` assigns height ``i`` to site ``i + d``.
 
-The cost is the number of edges of the graph times the number of heights. For a stem of 45 organs this is about
-``10^4`` operations, instead of ``10^{25}`` products (figure 2). In practice the weights are rescaled at each height,
-as in hidden Markov models. The code falls back to log space by itself when a rescaled number could underflow, so the
-result never depends on the rounding.
+The cost is the number of edges times the number of heights: about ``10^4`` operations for 45 organs, instead of
+``10^{25}`` products (figure 2). The weights are rescaled at each height, as in hidden Markov models, and the code
+falls back to log space whenever a rescaled number could underflow.
 
 ![Scaling](figures/m2_dp_scaling.png)
 
@@ -108,7 +103,7 @@ the width of the band.*
 
 ## 3.5 What else the graph gives
 
-The same graph answers every question one may ask about the order of a stem.
+The same graph answers every question about the order of a stem.
 
 - **The probability of each displacement.** Run the recursion from the top as well, giving ``B_i(s)``, the weight of
   all completions from state ``s``. The probability that height ``p`` holds the organ of site ``p + d`` is the weight of
@@ -121,8 +116,7 @@ The same graph answers every question one may ask about the order of a stem.
   ``W_{i,i+d}\, B_{i+1}(s') / B_i(s)``. Each banded order is drawn with its exact probability ``\propto \prod_p
   W_{p,\sigma(p)}``.
 
-When ``W`` contains the angles, these are the posterior probabilities of the order given the angles. Figure 3 shows
-them for the example stem.
+When ``W`` contains the angles, these are posterior probabilities given the angles (figure 3).
 
 ![Posterior of the order of the example stem](figures/e3_example_posterior.png)
 
@@ -134,7 +128,7 @@ shared between several orders, and the single best order should not be trusted.*
 
 ## 3.6 Derivatives
 
-The permanent is linear in each entry of ``W``. This gives its derivatives for free.
+The permanent is linear in each entry of ``W``, which gives its derivatives for free.
 
 !!! note "result"
     ```math
@@ -165,9 +159,9 @@ spiral). The Hessian is one pass of forward-mode dual numbers through this analy
 
 ## 3.7 The order of a real stem
 
-The posterior of [§3.5](orders.md) is for fixed nuisance quantities. A real stem has an unknown spiral, precision and
-twist, and different values can give different orders (a different twist especially: the likelihood of a stem's twist
-is often multimodal). The package gives two decodings, both from the fitted model.
+The posterior of [§3.5](orders.md) holds for fixed nuisance quantities. A real stem has an unknown spiral, precision
+and twist, and different values can favour different orders (the twist especially, whose likelihood is often
+multimodal). The package gives two decodings of the fitted model.
 
 - **The posterior of the order** (`order_posterior`). It is a mixture over the nuisance states,
   ``P(\sigma \mid y) = \sum_{\text{state}} P(\text{state} \mid y)\, P_W(\sigma)``. The weight of each state (grid node

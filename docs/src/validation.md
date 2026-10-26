@@ -1,6 +1,6 @@
 # 6. Validation on simulated stems
 
-Each step of the method rests on assumptions and approximations, and each could go wrong in its own way:
+Each step of the method rests on assumptions and approximations, and could go wrong in its own way:
 
 - the twist could be confused with a change of spiral;
 - the posterior of the order could be overconfident;
@@ -8,12 +8,11 @@ Each step of the method rests on assumptions and approximations, and each could 
 - the delay law could be poorly identified from orders alone;
 - the plant's clock might not be as regular as the model assumes.
 
-The only way to know is to run the whole pipeline on stems for which the truth is known, and compare. This page does
-that, step by step. After the simulated stems ([§6.1](validation.md)) come the angle model and the twist
-([§6.2](validation.md)), the orders ([§6.3](validation.md)), the delay law ([§6.4](validation.md)) and a remedy for
-its weak point ([§6.5](validation.md)), the two computations of [§5](timing.md) on which the delay law rests
-([§6.6](validation.md)), and a clock that drifts ([§6.7](validation.md)). The figures are made by
-`docs/make_validation_figures.jl` (simulated data only).
+The way to know is to run the whole pipeline on stems whose truth is known, and compare. This page does so step by
+step: the angle model and the twist ([§6.2](validation.md)), the orders ([§6.3](validation.md)), the delay law
+([§6.4](validation.md)) and a remedy for its weak point ([§6.5](validation.md)), the two computations behind the delay
+law ([§6.6](validation.md)), and a clock that drifts ([§6.7](validation.md)). The figures are made by
+`docs/make_validation_figures.jl`.
 
 ## 6.1 The simulated stems
 
@@ -39,7 +38,7 @@ wild type, the heavy-tailed law to a mutant with many off-time organs. The no-ta
 invents tails that are not there.
 
 Each scenario is simulated three times (three *replicates*, nine data sets in all). Each data set goes through the
-steps of the [quick start](index.md), exactly as real data would:
+steps of the [worked analysis](workflow.md), exactly as real data would:
 
 1. `fit_map_torsion!` (propensity model, ``k = 4``, twist integrated out);
 2. `decode_orders` (joint MAP);

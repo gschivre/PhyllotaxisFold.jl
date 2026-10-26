@@ -15,7 +15,7 @@ sample size, per-stem terms that disagree with each other.
 | the delay law is a Gaussian core with exponential tails | [§5.6](timing.md) | only the readings of the law depend on it (core sd, off-time fraction), not the overtaking profile; check that the fitted law's profile matches `overtaking_profile`; discrete slot errors (organs exactly one plastochron off) are fitted as short tails |
 | (shared-core fit) the groups share one core sd | [§5.7](timing.md) | cores that truly differ: `shared_core_test` rejects the shared core |
 | the timing law is scored at the propensity model's angle nuisances and band | [§5.5](timing.md) | a small effective sample size of the weights; refit with a larger ``k`` |
-| flowers open at the pace they were initiated; piecewise-linear opening rate | `Plastochron` | a maturation delay that changes during flowering; a curved rise or decline |
+| flowers open at the pace they were initiated; piecewise-linear opening rate | [§5.7](timing.md) | a maturation delay that changes during flowering; a curved rise or decline |
 
 Some questions are beyond the reach of the angles alone, whatever the model:
 
