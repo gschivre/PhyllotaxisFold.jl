@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (Julia ${{ matrix.version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['1.10', '1']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.version }}
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+
+  docs:
+    # Headless: the figures use CairoMakie, so no display is needed. The fitted caches (*.jls) are not in git, so the
+    # figures drawn from fits (e*, w*, v*) are the committed PNGs; the illustrations (m*) are redrawn from scratch.
+    name: Manual
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1' # the docs environment uses [sources], Julia ≥ 1.11
+      - uses: julia-actions/cache@v2
+      - name: Install the docs environment
+        run: julia --project=docs -e 'using Pkg; Pkg.instantiate()'
+      - name: Draw the illustrations and load the other figure scripts
+        run: |
+          julia --project=docs -e '
+            include("docs/make_figures.jl")
+            include("docs/make_workflow.jl")
+            include("docs/make_validation_figures.jl")'
+      - name: Build the manual
+        run: julia --project=docs docs/make.jl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manual
+          path: docs/build/

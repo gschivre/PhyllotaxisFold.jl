@@ -39,7 +39,7 @@ using PhyllotaxisFold
 
 prior = TorsionPrior(m0 = 0.0, sm = 2.0, νs = 4.0, τs = 1.0)
 m = PhyllotaxisModelAD(angles_wt; torsion_x = x_wt)
-r = fit_map_torsion!(m; prior)                     # a few minutes with 18 threads
+r = fit_map_torsion!(m; prior)                     # the longest step: use several threads
 post = order_posterior(m, r; nsamples = 200)       # the posterior of the order of each stem
 smp = order_samples(post, r.fit.θ.η)               # its samples, ready for step 2
 dec = decode_orders(m, r; full = true)             # the single most probable order, spiral and twist (for figures)
@@ -50,7 +50,7 @@ and the same for the mutant. Below, `smp_wt` and `smp_mutant` are the two groups
 **Check the fit before going on.** Three quick looks (figure 2):
 
 - **The fitted parameters are plausible.** Both groups find a twist of about 1 °/mm across stems (mean 1.12 and 0.95,
-  sd 0.75 and 0.62; truth 1.0 ± 0.7), an angular precision ``\log\mu_\kappa \approx 1.83`` (truth 1.85) and 95–97 %
+  sd 0.75 and 0.62; truth 1.0 ± 0.7), an angular precision ``\log\mu_\kappa \approx 1.84`` (truth 1.85) and 95–97 %
   of golden spirals (truth 95 %). The twist of each stem is sharply determined (figure 2a).
 - **The band is wide enough, mostly.** The model allows displacements up to ``k = 4``. If organs pile up at that edge,
   the band is too narrow. Here the median stem puts almost nothing there (figure 2b), but a few stems put 2–5 % of
@@ -60,8 +60,8 @@ and the same for the mutant. Below, `smp_wt` and `smp_mutant` are the two groups
 - **Look at a few stems.** Most heights are certain; where they are not, the probability is shared between a few
   orders (figure 2c). This is why step 2 works on posterior samples, not on the single most probable order.
 
-*Peeking at the truth:* the most probable order puts 98.6 % (wild type) and 96.8 % (mutant) of the organs on their
-true site, and finds 20.4 % and 34.4 % of the organs displaced, for 20.6 % and 34.8 %. And the band check was right
+*Peeking at the truth:* the most probable order puts 98.6 % (wild type) and 96.3 % (mutant) of the organs on their
+true site, and finds 20.4 % and 34.2 % of the organs displaced, for 20.6 % and 34.8 %. And the band check was right
 to raise an eyebrow: 0.3 % (wild type) and 0.65 % (mutant) of the organs are truly displaced by more than 4.
 
 ![Checks of step 1](figures/w2_step1_checks.png)
@@ -84,12 +84,12 @@ cmp = compare_profiles(prof_wt, prof_mutant)       # mutant − wild type, with 
 
 | ``d`` | wild type | mutant | mutant − wild type |
 |---|---|---|---|
-| 1 | 0.094 ± 0.006 | 0.151 ± 0.007 | +0.057 ± 0.009 |
-| 2 | 0.026 ± 0.004 | 0.067 ± 0.005 | +0.041 ± 0.006 |
-| 3 | 0.0097 ± 0.0020 | 0.029 ± 0.003 | +0.020 ± 0.004 |
-| 4 | 0.0038 ± 0.0012 | 0.013 ± 0.002 | |
+| 1 | 0.094 ± 0.006 | 0.150 ± 0.007 | +0.056 ± 0.009 |
+| 2 | 0.025 ± 0.004 | 0.066 ± 0.005 | +0.040 ± 0.006 |
+| 3 | 0.0097 ± 0.0020 | 0.029 ± 0.004 | +0.019 ± 0.004 |
+| 4 | 0.0038 ± 0.0012 | 0.012 ± 0.002 | |
 
-Wald test over ``d = 1, 2, 3``: ``\chi^2 = 54.7`` on 3 degrees of freedom, ``p \approx 10^{-11}``. Standard errors
+Wald test over ``d = 1, 2, 3``: ``\chi^2 = 54.3`` on 3 degrees of freedom, ``p \approx 10^{-11}``. Standard errors
 are clustered by stem, the unit of replication.
 
 ![The overtaking profiles](figures/w3_profiles.png)
@@ -125,12 +125,12 @@ whether the orders call for tails:
 
 | law | wild type | mutant |
 |---|---|---|
-| `:core` | −47.1 | −76.0 |
-| `:late` | −9.4 | +46.2 |
-| `:both` | +15.4 | +56.9 |
+| `:core` | −49.0 | −70.3 |
+| `:late` | −8.7 | +46.5 |
+| `:both` | +15.6 | +56.3 |
 
-Both groups clearly need tails: adding late organs gains 38 (wild type) and 122 (mutant) units of log-likelihood,
-early organs another 25 and 11. Gains below about 5 would not be meaningful on their own ([§6.4](validation.md)).
+Both groups clearly need tails: adding late organs gains 40 (wild type) and 117 (mutant) units of log-likelihood,
+early organs another 24 and 10. Gains below about 5 would not be meaningful on their own ([§6.4](validation.md)).
 Before reading the parameters, check that the fitted law reproduces the profile of step 2: in figure 3a, the dashed
 lines go through the dots, so the law's shape is not distorting the data.
 
@@ -138,9 +138,9 @@ The estimates of the `:both` law (± robust se), with the truth:
 
 | | wild type | truth | mutant | truth |
 |---|---|---|---|---|
-| core sd ``s`` (plastochron) | 0.41 ± 0.03 | 0.42 | 0.31 ± 0.09 | 0.42 |
-| late, ``P(e > 1)`` | 0.032 ± 0.006 | 0.035 | 0.140 ± 0.018 | 0.113 |
-| early, ``P(e < -1)`` | 0.039 ± 0.008 | 0.028 | 0.020 ± 0.009 | 0.027 |
+| core sd ``s`` (plastochron) | 0.41 ± 0.03 | 0.42 | 0.30 ± 0.09 | 0.42 |
+| late, ``P(e > 1)`` | 0.032 ± 0.006 | 0.035 | 0.141 ± 0.018 | 0.113 |
+| early, ``P(e < -1)`` | 0.038 ± 0.008 | 0.028 | 0.019 ± 0.009 | 0.027 |
 | off time, ``P(\lvert e\rvert > 1)`` | 0.071 ± 0.008 | 0.062 | 0.160 ± 0.014 | 0.140 |
 
 **Reading it.** A typical commitment is precise, with an sd of about 0.4 plastochron, and in the wild type about 7 %
@@ -163,7 +163,7 @@ inf2 = delay_law_inference([smp_wt, smp_mutant], sct.shared)  # estimates under 
 inf2.Δoff                                                     # mutant − wild type off-time fraction
 ```
 
-The likelihood ratio is 1.0 (``p = 0.32``): nothing against a shared core. The shared sd, 0.38 ± 0.05, stays close to
+The likelihood ratio is 1.1 (``p = 0.30``): nothing against a shared core. The shared sd, 0.38 ± 0.05, stays close to
 the wild type's own 0.41, so the wild type does hold the core (if it collapsed far below, the separate fits should be
 reported instead; [§6.5](validation.md)). Under the shared core:
 
@@ -223,13 +223,13 @@ plant's own, and `relative_plastochron` shows how much the plastochron varies al
 For this experiment, the summary would read:
 
 > The overtaking profile of the mutant is higher than that of the wild type at every distance (``\Delta q_1 =
-> 0.057 \pm 0.009``, ``\Delta q_2 = 0.041 \pm 0.006``, ``\Delta q_3 = 0.020 \pm 0.004``; ``\chi^2_3 = 54.7``), with the
+> 0.056 \pm 0.009``, ``\Delta q_2 = 0.040 \pm 0.006``, ``\Delta q_3 = 0.019 \pm 0.004``; ``\chi^2_3 = 54.3``), with the
 > long-range overtakings increased most. Interpreted with a delay law sharing its core between the groups (core sd
-> 0.38 ± 0.05 plastochron, that is 2.9 ± 0.4 h; shared core not rejected, ``p = 0.32``), the mutant has 7.4 ± 1.3
+> 0.38 ± 0.05 plastochron, that is 2.9 ± 0.4 h; shared core not rejected, ``p = 0.30``), the mutant has 7.4 ± 1.3
 > points more organs committing over one plastochron off their turn, mostly late.
 
 And the checks behind it: the fitted parameters, the band edge, the effective sample size of the re-weighting
-(median 193 out of 200 posterior samples per stem in the wild type, 166 in the mutant; [§5.5](timing.md)), and the
+(median 193 out of 200 posterior samples per stem in the wild type, 170 in the mutant; [§5.5](timing.md)), and the
 agreement between the fitted law and the profile read from the orders. One wild-type stem has an effective sample
 size of only 17: it is also the stem with the most organs at the edge of the band, so its term is the least precise.
 With one stem in fifty this does not matter; with many, draw more posterior samples or widen the band.

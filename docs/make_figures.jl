@@ -1,12 +1,12 @@
 # Figures of the manual (docs/src, the method illustrations). Every figure is computed from simulated stems only; the
 # validation figures on simulated data are made by docs/make_validation_figures.jl.
-# Run from the docs environment (GLMakie):
+# Run from the docs environment (CairoMakie):
 #   julia --project=docs -e 'using Pkg; Pkg.instantiate(); include("docs/make_figures.jl")'
 # or, in a REPL with that environment active: include("docs/make_figures.jl")
 
 using PhyllotaxisFold, Random, Statistics, Distributions, LogExpFunctions, Serialization
 using SpecialFunctions: loggamma
-using GLMakie
+using CairoMakie
 
 const FIG = joinpath(@__DIR__, "src", "figures")
 mkpath(FIG)
@@ -80,19 +80,17 @@ let k = 2, n = 8, σ = [2, 1, 3, 5, 6, 4, 7, 8], irow = 5
     # (a) assignment grid
     ax = Axis(
         fig[1, 1]; title = "(a) An order is an assignment of stem positions to sites", xlabel = "canonical site j (spiral order)",
-        ylabel = "stem position p (bottom → top)", xticks = 1:n, yticks = 1:n, aspect = DataAspect(), titlesize = 15
+        ylabel = "stem position p (bottom → top)", xticks = 1:n, yticks = 1:n, aspect = DataAspect(), titlesize = 15,
+        xgridvisible = false, ygridvisible = false
     )
+    # one cell per (height, site), the band shaded: the cell borders are the only grid
     for p in 1:n, j in 1:n
-        abs(j - p) ≤ k && poly!(ax, Rect2f(j - 0.5, p - 0.5, 1, 1); color = C_BAND, strokecolor = (:gray, 0.4), strokewidth = 0.5)
+        poly!(ax, Rect2f(j - 0.5, p - 0.5, 1, 1); color = (abs(j - p) ≤ k ? C_BAND : :white), strokecolor = (:gray, 0.35), strokewidth = 0.5)
     end
-    # columns used by rows 1..irow−1, and the window seen by row irow
-    used = Set(σ[1:(irow - 1)])
+    # the window seen by row irow
     poly!(ax, Rect2f(irow - k - 0.5, irow - 0.5, 2k, 1); color = :transparent, strokecolor = C_PATH, strokewidth = 3)
     for p in 1:n
         scatter!(ax, [σ[p]], [p]; color = (p < irow ? C_USED : p == irow ? C_PATH : (:gray, 0.5)), markersize = 20)
-    end
-    for j in used
-        lines!(ax, [j, j], [irow - 0.45, n + 0.5]; color = (:gray, 0.6), linestyle = :dash)
     end
     text!(ax, irow - k - 0.45, irow + 0.55; text = "window of row $irow", color = C_PATH, fontsize = 13)
     text!(ax, 0.6, n + 0.9; text = "σ = " * join(σ, " ") * "    (shaded: |σ(p) − p| ≤ k = $k)", fontsize = 13)
@@ -134,18 +132,19 @@ let k = 2, n = 8, σ = [2, 1, 3, 5, 6, 4, 7, 8], irow = 5
                 )
             )
         ) banded orders = all paths of this graph", titlesize = 15,
-        xlabel = "step p (row being assigned)", xticks = 1:(n + 1), yticks = (1:g.M, fill("", g.M))
+        xlabel = "step p (row being assigned)", xticks = 1:(n + 1), yticks = (1:g.M, fill("", g.M)),
+        xgridvisible = false, ygridvisible = false
     )
-    for i in 1:n, s in 1:g.M, e in g.edge_ptr[s]:(g.edge_ptr[s + 1] - 1)
-        d = g.edge_d[e]
-        (1 ≤ i + d ≤ n) || continue
-        lines!(ax3, [i, i + 1], [s, g.edge_next[e]]; color = (:gray, 0.35), linewidth = 1)
-    end
     # reachable states only (forward from start and backward from end, with unit weights)
     ws = PermanentWorkspace(k, n); toeplitz_weights!(ws, zeros(2k + 1), n); forward!(ws, n); backward!(ws, n)
+    reach(i, s) = isfinite(ws.F[s, i]) && ws.F[s, i] > -1.0e300 && (i == n + 1 ? s == g.end_s : isfinite(ws.B[s, i]) && ws.B[s, i] > -1.0e300)
+    # the edges between reachable states: exactly the edges of the start-to-end paths
+    for i in 1:n, s in 1:g.M, e in g.edge_ptr[s]:(g.edge_ptr[s + 1] - 1)
+        (reach(i, s) && reach(i + 1, g.edge_next[e])) || continue
+        lines!(ax3, [i, i + 1], [s, g.edge_next[e]]; color = (:gray, 0.35), linewidth = 1)
+    end
     for i in 1:(n + 1), s in 1:g.M
-        reach = isfinite(ws.F[s, i]) && ws.F[s, i] > -1.0e300 && (i == n + 1 ? s == g.end_s : isfinite(ws.B[s, i]) && ws.B[s, i] > -1.0e300)
-        scatter!(ax3, [i], [s]; color = (reach ? :black : (:gray, 0.25)), markersize = 7)
+        scatter!(ax3, [i], [s]; color = (reach(i, s) ? :black : (:gray, 0.25)), markersize = 7)
     end
     lines!(ax3, 1:(n + 1), path; color = C_PATH, linewidth = 4)
     scatter!(ax3, 1:(n + 1), path; color = C_PATH, markersize = 12)
@@ -369,7 +368,7 @@ function fig_examples(ex = example_fit())
 
     # e4. the propensity model on the 40 stems
     let fig = Figure(size = (1400, 420))
-        ax = Axis(fig[1, 1]; title = "(a) Fitted costs η_d", xlabel = "displacement d", ylabel = "η_d", xticks = -k:k, titlesize = 15)
+        ax = Axis(fig[1, 1]; title = rich("(a) Fitted costs η", subscript("d")), xlabel = "displacement d", ylabel = rich("η", subscript("d")), xticks = -k:k, titlesize = 15)
         barplot!(ax, -k:k, ex.θ.η; color = :steelblue, strokewidth = 0, gap = 0.25)
         fd, _ = estimate_displacement_frequencies(ex.m, [ex.θ]; N = 1, n)
         tr = [mean(count(abs.(σs .- (1:n)) .== a) / n for σs in ex.sim.orders) for a in 0:k]
@@ -385,9 +384,9 @@ function fig_examples(ex = example_fit())
             fig[1, 3]; title = "(c) Organs on their correct site, per stem", xlabel = "stems (sorted)",
             ylabel = "fraction correct", titlesize = 15
         )
-        barplot!(ax3, 1:length(acc), acc; color = :steelblue, strokewidth = 0, gap = 0.2)
-        ylims!(ax3, 0, 1.02)
-        save(joinpath(FIG, "e4_example_propensity.png"), fig)
+        scatter!(ax3, 1:length(acc), acc; color = :steelblue, markersize = 9)
+        ylims!(ax3, 0.5, 1.02)
+        save(joinpath(FIG, "e4_example_propensity.png"), fig; px_per_unit = 2)
     end
 
     # e5. re-weighting the posterior orders of the example stem
@@ -402,7 +401,7 @@ function fig_examples(ex = example_fit())
         barplot!(ax, 1:length(ordr), ss.w[ordr]; color = [ss.orders[j] == σ ? C_PATH : :steelblue for j in ordr], strokewidth = 0)
         lw = [loglik_order_exact(ss.orders[j], EX_LAW) - ss.logA[j] for j in ordr]
         ax2 = Axis(
-            fig[1, 2]; title = "(b) log P_f(σ) − log P_A(σ), true delay law", xlabel = "order (by frequency)",
+            fig[1, 2]; title = rich("(b) log P", subscript("f"), "(σ) − log P", subscript("A"), "(σ), true delay law"), xlabel = "order (by frequency)",
             ylabel = "log weight", titlesize = 15, xticks = 1:length(ordr)
         )
         barplot!(ax2, 1:length(ordr), lw; color = [ss.orders[j] == σ ? C_PATH : :steelblue for j in ordr], strokewidth = 0)
@@ -416,7 +415,7 @@ function fig_examples(ex = example_fit())
         )
         lines!(ax3, sgrid, tot; color = :black, linewidth = 3, label = "sum over the 40 stems")
         vlines!(ax3, [EX_LAW.s]; color = :gray, linestyle = :dash)
-        ax3b = Axis(fig[1, 3]; yaxisposition = :right, ylabel = "Δℓ_s, example stem", ylabelcolor = C_PATH, yticklabelcolor = C_PATH)
+        ax3b = Axis(fig[1, 3]; yaxisposition = :right, ylabel = rich("Δℓ", subscript("s"), ", example stem"), ylabelcolor = C_PATH, yticklabelcolor = C_PATH)
         hidexdecorations!(ax3b); hidespines!(ax3b)
         lines!(ax3b, sgrid, one; color = C_PATH, linewidth = 1.5)
         axislegend(ax3; position = :lb, framevisible = false)

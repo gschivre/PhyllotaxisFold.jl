@@ -63,7 +63,7 @@ mapped to the real line by a softplus (`LogNormalSoftPlus`).
 ## 4.4 Fitting
 
 The parameters (``\eta``, ``\log\mu_\kappa``, ``\sigma_\kappa``, ``\alpha``, the twist population ``m_\omega,
-s_\omega`` and optionally ``\pi_o``) are fitted by maximum a posteriori.
+s_\omega`` and the outlier probability ``\pi_o``) are fitted by maximum a posteriori.
 
 - **Parameters on the real line.** Positive parameters go through a log, probabilities through a logit, and the costs
   ``\eta`` through the softplus map of their gaps ([§4.3](propensity.md)). The log-Jacobian of these maps is part of
@@ -76,8 +76,9 @@ s_\omega`` and optionally ``\pi_o``) are fitted by maximum a posteriori.
 - **Model comparison.** The integrated log-likelihood at the maximum (`loglik` of `fit_map_torsion!`, priors
   excluded). Timing laws are compared with the propensity model and with each other by ``\Delta\ell``
   ([§5.5](timing.md)).
-- **Cost.** One stem of about 45 organs takes about 50 ms (2048 nuisance nodes). A fit of 50–90 stems with the twist
-  integrated takes 10–15 minutes on 18 threads.
+- **Cost.** The work grows in proportion to the number of stems and of nuisance nodes (`ngrid_ϕ` × `ngrid_κ` ×
+  twist nodes, [§2.6](angles.md)). The stems are shared out between threads, so start Julia with several
+  (`julia -t auto`).
 
 Figure 1 shows the fitted costs of the running example, and the orders they reconstruct.
 
@@ -108,7 +109,7 @@ The propensity model reconstructs the orders well, but its parameters only descr
 says that displacements by two are rare, not why: whether they come from an organ initiated late or early, or how the
 displacements of neighbours go together. That needs a mechanism, the subject of [§5](timing.md).
 
-**Code.** `PhyllotaxisModelAD(angles, PhyllotaxisPrior(); outlier = false, torsion_x)`,
+**Code.** `PhyllotaxisModelAD(angles, PhyllotaxisPrior(); outlier = true, torsion_x)`,
 `fit_map` (no twist), `fit_map_torsion!` (twist integrated out; overwrites the stored twist rates of the model),
 `constrained_parameters` (η is the full vector of ``2k + 1`` costs), `unconstrained_parameters`,
 `prior_mean_parameters`, `full_eta`; post-processing: `estimate_displacement_frequencies`,

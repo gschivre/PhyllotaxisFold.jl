@@ -33,13 +33,16 @@ julia --project=docs docs/make.jl                        # then open docs/build/
 The repository is private, so the manual is built locally; `docs/make.jl` holds the commented `deploydocs` call for
 later. The equations are rendered by MathJax, which needs an internet connection.
 
+CI (`.github/workflows/CI.yml`) runs the tests on Julia 1.10 and the latest release, and builds the manual headless
+on every push to `main`. The built manual is kept as the run's `manual` artifact.
+
 ## Figures
 
-All figures use simulated data only (GLMakie, in the `docs` environment) and are written to `docs/src/figures`.
+All figures use simulated data only (CairoMakie, in the `docs` environment) and are written to `docs/src/figures`.
 
 - `docs/make_figures.jl`: the illustrations of the method, and the running example (`fig_examples()`; its fit,
   about 5 minutes on 18 threads, is cached in `docs/example.jls`).
-- `docs/make_validation_figures.jl`: the validation on simulated stems (manual §6; about 1.5 h on 18 threads, the
+- `docs/make_validation_figures.jl`: the validation on simulated stems (manual §6; about 2 h on 18 threads, the
   replicates are cached in `docs/validation.jls` with their posterior order samples, and
   `run_validation(; refit_timing = true)` refits only the delay laws, in about 15 minutes).
 - `docs/validation_clock_drift.jl`: the drifting-clock simulation of manual §6.7 (about 2 minutes on 18 threads,

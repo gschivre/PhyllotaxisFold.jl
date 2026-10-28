@@ -1,11 +1,11 @@
 # The worked analysis of the manual (docs/src/workflow.md): a wild type and a mutant, simulated, analysed exactly as
 # real data would be. The fits (≈ 10 min on 18 threads) are cached in docs/workflow.jls; the figures go to
 # docs/src/figures/w*.png. Run in the docs environment, with threads:
-#   julia -t 18 --project=docs docs/make_workflow.jl     (in Kaimon: include(...) with mt = true)
+#   julia -t 18 --project=docs docs/make_workflow.jl
 
 using PhyllotaxisFold, Random, Statistics, Serialization
 using Distributions: Poisson
-using GLMakie
+using CairoMakie
 
 const WFIG = joinpath(@__DIR__, "src", "figures")
 const WCACHE = joinpath(@__DIR__, "workflow.jls")
@@ -183,7 +183,7 @@ function workflow_figures(res = workflow_data())
     # w3. the overtaking profiles: read from the orders, from the fitted law, and the truth
     let fig = Figure(size = (1100, 430))
         ax = Axis(
-            fig[1, 1]; title = "(a) Overtaking profile", xlabel = "distance d (sites)", ylabel = "q_d", yscale = log10,
+            fig[1, 1]; title = "(a) Overtaking profile", xlabel = "distance d (sites)", ylabel = rich("q", subscript("d")), yscale = log10,
             xticks = 1:4, titlesize = 15
         )
         for (j, (key, lab, g)) in enumerate(groups)
@@ -197,7 +197,7 @@ function workflow_figures(res = workflow_data())
         scatter!(ax, [NaN], [NaN]; color = :transparent, strokecolor = :black, strokewidth = 1.2, marker = :diamond, label = "truth (the simulated law)")
         axislegend(ax; position = :lb, framevisible = false, labelsize = 11)
         ax2 = Axis(
-            fig[1, 2]; title = "(b) Mutant − wild type", xlabel = "distance d (sites)", ylabel = "difference in q_d",
+            fig[1, 2]; title = "(b) Mutant − wild type", xlabel = "distance d (sites)", ylabel = rich("difference in q", subscript("d")),
             xticks = 1:3, titlesize = 15
         )
         c = res.cmp

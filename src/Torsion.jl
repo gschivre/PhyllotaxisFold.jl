@@ -161,13 +161,13 @@ struct TorsionNodes
 end
 
 """
-    stem_nodes(f, step; scan = -25:0.5:25, Δ = 8.0, maxmodes = 4, nnodes = 5, inflate = 1.25)
+    stem_nodes(f, step; scan = -25:0.5:25, Δ = 8.0, maxmodes = 4, nnodes = 9, inflate = 1.25)
 
 Nodes of one stem from its log-likelihood f(ω): scan (degrees per mean step `step`), local maxima within Δ log-units of
 the best (at most `maxmodes`), each refined by golden section, with sd from the curvature (× `inflate`); `nnodes`
 Gauss–Hermite nodes per mode. Returns (ω, logw, modes) for `TorsionNodes`.
 """
-function stem_nodes(f, step::Real; scan = -25.0:0.5:25.0, Δ::Real = 8.0, maxmodes::Int = 4, nnodes::Int = 5, inflate::Real = 1.25)
+function stem_nodes(f, step::Real; scan = -25.0:0.5:25.0, Δ::Real = 8.0, maxmodes::Int = 4, nnodes::Int = 9, inflate::Real = 1.25)
     g(t) = f(t / step)
     v = [g(t) for t in scan]
     cand = [i for i in eachindex(v) if (i == 1 || v[i] ≥ v[i - 1]) && (i == length(v) || v[i] ≥ v[i + 1])]

@@ -6,7 +6,7 @@ sample size, per-stem terms that disagree with each other.
 
 | assumption | where | what would break it, and how to check |
 |---|---|---|
-| organs sit on a regular spiral; noise acts on timing, not on positions | [§2.1](angles.md) | missed organs are not modelled; without `outlier = true`, a grossly wrong angle appears as a long displacement |
+| organs sit on a regular spiral; noise acts on timing, not on positions | [§2.1](angles.md) | missed organs are not modelled; a grossly wrong angle is caught as an outlier ([§2.4](angles.md)), or appears as a long displacement with `outlier = false` |
 | von Mises angular noise, one precision per stem | [§2.2](angles.md) | a broad but not uniform error (e.g. angles off by a fraction of the divergence) |
 | one twist rate per stem, Normal across stems | [§2.3](angles.md) | a tapering stem makes the rate drift along the stem |
 | displacements bounded by ``k = 4`` | [§3.2](orders.md) | posterior mass at ``\lvert d\rvert = k``; refit with a larger ``k`` |

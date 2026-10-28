@@ -6,7 +6,7 @@ softplus prior on η). Parameters (constrained space)
 
     [η_1..η_k, log μκ, σκ, α (, π_o)]
 
-with symmetric costs η_{−d} = η_d (π_o: probability of an outlier angle, with `outlier = true`). With free early and
+with symmetric costs η_{−d} = η_d (π_o: probability of an outlier angle, fitted unless `outlier = false`). With free early and
 late costs, the overall balance between them would be set by the prior alone: a tilt η_d → η_d + a d leaves every order
 probability unchanged. Early and late organs are told apart by the timing law (`CommitmentTiming`) instead.
 
@@ -56,7 +56,7 @@ Prior of the propensity model; its band k is the length N of the gap tuples (k =
   default (`η_prior`);
 - log μκ ~ N(mκ, sκ²) and σκ ~ half-t(νκ, τκ): the log-normal population of the per-stem κ;
 - α ~ Beta(aα, bα): the probability of the golden spiral (else the Lucas one);
-- π_o ~ Beta(aπ, bπ): the outlier probability (mean 2 %), used only with `outlier = true`.
+- π_o ~ Beta(aπ, bπ): the outlier probability (mean 2 %, median 1.4 %), unused with `outlier = false`.
 """
 Base.@kwdef struct PhyllotaxisPrior{N}
     # LogNormal prior on the gaps Δ_d = η_{d−1} − η_d (mean m, variance v of each gap)
@@ -75,7 +75,7 @@ Base.@kwdef struct PhyllotaxisPrior{N}
     aα::Float64 = 95.0
     bα::Float64 = 5.0
 
-    # Beta prior on the outlier probability π_o (used only with `outlier = true`): mean 2 %
+    # Beta prior on the outlier probability π_o (unused with `outlier = false`): mean 2 %
     aπ::Float64 = 1.0
     bπ::Float64 = 49.0
 end
@@ -97,16 +97,16 @@ end
 
 """
     PhyllotaxisModelAD(data, prior = PhyllotaxisPrior(); ngrid_ϕ = 32, ngrid_κ = 16, logspace = false, torsion_x = nothing,
-        outlier = false)
+        outlier = true)
 
 k is the length of the prior tuples. Fit coarse grids first, then refine from that solution. `torsion_x`: the torsion
 coordinate of each stem (`torsion_coordinate(ℓ)` from its internodes, in mm, or `torsion_coordinate(n)`, per position,
-the default). The rates start at 0; `fit_map_torsion!(model)` fits them. `outlier`: each angle is an outlier (uniform on
-the circle) with probability π_o, fitted (prior Beta(aπ, bπ)).
+the default). The rates start at 0; `fit_map_torsion!(model)` fits them. `outlier` (on by default): each angle is an
+outlier (uniform on the circle) with probability π_o, fitted (prior Beta(aπ, bπ)); `outlier = false` drops π_o.
 """
 function PhyllotaxisModelAD(
         data::Vector{Vector{T}}, prior::PhyllotaxisPrior{N} = PhyllotaxisPrior(); ngrid_ϕ::Int = 32, ngrid_κ::Int = 16,
-        logspace::Bool = false, torsion_x = nothing, outlier::Bool = false
+        logspace::Bool = false, torsion_x = nothing, outlier::Bool = true
     ) where {T, N}
     n_min, n_max = extrema(length.(data))
     N ≤ n_min || throw(ArgumentError("the band k = $(N) (length of the prior tuples) exceeds the shortest stem ($(n_min) organs)"))

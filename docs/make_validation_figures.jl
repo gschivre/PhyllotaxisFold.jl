@@ -13,10 +13,10 @@
 #
 # Run in the docs environment, with threads (≈ 1.5 h on 18 threads; the replicates are cached in validation.jls, and
 # run_validation(; refit_timing = true) refits only the delay laws from the cached order samples):
-#   julia -t 18 --project=docs docs/make_validation_figures.jl     (in Kaimon: include(...) with mt = true)
+#   julia -t 18 --project=docs docs/make_validation_figures.jl
 
 using PhyllotaxisFold, Random, Statistics, Serialization, LinearAlgebra
-using GLMakie
+using CairoMakie
 
 const VFIG = joinpath(@__DIR__, "src", "figures")
 const VCACHE = joinpath(@__DIR__, "validation.jls")
@@ -133,6 +133,12 @@ const VTHEME = Theme(
     )
 )
 
+# the colour code of the three delay laws, shared by the figures
+law_legend!(pos) = Legend(
+    pos, [MarkerElement(marker = :circle, color = SCOL[k], markersize = 10) for (k, _, _) in SCENARIOS],
+    [l for (_, l, _) in SCENARIOS], "delay law"; framevisible = false
+)
+
 #################################################################################################################
 # v1. fitting: the angle parameters and the per-stem twist
 #################################################################################################################
@@ -148,13 +154,13 @@ function fig_v1(res)
         lines!(ax, [lim...], [lim...]; color = :black, linestyle = :dash)
         r = cor(reduce(vcat, [v.sim.torsion for (_, v) in R]), reduce(vcat, [v.fit.τ_mean for (_, v) in R]))
         text!(ax, 0.03, 0.97; text = "r = $(round(r; digits = 3))", space = :relative, align = (:left, :top))
-        ax = Axis(fig[1, 2]; title = "(b) Twist population", xticks = (1:2, ["mean m_ω", "sd s_ω"]), ylabel = "°/mm")
+        ax = Axis(fig[1, 2]; title = "(b) Twist population", xticks = (1:2, [rich("mean m", subscript("ω")), rich("sd s", subscript("ω"))]), ylabel = "°/mm")
         for (j, (key, v)) in enumerate(R)
             scatter!(ax, [1, 2] .+ 0.04 .* (j - 5), [v.fit.m_ω, v.fit.s_ω]; color = SCOL[key], markersize = 9)
         end
         scatter!(ax, [1, 2], [TWIST.mean, TWIST.sd]; color = :black, marker = :hline, markersize = 40, label = "truth")
         xlims!(ax, 0.5, 2.5)
-        ax = Axis(fig[1, 3]; title = "(c) Angular precision", xticks = (1:2, ["log μ_κ", "σ_κ"]), ylabel = "value")
+        ax = Axis(fig[1, 3]; title = "(c) Angular precision", xticks = (1:2, [rich("log μ", subscript("κ")), rich("σ", subscript("κ"))]), ylabel = "value")
         for (j, (key, v)) in enumerate(R)
             scatter!(ax, [1, 2] .+ 0.04 .* (j - 5), [v.fit.θ.logμκ, v.fit.θ.σκ]; color = SCOL[key], markersize = 9)
         end
@@ -172,10 +178,7 @@ function fig_v1(res)
                 ]; color = SCOL[key], markersize = 9
             )
         end
-        Legend(
-            fig[1, 5], [MarkerElement(marker = :circle, color = SCOL[k], markersize = 10) for (k, _, _) in SCENARIOS],
-            [l for (_, l, _) in SCENARIOS], "delay law"; framevisible = false
-        )
+        law_legend!(fig[1, 5])
         save(joinpath(VFIG, "v1_fitting.png"), fig; px_per_unit = 2)
         fig
     end
@@ -186,7 +189,7 @@ end
 #################################################################################################################
 function fig_v2(res)
     return with_theme(VTHEME) do
-        fig = Figure(size = (1500, 450))
+        fig = Figure(size = (1650, 450))
         k = first(replicates(res)).k
         # (a) reliability: predicted P(σ[p] = p + d) against the frequency with which it is true
         edges = [0.0, 0.01, 0.05, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 0.95, 0.99, 1.0]
@@ -194,8 +197,10 @@ function fig_v2(res)
             fig[1, 1]; title = "(a) Posterior of the order is calibrated", xlabel = "predicted probability",
             ylabel = "observed frequency", aspect = 1
         )
-        lines!(ax, [0, 1], [0, 1]; color = :black, linestyle = :dash)
+        lines!(ax, [0, 1], [0, 1]; color = :black, linestyle = :dash, linewidth = 1)
+        # no tails left out: almost every ρ is near 0 or 1, so the middle bins hold < 30 pairs
         for (key, _, _) in SCENARIOS
+            key == :none && continue
             pr, ob = Float64[], Bool[]
             for rep in 1:NREP
                 v = res[(key, rep)]
@@ -248,6 +253,7 @@ function fig_v2(res)
             ax, 0.03, 0.97; text = "positions decoded correctly: $(round(100acc; digits = 1)) %", space = :relative,
             align = (:left, :top), fontsize = 12
         )
+        law_legend!(fig[1, 5])
         save(joinpath(VFIG, "v2_decoding.png"), fig; px_per_unit = 2)
         fig
     end
@@ -314,7 +320,7 @@ end
 #################################################################################################################
 function fig_v4(res; N = 1_000_000, n = 7)
     return with_theme(VTHEME) do
-        fig = Figure(size = (1100, 450))
+        fig = Figure(size = (1250, 450))
         ax = Axis(
             fig[1, 1]; title = "(a) Exact P(σ) vs frequency in $(N ÷ 1000)k draws ($(n) sites)", xlabel = "log P(σ), exact recursion",
             ylabel = "log frequency", aspect = 1
@@ -335,6 +341,7 @@ function fig_v4(res; N = 1_000_000, n = 7)
             e = reduce(vcat, [res[(key, rep)].ess for rep in 1:NREP])
             hist!(ax, e; bins = 0:10:210, color = (SCOL[key], 0.45), strokewidth = 0)
         end
+        law_legend!(fig[1, 3])
         save(joinpath(VFIG, "v4_exact_likelihood_and_weights.png"), fig; px_per_unit = 2)
         fig
     end

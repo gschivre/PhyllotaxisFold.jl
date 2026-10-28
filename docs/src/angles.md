@@ -67,17 +67,37 @@ follows the length of the stem (long internodes rotate more), a divergence the o
 length of stem below it: the errors drift linearly, at the stem's twist rate. (b) The same errors once the twist is
 removed: what remains is the von Mises noise.*
 
-## 2.4 Outlier angles (option)
+## 2.4 Outlier angles
 
-**assumption** (with `outlier = true`) — with a small probability ``\pi_o``, an angle is not related to its site at
-all, and is uniform on the circle:
+**assumption** — with a small probability ``\pi_o``, an angle is not related to its site at all, and is uniform on
+the circle:
 
 ```math
 y_p \sim (1 - \pi_o)\,\mathrm{vM}\big(\cdot \mid \phi + o\,(\sigma(p) - 1)\,\psi + \omega_s x_p,\ \kappa_s\big) + \frac{\pi_o}{2\pi} .
 ```
 
-``\pi_o`` is fitted (prior Beta(1, 49), mean 2 %). A grossly mis-measured angle is then explained as an outlier
-rather than as a long displacement of its organ.
+A few badly measured angles are hard to avoid. Without this term, the model has to explain each of them somehow: by
+lowering the precision of the stem, or by moving its organ to another site. With it, such an angle is simply set
+aside. This is why it is on by default (`outlier = false` turns it off).
+
+**The prior.** ``\pi_o \sim`` Beta(1, 49). It is highest at 0 and decreases from there: median 1.4 %, mean 2 %,
+95 % of its mass below 6 %. It weighs about as much as 50 well-measured angles, little next to the thousands of a
+typical data set, so ``\pi_o`` is set by the data.
+
+!!! details "What the outlier term changes: a check on simulated stems"
+    60 stems of 45 organs (the light-tailed design of [§6.1](validation.md)), with 2.1 % of their angles replaced by
+    uniform ones, fitted with and without the outlier term, and with a flat prior Beta(1, 1):
+
+    | | without | with (default prior) | with (flat prior) | truth |
+    |---|---|---|---|---|
+    | ``\pi_o`` | — | 2.2 % | 2.3 % | 2.1 % |
+    | ``\log\mu_\kappa``, ``\sigma_\kappa`` | 1.70, 0.23 | 1.86, 0.15 | 1.86, 0.15 | 1.85, 0.15 |
+    | overtaking ``q_1, q_2`` (true orders: 0.085, 0.028) | 0.094, 0.034 | 0.090, 0.031 | 0.090, 0.030 | |
+
+    Left out, the outliers make the angles look noisier than they are (``\kappa`` 14 % too low, its spread across
+    stems too wide), and a few of them are read as swaps. The outlier term removes both, and the prior makes no
+    difference. On stems without outliers, it fits ``\pi_o`` = 0.2 % and changes nothing else. The script is
+    `docs/nodes_outlier_study.jl`.
 
 ## 2.5 The likelihood of one stem
 
@@ -110,7 +130,7 @@ one-dimensional, each with a rule suited to its integrand:
 - **the precision** ``\log\kappa``, Gaussian across stems: a Gauss–Hermite rule on that law (`ngrid_κ`, 16 nodes);
 - **the twist** ``\omega``: the likelihood of one stem is very sharp in ``\omega`` (about 0.1°/mm wide) and often
   multimodal, so a rule placed on the population law would miss its peaks. The nodes are placed on the peaks of each
-  stem's own likelihood instead (5 per peak).
+  stem's own likelihood instead (9 per peak).
 
 All terms are computed in log space, ``\log I_0`` by a routine (`logbesseli`) that also accepts dual numbers. The
 cost is proportional to `ngrid_ϕ` × `ngrid_κ` × `nnodes` (twist nodes per peak,
@@ -188,7 +208,7 @@ the running example.
     **Nodes.** Scan the rate, find the local maxima of ``\log L_s`` within 8 log-units of the best (at most four),
     refine each by golden section, and measure its curvature. Each mode ``r`` becomes a Gaussian component (centre
     ``c_r``, sd ``h_r`` from the curvature, widened by 25 %), with a weight ``\pi_r`` proportional to its Laplace mass.
-    Their mixture ``q_s`` is a proposal that covers every peak. Five Gauss–Hermite nodes ``z_j`` (weights
+    Their mixture ``q_s`` is a proposal that covers every peak. Nine Gauss–Hermite nodes ``z_j`` (weights
     ``\gamma_j``) are placed on each component: ``\omega_{rj} = c_r + h_r z_j``.
 
     **Weights.** Write the integral against the proposal and apply the Gauss–Hermite rule to each component:
@@ -208,8 +228,8 @@ the running example.
 
     | rule | median error per stem | worst stem |
     |---|---|---|
-    | adaptive, 5 nodes per mode (default) | 0.02 | 0.23–0.29 |
-    | adaptive, 9 nodes per mode | | 0.08 |
+    | adaptive, 5 nodes per mode | 0.02 | 0.23–0.29 |
+    | adaptive, 9 nodes per mode (default) | | 0.08 |
     | adaptive, 15 nodes per mode | | 0.01 |
     | Gauss–Hermite on the population law, 32 nodes | 0.2–2.5 | 0.6–11 |
     | Gauss–Hermite on the population law, 128 nodes | 0.1–0.8 | 0.4–3.4 |
@@ -217,22 +237,27 @@ the running example.
     Errors are in log-likelihood units (the 9- and 15-node rows on the six worst stems). The adaptive rule is equally
     accurate for the four population laws, as the derivation says. Its residual error comes from peaks that are not
     quite Gaussian, and more nodes per mode remove it. A rule placed on the population law misses the sharp peaks
-    even with 128 nodes. For fine comparisons of integrated log-likelihoods, use 9 nodes per mode
-    (`fit_map_torsion!(m; nodes_kw = (; nnodes = 9))`), at about twice the cost.
+    even with 128 nodes.
+
+    **Why 9 nodes.** On 60 simulated stems of 45 organs, going from 5 to 9 nodes per mode left the estimates where
+    they were: the twist population, the twist of each stem, the decoded orders and the overtaking profile. Only the
+    integrated log-likelihood moved, by 1.4. The default is 9 so that this log-likelihood is accurate enough to
+    compare fitted models (below). The work grows in proportion to the number of nodes; for a quicker fit, use
+    `fit_map_torsion!(m; nodes_kw = (; nnodes = 5))`.
 
 **How accurate is accurate enough?** The defaults are chosen for *estimation*. An integration error that barely
 changes as the parameters move shifts the log-likelihood without moving its maximum or its curvature, so it leaves the
 estimates and their standard errors alone. The errors here are of that kind: they depend mostly on the data of each
 stem (where its peak in ``\phi`` falls between the nodes, how Gaussian its peak in ``\omega`` is), little on the
-parameters. On the running example, refitting with 64 ``\phi`` nodes and 9 twist nodes per peak moves every parameter
-by less than 0.1 standard error, and leaves every decoded order, the fitted delay law and its overtaking profile
-unchanged; the posterior probabilities of the order change by less than 0.002 (up to 0.15 on one stem). Only the
+parameters. On the running example, refitting with 64 ``\phi`` nodes and 9 twist nodes per peak instead of 32 and 5
+moves every parameter by less than 0.1 standard error, and leaves every decoded order, the fitted delay law and its
+overtaking profile unchanged; the posterior probabilities of the order change by less than 0.002 (up to 0.15 on one stem). Only the
 integrated log-likelihood moves, by 0.9 over the 40 stems.
 
 Comparing the integrated log-likelihoods of two *different* fitted models is another matter: the two fits sit at
 different parameters, where the errors differ. Use finer settings for that: 64 ``\phi`` nodes, 32 ``\kappa`` nodes if
-``\sigma_\kappa > 0.5``, 9 twist nodes per peak (`PhyllotaxisModelAD(angles; ngrid_ϕ = 64)`,
-`fit_map_torsion!(m; nodes_kw = (; nnodes = 9))`). The timing laws of [§5](timing.md) are compared on the orders, not
+``\sigma_\kappa > 0.5``, and keep the default 9 twist nodes per peak (`PhyllotaxisModelAD(angles; ngrid_ϕ = 64)`).
+The timing laws of [§5](timing.md) are compared on the orders, not
 through these integrals, and do not need them.
 
 **Code.** `AngleLikelihood.stem_loglik!` (one stem, all grids, and its gradient), `stem_loglik`, `angle_loglikelihood`;

@@ -206,10 +206,10 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
 
     @testset "PropensityModel" begin
         data = [rand(Xoshiro(s), VonMises(0.0, 1.0), 20) for s in 1:3]
-        model = PhyllotaxisModelAD(data, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, logspace = true)
+        model = PhyllotaxisModelAD(data, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, logspace = true, outlier = false)
         θ = prior_mean(model)
         @test isfinite(LogDensityProblems.logdensity(model, θ))
-        lin = PhyllotaxisModelAD(data, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, logspace = false)
+        lin = PhyllotaxisModelAD(data, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, logspace = false, outlier = false)
         @test LogDensityProblems.logdensity(lin, θ) ≈ LogDensityProblems.logdensity(model, θ)
         prob = TransformedLogDensityProblem(model)
         u = Bijectors.bijector(model)(θ)
@@ -264,7 +264,7 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
             simulate_stems(LAW; plants = 3, organs = 30, x = pos, torsion_mean = 2.0, rng = Xoshiro(4)).angles
         @test_throws ArgumentError simulate_stems(η; plants = 3, organs = 30, x = pos[1:2])
         sim = simulate_stems(LAW; plants = 8, organs = 40, logμκ = 1.8, torsion_mean = 4.0, torsion_sd = 3.0, rng = Xoshiro(21))
-        mA = PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6)
+        mA = PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6, outlier = false)
         u = prior_mean_parameters(mA)
         l0 = angle_loglikelihood(mA, u)
         τA = copy(update_torsion!(mA, u))
@@ -275,7 +275,7 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
 
     @testset "Angle likelihood: analytic gradient and Hessian" begin
         sim = simulate_stems(LAW; plants = 3, organs = 30, logμκ = 1.8, rng = Xoshiro(3))
-        prob = TransformedLogDensityProblem(PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6))
+        prob = TransformedLogDensityProblem(PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6, outlier = false))
         v = Bijectors.bijector(prob.prob)(prior_mean(prob.prob)) .+ 0.1
         l, g, H = angle_vgh(prob, v, 2)
         @test l ≈ LogDensityProblems.logdensity(prob, v)
@@ -294,7 +294,7 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
             @test logsumexp(node_logterms(ω, logw, f.(ω), m, s)) ≈ exact atol = 1.0e-3
         end
         sim = simulate_stems(LAW; plants = 8, organs = 40, logμκ = 1.8, torsion_mean = 4.0, torsion_sd = 3.0, rng = Xoshiro(21))
-        m = PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6)
+        m = PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6, outlier = false)
         tp = TorsionPrior(m0 = 0.0, sm = 10.0, νs = 4.0, τs = 5.0) # per position
         u = prior_mean_parameters(m)
         nodes = torsion_nodes(m, u)
@@ -331,7 +331,7 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         @test g ≈ fd(f, u) rtol = 1.0e-5
         @test H ≈ ForwardDiff.hessian(f, u) rtol = 1.0e-4
         # π_o → 0 gives back the model without outliers
-        m0 = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 8, ngrid_κ = 4)
+        m0 = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 8, ngrid_κ = 4, outlier = false)
         m1 = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 8, ngrid_κ = 4, outlier = true)
         u0 = prior_mean_parameters(m0)
         @test angle_loglikelihood(m1, [u0; -40.0]) ≈ angle_loglikelihood(m0, u0) atol = 1.0e-8
@@ -347,7 +347,7 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
 
     @testset "Propensity model API: parameters, likelihood, spiral of each stem" begin
         sim = simulate_stems(LAW; plants = 3, organs = 30, logμκ = 1.8, rng = Xoshiro(3))
-        mA = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 16, ngrid_κ = 6)
+        mA = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 16, ngrid_κ = 6, outlier = false)
         η = [-3.0, -2.4, -1.9, -0.8, 0.0, -0.8, -1.9, -2.4, -3.0]
         uA = unconstrained_parameters(mA; η, logμκ = 1.8, σκ = 0.1, α = 0.95)
         θA = constrained_parameters(mA, uA)
@@ -365,7 +365,7 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         @test decode_orders(prob, uA) == decode_orders(mA, uA)
         # spiral of each stem: golden vs Lucas and the orientation, recovered from the angles
         sp = simulate_stems(LAW; plants = 30, organs = 30, logμκ = 1.8, α = 0.6, rng = Xoshiro(12))
-        m = PhyllotaxisModelAD(sp.angles; ngrid_ϕ = 16, ngrid_κ = 6)
+        m = PhyllotaxisModelAD(sp.angles; ngrid_ϕ = 16, ngrid_κ = 6, outlier = false)
         post = spiral_posterior(m, unconstrained_parameters(m; η = [-0.8, -1.9, -2.4, -3.0], logμκ = 1.8, σκ = 0.1, α = 0.6))
         @test mean((p.p_lucas > 0.5) == (ψ == PhyllotaxisFold.Lucas_angle) for (p, ψ) in zip(post, sp.ψ)) ≥ 0.9
         @test mean((p.p_ccw > 0.5) == (o == 1) for (p, o) in zip(post, sp.o)) ≥ 0.9
@@ -523,7 +523,7 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         # the re-weighting: the tail masses must come back
         truth = DelayLaw(0.42; πL = 0.08, mL = 1.2, πE = 0.08, mE = 1.0)
         sim = simulate_stems(truth; plants = 40, organs = 35, logμκ = 1.9, σκ = 0.15, rng = Xoshiro(41))
-        m = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 16, ngrid_κ = 6)
+        m = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 16, ngrid_κ = 6, outlier = false)
         r = fit_map(m)
         post = order_posterior(m, r.u; nsamples = 60, rng = Xoshiro(42))
         smp = order_samples(post, constrained_parameters(m, r.u).η)

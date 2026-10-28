@@ -40,7 +40,9 @@ invents tails that are not there.
 Each scenario is simulated three times (three *replicates*, nine data sets in all). Each data set goes through the
 steps of the [worked analysis](workflow.md), exactly as real data would:
 
-1. `fit_map_torsion!` (propensity model, ``k = 4``, twist integrated out);
+1. `fit_map_torsion!` (propensity model, ``k = 4``, twist integrated out), with the default settings: outlier angles
+   allowed ([§2.4](angles.md)) and 9 twist nodes ([§2.6](angles.md)). The simulated angles have no outliers, so this
+   also checks that allowing them costs nothing;
 2. `decode_orders` (joint MAP);
 3. `order_posterior` with 200 exact samples per stem;
 4. the `:core`, `:late` and `:both` delay laws by `fit_delay_law`;
@@ -62,7 +64,7 @@ against truth. (b) The twist population: mean and sd, truth in black. (c) The po
 
 **What we find.** The twist of each stem is recovered (correlation 0.99), and so is its population: a mean of
 0.85–1.04 °/mm for a truth of 1.0, an sd of 0.62–0.80 for 0.7. So is the precision of the angles
-(``\log\mu_\kappa`` 1.81–1.90 for 1.85). Every spiral is decoded with its correct orientation and divergence.
+(``\log\mu_\kappa`` 1.82–1.90 for 1.85). Every spiral is decoded with its correct orientation and divergence.
 
 One stem in 540 gets a twist at a secondary mode of its likelihood (figure 1a, the point far from the diagonal). It is
 a reminder that the twist likelihood of a stem can have several peaks. This is why the twist is integrated out rather
@@ -78,15 +80,19 @@ time.
 
 *Figure 2. The orders. (a) Calibration of the posterior: every pair (height ``p``, displacement ``d``) is grouped by
 its posterior probability ``\rho_{p,d}``, and the frequency with which ``d`` is the true displacement is plotted
-against that probability (± 2 se). (b) The most probable displacement against the true one: percentage of the organs
-of each true displacement. (c) The fraction of displaced organs per stem, decoded against true.*
+against that probability (± 2 se). Without tails the posterior is almost always sure (``\rho`` near 0 or 1), so there
+is too little in between to plot; that law is left out of this panel. (b) The most probable displacement against the
+true one: percentage of the organs of each true displacement. Unlike (a), this panel pools all nine data sets, no
+tails included. The no-tails stems add mostly to ``d = 0`` and ``\pm 1``; displacements beyond ±1 come mostly
+(68–85 %) from the heavy-tailed law. (c) The fraction of displaced organs per stem, decoded
+against true.*
 
 **What we find.**
 
 - **The posterior is calibrated** (figure 2a): the points lie on the diagonal. This is what makes its samples a sound
   input for [§5](timing.md).
 - **The most probable order is right for 98 % of the positions.** Displacements of ±1 and ±2 are recovered in 87–96 %
-  of cases, and the rare displacements of ±3 and ±4 in 64–70 % (figure 2b). When the single best order is wrong, the
+  of cases, and the rare displacements of ±3 and ±4 in 64–71 % (figure 2b). When the single best order is wrong, the
   posterior usually shares its probability between it and the true order. This is why step 2 uses the posterior
   samples, not the best order alone.
 
@@ -103,13 +109,13 @@ far can the parameters of the fitted law be trusted?
 |---|---|---|---|---|
 | no tails | truth | 0.046 | 0.0004 | 0.0000 |
 | | from the orders | 0.038, 0.049, 0.047 (± 0.004) | 0.0009, 0.0004, 0.0007 (± 0.0005) | ≤ 0.0002 |
-| | fitted law | 0.038, 0.049, 0.046 | 0.0008, 0.0006, 0.0006 | 0.0000 |
+| | fitted law | 0.038, 0.049, 0.046 | 0.0008, 0.0006, 0.0007 | 0.0000 |
 | light tails | truth | 0.087 | 0.024 | 0.011 |
 | | from the orders | 0.087, 0.089, 0.087 (± 0.005) | 0.025, 0.025, 0.024 (± 0.003) | 0.012, 0.011, 0.008 (± 0.002) |
-| | fitted law | 0.082, 0.087, 0.085 | 0.022, 0.023, 0.022 | 0.010, 0.010, 0.008 |
+| | fitted law | 0.082, 0.087, 0.085 | 0.022, 0.023, 0.022 | 0.010, 0.010, 0.007 |
 | heavy tails | truth | 0.183 | 0.075 | 0.032 |
-| | from the orders | 0.187, 0.191, 0.190 (± 0.006) | 0.078, 0.078, 0.088 (± 0.005) | 0.031, 0.028, 0.034 (± 0.003) |
-| | fitted law | 0.184, 0.187, 0.185 | 0.073, 0.071, 0.076 | 0.028, 0.026, 0.031 |
+| | from the orders | 0.186, 0.191, 0.189 (± 0.006) | 0.077, 0.077, 0.088 (± 0.005) | 0.030, 0.028, 0.034 (± 0.003) |
+| | fitted law | 0.184, 0.186, 0.184 | 0.072, 0.071, 0.076 | 0.027, 0.026, 0.031 |
 
 - **The profile is recovered in every scenario.** Most of the scatter between replicates is real: each replicate's
   own orders differ from the law by chance (the first no-tails replicate has a neighbour-swap rate of 0.038 in its
@@ -117,8 +123,8 @@ far can the parameters of the fitted law be trusted?
 - **It does not depend on the shape of the law.** Without tails, the ridge of the `:both` fit (point 1 below) moves
   the off-time fraction but leaves the profile where it is.
 - **The fitted law can miss the longest overtakings.** For heavy tails, the fitted law's ``q_3`` is below the rate in
-  each replicate's own true orders by 0.005–0.007 (about 2 standard errors), while the profile read from the orders is
-  not: the exponential tails do not quite fit the longest displacements. The two profiles differ by 0.002–0.004 there,
+  each replicate's own true orders by 0.006–0.008 (2 to 3 standard errors), while the profile read from the orders is
+  not: the exponential tails do not quite fit the longest displacements. The two profiles differ by 0.002–0.003 there,
   which is the check of [§5.7](timing.md).
 
 **The parameters of the fitted law.**
@@ -134,9 +140,9 @@ Truth, then the `:both` fits of the three replicates (the readings of [§5.6](ti
 
 | scenario | ``s`` | ``P(e > 1)`` | ``P(e < -1)`` | ``P(\lvert e\rvert > 1)`` | tails gain (``\Delta\ell``) |
 |---|---|---|---|---|---|
-| no tails | 0.42 → 0.32, 0.39, 0.37 | 0.009 → 0.010, 0.029, 0.032 | 0.009 → 0.008, 0.002, 0.001 | 0.017 → 0.018, 0.031, 0.034 | 1.6, 0.2, 0.4 |
-| light tails | 0.42 → 0.41, 0.41, 0.38 | 0.035 → 0.043, 0.045, 0.043 | 0.030 → 0.018, 0.021, 0.026 | 0.065 → 0.061, 0.065, 0.068 | 131, 126, 97 |
-| heavy tails | 0.39 → 0.01, 0.01, 0.01 | 0.086 → 0.106, 0.109, 0.113 | 0.110 → 0.110, 0.110, 0.104 | 0.197 → 0.216, 0.218, 0.217 | 74, 58, 76 |
+| no tails | 0.42 → 0.32, 0.39, 0.37 | 0.009 → 0.010, 0.029, 0.033 | 0.009 → 0.008, 0.002, 0.001 | 0.017 → 0.018, 0.031, 0.034 | 1.6, 0.2, 0.4 |
+| light tails | 0.42 → 0.41, 0.41, 0.38 | 0.035 → 0.043, 0.045, 0.043 | 0.030 → 0.018, 0.021, 0.026 | 0.065 → 0.061, 0.065, 0.069 | 129, 125, 96 |
+| heavy tails | 0.39 → 0.01, 0.01, 0.01 | 0.086 → 0.105, 0.106, 0.113 | 0.110 → 0.110, 0.111, 0.103 | 0.197 → 0.215, 0.218, 0.216 | 70, 57, 75 |
 
 **What we find**, from the most to the least robust:
 
@@ -145,7 +151,7 @@ Truth, then the `:both` fits of the three replicates (the readings of [§5.6](ti
    fit is too flexible here ([§5.6](timing.md)). In two replicates it puts nearly every site in a short "tail" (mean
    0.2 plastochron) that only reshapes the core, and its off-time fraction drifts to 0.031–0.034, about one standard
    error (0.015) above the truth. When the tails gain little, read the `:core` fit.
-2. **Real tails are found without doubt.** For both tailed laws, the tails add 58 to 131 units.
+2. **Real tails are found without doubt.** For both tailed laws, the tails add 57 to 129 units.
 3. **The off-time fraction ``P(|e| > 1)`` is reliable only for light tails.** It is recovered within its standard
    error for the light-tailed law. For the heavy-tailed law it is about 0.02 too high in all three replicates (about
    2 se): a 10 % overestimate when a fifth of the organs are off time. Without tails it drifts (point 1).
@@ -185,23 +191,23 @@ Truth, then the shared-core fit of each replicate (estimate ± se):
 | replicate | shared ``s`` | off-time, light tails | off-time, heavy tails | difference | likelihood ratio (``p``) |
 |---|---|---|---|---|---|
 | truth | 0.42 and 0.39 | 0.065 | 0.197 | 0.132 | |
-| 1 | 0.40 ± 0.02 | 0.062 ± 0.006 | 0.201 ± 0.010 | 0.139 ± 0.012 | 2.8 (0.10) |
-| 2 | 0.41 ± 0.02 | 0.066 ± 0.006 | 0.204 ± 0.011 | 0.138 ± 0.012 | 2.3 (0.13) |
-| 3 | 0.01 ± 0.001 | 0.093 ± 0.013 | 0.217 ± 0.010 | 0.124 ± 0.016 | 2.3 (0.13) |
+| 1 | 0.40 ± 0.02 | 0.062 ± 0.006 | 0.200 ± 0.010 | 0.138 ± 0.012 | 2.7 (0.10) |
+| 2 | 0.41 ± 0.02 | 0.066 ± 0.006 | 0.203 ± 0.011 | 0.137 ± 0.012 | 2.3 (0.13) |
+| 3 | 0.01 ± 0.001 | 0.093 ± 0.013 | 0.216 ± 0.010 | 0.123 ± 0.016 | 2.2 (0.14) |
 
-With separate fits ([§6.4](validation.md)), the heavy-tailed off-time fraction was 0.216–0.218 and the difference
-0.149–0.155.
+With separate fits ([§6.4](validation.md)), the heavy-tailed off-time fraction was 0.215–0.218 and the difference
+0.148–0.154.
 
 For comparison, the difference between the two groups' profiles (heavy minus light, truth 0.096, 0.052, 0.021) read
-from the orders, with no delay law: 0.101, 0.102, 0.102 for ``q_1`` (± 0.008), 0.053, 0.052, 0.064 for ``q_2``
-(± 0.006) and 0.019, 0.017, 0.026 for ``q_3`` (± 0.003), with a Wald χ² of 173 to 190 on 3 degrees of freedom
-(`compare_profiles`). The joint fit gives the same, even in replicate 3 (0.100, 0.053, 0.024).
+from the orders, with no delay law: 0.100, 0.102, 0.102 for ``q_1`` (± 0.008), 0.052, 0.052, 0.064 for ``q_2``
+(± 0.006) and 0.018, 0.017, 0.026 for ``q_3`` (± 0.003), with a Wald χ² of 171 to 191 on 3 degrees of freedom
+(`compare_profiles`). The joint fit gives the same, even in replicate 3 (0.099, 0.053, 0.024).
 
 **What we find.**
 
 - **When the light-tailed group holds the core, the shared core removes the bias** (replicates 1 and 2). The shared
-  ``s`` (0.40–0.41) lies between the two true cores. The heavy-tailed off-time fraction falls from 0.217 to
-  0.201–0.204, for 0.197, and the difference between the groups is recovered within its standard error.
+  ``s`` (0.40–0.41) lies between the two true cores. The heavy-tailed off-time fraction falls from 0.215–0.218 to
+  0.200–0.203, for 0.197, and the difference between the groups is recovered within its standard error.
 - **The likelihood ratio does not reject the shared core**, even though the true cores differ by 0.03. A difference
   this small is beyond what 60 stems can detect, and it does no visible harm to the estimates.
 - **It can fail, and this can be seen** (replicate 3). There the shared core collapses as well, and the light-tailed
@@ -231,7 +237,7 @@ fitted law, per stem, out of 200 posterior samples.*
 - **The recursion is exact in practice.** Its probabilities match the frequencies of simulated orders over five
   orders of magnitude (figure 4a).
 - **The re-weighting rests on many samples.** The effective sample size ([§5.5](timing.md)) is close to 200 for most
-  stems (median 175–200), and above 100 for nearly all (figure 4b). The posterior of the propensity model covers the
+  stems (median 172–200), and above 100 for nearly all (figure 4b). The posterior of the propensity model covers the
   orders that the delay laws favour, as [§5.3](timing.md) led us to expect.
 
 ## 6.7 A clock that drifts
