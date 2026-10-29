@@ -64,7 +64,7 @@ prof.q, prof.se                              # the result to report; inf.profile
 Fit each group on its own (for a mutant, against its own co-segregant wild type). Then compare their **overtaking
 profiles**, `compare_profiles(prof_wt, prof_mutant)`: how often an organ is overtaken by the one 1, 2 or 3 places
 up. This is what the angles identify, with no assumption on the shape of the delay law. The fitted law interprets
-it: the precision of a typical organ (`inf.estimate.s`) and the fraction of organs off their turn
+it: the precision of a typical organ (`inf.estimate.σc`) and the fraction of organs off their turn
 (`inf.estimate.off`) are reliable only when off-time organs are rare. When one group has many, fitting the two groups
 together with one shared precision (`fit_delay_law([smp_wt, smp_mutant])`, tested by `shared_core_test`) can recover
 them. The manual explains why, and shows how well each quantity is recovered on simulated stems.

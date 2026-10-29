@@ -60,7 +60,7 @@ function summarize(o)
         twist_rmse_trim = round(sqrt(mean(abs2, filter(<(0.3), abs.(o.τ_mean .- tw)))); digits = 4),
         cover95 = round(mean(abs.(o.τ_mean .- tw) .< 1.96 .* o.τ_sd); digits = 3),
         correct = round(mean(mean(d.σ .== σ) for (d, σ) in zip(o.dec, o.truth.orders)); digits = 4),
-        off = (round(o.est.off; digits = 3), round(o.se.off; digits = 3)), s = round(o.est.s; digits = 3),
+        off = (round(o.est.off; digits = 3), round(o.se.off; digits = 3)), σc = round(o.est.σc; digits = 3),
         q = round.(o.profile.q[1:3]; digits = 4), loglik = round(o.loglik; digits = 1),
     )
 end

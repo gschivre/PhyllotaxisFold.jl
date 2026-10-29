@@ -143,15 +143,15 @@ Recall the mechanism of [§1.4](problem.md): site ``i`` is ready at time ``i`` (
 ``\tau_i``. Only differences of delays matter, so ``f`` is defined up to a shift, and its core is centred at 0.
 
 **Two sites first.** Sites 1 and 2 are swapped when site 2 commits first: ``2 + e_2 < 1 + e_1``, that is
-``e_1 - e_2 > 1``. If the delays are Gaussian with sd ``s``, their difference is Gaussian with sd ``s\sqrt 2``, and
+``e_1 - e_2 > 1``. If the delays are Gaussian with sd ``\sigma_c``, their difference is Gaussian with sd ``\sigma_c\sqrt 2``, and
 
 ```math
-P(2\,1) = \Phi\!\left(-\frac{1}{s\sqrt 2}\right).
+P(2\,1) = \Phi\!\left(-\frac{1}{\sigma_c\sqrt 2}\right).
 ```
 
-With ``s = 0.42`` plastochron, this is 4.6 %: about one pair of neighbours in twenty. The same reasoning shows why a
+With ``\sigma_c = 0.42`` plastochron, this is 4.6 %: about one pair of neighbours in twenty. The same reasoning shows why a
 Gaussian alone is not the whole story: a displacement by two needs ``e_i - e_{i+2} > 2``, of probability
-``\Phi(-2/(s\sqrt 2)) \approx 4 \times 10^{-4}``, one pair in 2600. Real stems have many more ([§5.6](timing.md)).
+``\Phi(-2/(\sigma_c\sqrt 2)) \approx 4 \times 10^{-4}``, one pair in 2600. Real stems have many more ([§5.6](timing.md)).
 
 **Any number of sites.** The organ at height ``p`` comes from site ``\sigma(p)``. So ``\sigma`` is the order on the
 stem exactly when ``\tau_{\sigma(1)} < \tau_{\sigma(2)} < \dots < \tau_{\sigma(n)}``. Call
@@ -260,7 +260,7 @@ commits before site 2, as it should.
     counts the cell that contains ``t`` for one half (midpoint rule). Counting it in full would treat two times in the
     same cell as ordered, which biases ``\log P_f(\sigma)`` upwards at first order in the step: by +0.28 for an order
     of 6 sites with three displacements. The midpoint rule leaves an error below 0.01. The tests check the two-site
-    closed form ``\Phi(1/(s\sqrt2))``, that the probabilities of all 24 orders of 4 sites sum to 1, and the frequencies
+    closed form ``\Phi(1/(\sigma_c\sqrt2))``, that the probabilities of all 24 orders of 4 sites sum to 1, and the frequencies
     of the orders drawn from the delay law.
 
 A stem of 45 organs is scored in a fraction of a millisecond, and step 1 provides exactly the orders worth scoring:
@@ -307,7 +307,7 @@ seconds: neither the angles nor the permanents are recomputed.
 log-weight ``\log P_f(\sigma) - \log P_A(\sigma)`` of each, under the true delay law: a ratio of two probabilities,
 not the probability of the order under ``f``. The true order is in orange.
 (c) ``\Delta\ell`` summed over the 40 stems (black) and the term of the example stem (orange, right axis), as a
-function of the core sd ``s``, the tails kept at their true values. The dashed line is the true ``s``.*
+function of the core sd ``\sigma_c``, the tails kept at their true values. The dashed line is the true ``\sigma_c``.*
 
 Figure 2 shows the identity at work. On the example stem, the true order carries 90 % of the posterior samples and
 seven others share the rest (a). The true delay law finds the true order about six times more probable than the
@@ -334,25 +334,25 @@ sample size is small is scored imprecisely; more posterior samples help.
 **assumption** — the delay is a precise Gaussian core, plus two exponential tails for sites committed late or early:
 
 ```math
-f = (1 - \pi_L - \pi_E)\, \mathcal N(0, s^2)
-+ \pi_L\, \big(\mathcal N(0, s^2) \ast \mathrm{Exp}(m_L)\big)
-+ \pi_E\, \big(\mathcal N(0, s^2) \ast (-\mathrm{Exp}(m_E))\big).
+f = (1 - \pi_L - \pi_E)\, \mathcal N(0, \sigma_c^2)
++ \pi_L\, \big(\mathcal N(0, \sigma_c^2) \ast \mathrm{Exp}(m_L)\big)
++ \pi_E\, \big(\mathcal N(0, \sigma_c^2) \ast (-\mathrm{Exp}(m_E))\big).
 ```
 
-The core sd ``s`` is the precision of a typical commitment. A fraction ``\pi_L`` of the sites is late by an extra
+The core sd ``\sigma_c`` is the precision of a typical commitment. A fraction ``\pi_L`` of the sites is late by an extra
 exponential delay of mean ``m_L``, and a fraction ``\pi_E`` early by ``m_E``. Why tails? A Gaussian core of sd 0.42
 makes neighbour swaps common but displacements by two very rare ([§5.2](timing.md)). A tail gives exactly what a
 Gaussian cannot: one organ displaced by two or three positions while its neighbours stay in order. For three sites,
 the orders 3 1 2 and 2 3 1 have a probability of 0.03 % under the Gaussian core alone, and 2.4 % under the law of the
 running example, whose tails hold 12 % of the sites.
 
-Three nested variants are fitted: `:core` (``s``), `:late` (``s, \pi_L, m_L``) and `:both` (all five). Comparing their
+Three nested variants are fitted: `:core` (``\sigma_c``), `:late` (``\sigma_c, \pi_L, m_L``) and `:both` (all five). Comparing their
 ``\Delta\ell`` tells whether the orders call for tails, and on which side.
 
 !!! details "The density"
-    A Gaussian of sd ``s`` convolved with an exponential of rate ``\lambda = 1/m`` (an exponentially modified
+    A Gaussian of sd ``\sigma_c`` convolved with an exponential of rate ``\lambda = 1/m`` (an exponentially modified
     Gaussian) has the density
-    ``\lambda \exp\!\big(\lambda(\lambda s^2/2 - x)\big)\, \Phi\big((x - \lambda s^2)/s\big)``, with ``x = z`` for the
+    ``\lambda \exp\!\big(\lambda(\lambda \sigma_c^2/2 - x)\big)\, \Phi\big((x - \lambda \sigma_c^2)/\sigma_c\big)``, with ``x = z`` for the
     late tail and ``x = -z`` for the early one. The mixture is evaluated in log space on `DELAY_GRID` and
     renormalised there.
 
@@ -371,7 +371,7 @@ q_d = P(\text{site } i + d \text{ commits before site } i) = P(e_i - e_{i+d} > d
 - **It has no direction.** ``q_d`` depends on ``f`` only through the law of a *difference* of two delays, which is
   the same whether the off-time sites are late or early. The late/early split rests on rarer patterns of three
   organs (2 3 1 against 3 1 2), and is only weakly identified.
-- **The parameters of ``f`` are readings of its shape.** The core sd ``s``, the tail masses ``\pi`` and ``m``, and
+- **The parameters of ``f`` are readings of its shape.** The core sd ``\sigma_c``, the tail masses ``\pi`` and ``m``, and
   properties of ``f`` itself such as the **off-time fraction** ``P(|e| > 1)`` (`tail_masses`) are not seen directly.
   They follow from the profile only through the assumed shape (a Gaussian core with exponential tails). When that
   shape is unambiguous they are well determined: for light tails, the core and the off-time fraction are recovered.
@@ -387,7 +387,7 @@ it, within its assumed shape: how precise a typical commitment is, and how many 
 ## 5.7 Fit, uncertainty and comparisons
 
 - **Fit.** `fit_delay_law(samples, variant)` maximises ``\Delta\ell`` by Newton's method with a trust region, on
-  unconstrained parameters: ``\log s``; for `:both`, ``\operatorname{logit}(\pi_L + \pi_E)``, the logit of the late
+  unconstrained parameters: ``\log \sigma_c``; for `:both`, ``\operatorname{logit}(\pi_L + \pi_E)``, the logit of the late
   share ``\pi_L/(\pi_L + \pi_E)``, ``\log m_L`` and ``\log m_E``. The tail mass and the late share are separate
   coordinates because the first is better determined than the second. The grid is fixed, so ``\Delta\ell``
   is a smooth function of the parameters. Its gradient and Hessian are exact: forward-mode dual numbers pass through
@@ -397,7 +397,7 @@ it, within its assumed shape: how precise a typical commitment is, and how many 
   therefore measures the uncertainty from the spread of the per-stem slopes ``g_s`` of these terms, not from the
   curvature ``H`` of their sum alone. This is the sandwich covariance
   ``H^{-1}\big(\sum_s g_s g_s^\top\big)H^{-1}``, with exact derivatives. The delta method then gives the standard
-  errors of ``s``, of the tail masses and of the profile ``q_1, \dots, q_4`` (`overtaking`).
+  errors of ``\sigma_c``, of the tail masses and of the profile ``q_1, \dots, q_4`` (`overtaking`).
 - **The profile without a delay law.** `overtaking_profile(samples)` averages, over each stem's posterior samples,
   the fraction of pairs ``d`` apart that are inverted, and pools the stems. Its standard errors are clustered by
   stem. It needs no delay law, so it is also a check of the fitted one: the two profiles should agree.
@@ -439,7 +439,7 @@ it, within its assumed shape: how precise a typical commitment is, and how many 
     standard error of ``\bar T`` is the delta method through the covariance of the fit, and that of ``x\,\bar T``
     combines both, as independent: ``\sqrt{(\bar T\,\mathrm{se}_x)^2 + (x\,\mathrm{se}_{\bar T})^2}``.
 
-**Code.** `DelayLaw(s; πL, mL, πE, mE)`, `rand([rng,] f)`, `delay_logdensity(f)`, `tail_masses(f; a = 1)`;
+**Code.** `DelayLaw(σc; πL, mL, πE, mE)`, `rand([rng,] f)`, `delay_logdensity(f)`, `tail_masses(f; a = 1)`;
 `loglik_order_exact(σ, f)` (or `(σ, logg, grid, γ)`); `order_samples(order_posterior(m, fit; nsamples), η)`,
 `stem_terms(samples, f)`, `relative_loglik(samples, f)` (`stem_terms(samples, logP)` scores any law of the order given
 as ``\sigma \mapsto \log P(\sigma)``); `fit_delay_law`, `delay_law_inference`, `shared_core_test`; the profile:

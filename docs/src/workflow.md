@@ -138,7 +138,7 @@ The estimates of the `:both` law (± robust se), with the truth:
 
 | | wild type | truth | mutant | truth |
 |---|---|---|---|---|
-| core sd ``s`` (plastochron) | 0.41 ± 0.03 | 0.42 | 0.30 ± 0.09 | 0.42 |
+| core sd ``\sigma_c`` (plastochron) | 0.41 ± 0.03 | 0.42 | 0.30 ± 0.09 | 0.42 |
 | late, ``P(e > 1)`` | 0.032 ± 0.006 | 0.035 | 0.141 ± 0.018 | 0.113 |
 | early, ``P(e < -1)`` | 0.038 ± 0.008 | 0.028 | 0.019 ± 0.009 | 0.027 |
 | off time, ``P(\lvert e\rvert > 1)`` | 0.071 ± 0.008 | 0.062 | 0.160 ± 0.014 | 0.140 |
@@ -189,7 +189,7 @@ maturation takes the same time throughout flowering), so the counts give the pla
 # counts: one vector per plant, the cumulative number of open flowers at the end of each day (NaN: a day not recorded)
 fl = fit_flowering(counts_wt)
 T = mean_plastochron(fl, [1:40 for _ in 1:50])      # mean plastochron of the measured organs (ranks 1–40), in hours
-in_hours(inf2.estimate[1].s, inf2.se[1].s, T)       # the shared core sd, in hours
+in_hours(inf2.estimate[1].σc, inf2.se[1].σc, T)       # the shared core sd, in hours
 ```
 
 `fit_flowering` fits a flowering rate that rises, then declines from a change point specific to each plant, until the
@@ -206,7 +206,7 @@ Over the measured ranks, the plastochron of the median plant shortens from about
 7.67 ± 0.14 h in the wild type and 7.78 ± 0.14 h in the mutant (truth 7.65 h). `in_hours` multiplies, and combines the
 two uncertainties, treated as independent since they come from different data:
 
-| core sd ``s`` | in plastochrons | in hours | truth (hours) |
+| core sd ``\sigma_c`` | in plastochrons | in hours | truth (hours) |
 |---|---|---|---|
 | wild type, fitted alone | 0.41 ± 0.03 | 3.1 ± 0.3 | 3.2 |
 | shared core | 0.38 ± 0.05 | 2.9 ± 0.4 | 3.2 |

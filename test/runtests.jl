@@ -439,7 +439,7 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         @test fit.converged
         inf = delay_law_inference(known, fit)
         tt = tail_masses(truth)
-        @test abs(inf.estimate.s - truth.s) < 3 * inf.se.s + 0.01
+        @test abs(inf.estimate.σc - truth.σc) < 3 * inf.se.σc + 0.01
         @test abs(inf.estimate.late - tt.late) < 3 * inf.se.late + 0.005
         @test abs(inf.estimate.early - tt.early) < 3 * inf.se.early + 0.005
         @test all(x -> x > 0, values(inf.se))
@@ -447,7 +447,7 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         core_orders = simulate_stems(DelayLaw(0.42); plants = 150, organs = 40, rng = Xoshiro(6)).orders
         kc = order_samples([(; samples = [σ]) for σ in core_orders], η)
         f0, f2 = fit_delay_law(kc, :core; init = DelayLaw(0.5)), fit_delay_law(kc, :both)
-        @test f0.law.s ≈ 0.42 atol = 0.02
+        @test f0.law.σc ≈ 0.42 atol = 0.02
         @test f2.rel_ll - f0.rel_ll < 5 # χ²(4)/2 is below 5 with probability > 0.99
         # without tails, a short tail holding most sites only reshapes the core: the off-time fraction of the two-tail law
         # is then loosely determined, and checked against its own standard error
@@ -503,8 +503,8 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         groups = [known(fA, 120, 11), known(fB, 120, 12)]
         t = shared_core_test(groups, :both)
         @test t.shared.converged && length(t.shared.laws) == 2
-        @test t.shared.laws[1].s == t.shared.laws[2].s
-        @test t.shared.laws[1].s ≈ 0.42 atol = 0.05
+        @test t.shared.laws[1].σc == t.shared.laws[2].σc
+        @test t.shared.laws[1].σc ≈ 0.42 atol = 0.05
         @test t.df == 1 && t.lr ≥ 0 && t.p > 0.001
         @test t.shared.rel_ll ≈ sum(t.shared.rel_ll_groups)
         inf = delay_law_inference(groups, t.shared)
@@ -531,7 +531,7 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         inf = delay_law_inference(smp, fit)
         tt = tail_masses(truth)
         @test abs(inf.estimate.off - tt.off) < 3 * inf.se.off + 0.01
-        @test abs(inf.estimate.s - truth.s) < 3 * inf.se.s + 0.03
+        @test abs(inf.estimate.σc - truth.σc) < 3 * inf.se.σc + 0.03
         # the true law scores close to the fitted one (no large optimism)
         @test 0 ≤ fit.rel_ll - relative_loglik(smp, truth) < 10
     end

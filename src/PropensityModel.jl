@@ -454,8 +454,8 @@ end
 Simulate from the propensity model: the order of each stem is an exact draw from the banded permanent with
 log-propensities η (η_1..η_k, symmetric, or the full 2k + 1 vector, recognised by its middle entry η_0 = 0),
 κ_s ~ LogNormal(logμκ, σκ) per stem, and
-the angles are y_p ~ vM(ϕ + o (σ[p] − 1) ψ + τ_s x_p, κ_s), replaced with probability `outlier` by a uniform angle.
-`x`: the twist coordinate of each stem (default: the positions 0, 1, …); twist τ_s ~ Normal(torsion_mean, torsion_sd)
+the angles are y_p ~ vM(ϕ + o (σ[p] − 1) ψ + ω_s x_p, κ_s), replaced with probability `outlier` by a uniform angle.
+`x`: the twist coordinate of each stem (default: the positions 0, 1, …); twist ω_s ~ Normal(torsion_mean, torsion_sd)
 degrees per unit of x. Returns (; angles, orders, torsion, κ, outliers, ψ, o) (outliers: the positions whose angle is
 uniform; ψ, o: the spiral of each stem).
 """

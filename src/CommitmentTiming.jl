@@ -14,7 +14,7 @@ Site i becomes ready at time i (plastochron units) and commits after an i.i.d. d
 delays f). Any delay law is thereby scored against the propensity model, and against any other law, without refitting
 the angle model.
 
-- `DelayLaw`: f = (1 − π_L − π_E) N(0, s²) + π_L (N(0, s²) + Exp(m_L)) + π_E (N(0, s²) − Exp(m_E))
+- `DelayLaw`: f = (1 − π_L − π_E) N(0, σc²) + π_L (N(0, σc²) + Exp(m_L)) + π_E (N(0, σc²) − Exp(m_E))
 - `loglik_order_exact`: the exact log P_f(σ) (forward recursion on a delay grid, midpoint rule for ties)
 - `order_samples`, `stem_terms`, `relative_loglik`: the re-weighting estimate, per stem and summed
 - `fit_delay_law`: maximum of the summed terms for the :core, :late or :both law (Newton trust region, ForwardDiff);
@@ -22,7 +22,7 @@ the angle model.
 - `overtaking`: the overtaking profile q_d = P(site i + d commits before site i) of a law, the quantity the orders
   identify; `overtaking_profile`: the same read directly from the posterior orders, with no delay law;
   `compare_profiles`: Wald test of two groups' profiles
-- `delay_law_inference`: robust (sandwich, clustered by stem) standard errors of s, the tail masses and the profile
+- `delay_law_inference`: robust (sandwich, clustered by stem) standard errors of σc, the tail masses and the profile
 - `shared_core_test`: likelihood ratio of one core sd for all groups against one per group
 - `simulate_stems(f::DelayLaw; ...)`: stems whose order comes from independent delays f (for validation)
 
@@ -53,28 +53,28 @@ late and early tails are treated alike.
 const DELAY_GRID = range(-30.0, 30.0; step = 0.05)
 
 """
-    DelayLaw(s; πL = 0, mL = 1, πE = 0, mE = 1)
+    DelayLaw(σc; πL = 0, mL = 1, πE = 0, mE = 1)
 
-Commitment delay in plastochrons: a Gaussian core of sd `s`; a fraction `πL` of the sites is late by an extra
+Commitment delay in plastochrons: a Gaussian core of sd `σc`; a fraction `πL` of the sites is late by an extra
 exponential delay of mean `mL`, a fraction `πE` early by an exponential advance of mean `mE`. The parameters share one
 floating-point type (promoted; ForwardDiff duals inside the fits).
 """
 struct DelayLaw{T <: Real}
-    s::T
+    σc::T
     πL::T
     mL::T
     πE::T
     mE::T
-    DelayLaw{T}(s, πL, mL, πE, mE) where {T <: Real} = new{T}(s, πL, mL, πE, mE)
+    DelayLaw{T}(σc, πL, mL, πE, mE) where {T <: Real} = new{T}(σc, πL, mL, πE, mE)
 end
-function DelayLaw(s::Real, πL::Real, mL::Real, πE::Real, mE::Real)
-    p = promote(float(s), πL, mL, πE, mE)
+function DelayLaw(σc::Real, πL::Real, mL::Real, πE::Real, mE::Real)
+    p = promote(float(σc), πL, mL, πE, mE)
     return DelayLaw{typeof(first(p))}(p...)
 end
-DelayLaw(s::Real; πL::Real = 0.0, mL::Real = 1.0, πE::Real = 0.0, mE::Real = 1.0) = DelayLaw(s, πL, mL, πE, mE)
+DelayLaw(σc::Real; πL::Real = 0.0, mL::Real = 1.0, πE::Real = 0.0, mE::Real = 1.0) = DelayLaw(σc, πL, mL, πE, mE)
 
 function Base.rand(rng::AbstractRNG, f::DelayLaw)
-    u, e = rand(rng), f.s * randn(rng)
+    u, e = rand(rng), f.σc * randn(rng)
     u < f.πL && return e + f.mL * randexp(rng)
     u < f.πL + f.πE && return e - f.mE * randexp(rng)
     return e
@@ -84,19 +84,19 @@ Base.rand(f::DelayLaw) = rand(Random.default_rng(), f)
 # The internal functions below are generic in the number type of the law (Float64, or duals inside the fits).
 _normlogpdf(x) = -x^2 / 2 - log(2π) / 2
 _normlogcdf(x) = x < -1 ? log(erfcx(-x / sqrt(2)) / 2) - x^2 / 2 : log1p(-erfc(x / sqrt(2)) / 2)
-# log density of N(0, s²) convolved with ±Exp(mean m) at z (exponentially modified Gaussian)
-function _logemg(z, s, m, sign)
+# log density of N(0, σ²) convolved with ±Exp(mean m) at z (exponentially modified Gaussian)
+function _logemg(z, σ, m, sign)
     λ = 1 / m
     x = sign * z
-    return log(λ) + λ * (λ * s^2 / 2 - x) + _normlogcdf((x - λ * s^2) / s)
+    return log(λ) + λ * (λ * σ^2 / 2 - x) + _normlogcdf((x - λ * σ^2) / σ)
 end
 
 function _logdensity(f, grid)
-    lc = log1p(-f.πL - f.πE) - log(f.s)
+    lc = log1p(-f.πL - f.πE) - log(f.σc)
     lg = map(grid) do z
-        l = lc + _normlogpdf(z / f.s)
-        f.πL > 0 && (l = logaddexp(l, log(f.πL) + _logemg(z, f.s, f.mL, 1)))
-        f.πE > 0 && (l = logaddexp(l, log(f.πE) + _logemg(z, f.s, f.mE, -1)))
+        l = lc + _normlogpdf(z / f.σc)
+        f.πL > 0 && (l = logaddexp(l, log(f.πL) + _logemg(z, f.σc, f.mL, 1)))
+        f.πE > 0 && (l = logaddexp(l, log(f.πE) + _logemg(z, f.σc, f.mE, -1)))
         l
     end
     lg = lg .- (logsumexp(lg) + log(step(grid)))
@@ -274,27 +274,27 @@ relative_loglik(samples, f; kwargs...) = sum(stem_terms(samples, f; kwargs...))
 # fitting and uncertainty
 #################################################################################################################
 
-# unconstrained parameters of the variants. :both in contrast form: log s, logit(π_L + π_E), logit(π_L / (π_L + π_E)),
+# unconstrained parameters of the variants. :both in contrast form: log σc, logit(π_L + π_E), logit(π_L / (π_L + π_E)),
 # log m_L, log m_E. _law returns the DelayLaw, in the number type of v.
 _ntail(variant::Symbol) = variant === :core ? 0 : variant === :late ? 2 : variant === :both ? 4 :
     throw(ArgumentError("variant must be :core, :late or :both"))
 function _law(v, variant::Symbol)
-    s = exp(v[1])
-    variant === :core && return DelayLaw(s)
-    variant === :late && return DelayLaw(s; πL = logistic(v[2]), mL = exp(v[3]))
+    σc = exp(v[1])
+    variant === :core && return DelayLaw(σc)
+    variant === :late && return DelayLaw(σc; πL = logistic(v[2]), mL = exp(v[3]))
     πt, fL = logistic(v[2]), logistic(v[3])
-    return DelayLaw(s, πt * fL, exp(v[4]), πt * (1 - fL), exp(v[5]))
+    return DelayLaw(σc, πt * fL, exp(v[4]), πt * (1 - fL), exp(v[5]))
 end
 function _v(f::DelayLaw, variant::Symbol)
     _ntail(variant)
-    variant === :core && return [log(f.s)]
-    variant === :late && return [log(f.s), logit(clamp(f.πL, 1.0e-6, 1 - 1.0e-6)), log(f.mL)]
+    variant === :core && return [log(f.σc)]
+    variant === :late && return [log(f.σc), logit(clamp(f.πL, 1.0e-6, 1 - 1.0e-6)), log(f.mL)]
     πt = f.πL + f.πE
-    return [log(f.s), logit(clamp(πt, 1.0e-6, 1 - 1.0e-6)), logit(clamp(f.πL / max(πt, 1.0e-12), 1.0e-6, 1 - 1.0e-6)), log(f.mL), log(f.mE)]
+    return [log(f.σc), logit(clamp(πt, 1.0e-6, 1 - 1.0e-6)), logit(clamp(f.πL / max(πt, 1.0e-12), 1.0e-6, 1 - 1.0e-6)), log(f.mL), log(f.mE)]
 end
-const _NAMES = (:s, :late, :early, :off, :q1, :q2, :q3, :q4)
+const _NAMES = (:σc, :late, :early, :off, :q1, :q2, :q3, :q4)
 const _NQ = 4 # the overtaking profile reported by delay_law_inference: q_1 … q_4
-_derived(f, grid) = (t = _tail_masses(f, 1.0, grid); [f.s, t.late, t.early, t.off, _overtaking(f, 1:_NQ, grid)...])
+_derived(f, grid) = (t = _tail_masses(f, 1.0, grid); [f.σc, t.late, t.early, t.off, _overtaking(f, 1:_NQ, grid)...])
 
 # a tail longer than the grid can hold: the cut-off mass would bias the fit (DELAY_GRID)
 function _check_tails(f::DelayLaw, grid)
@@ -310,7 +310,7 @@ function _newton(obj, v0; iterations::Int = 200)
     return optimize(_ad_objective(obj, v), v, NewtonTrustRegion(), Optim.Options(; iterations, g_tol = 1.0e-6, f_abstol = 1.0e-6))
 end
 
-# shared core: v = [log s; tail parameters of group 1; group 2; ...]
+# shared core: v = [log σc; tail parameters of group 1; group 2; ...]
 _group_v(v, g, variant) = (q = _ntail(variant); vcat(v[1:1], v[(2 + (g - 1) * q):(1 + g * q)]))
 
 const _INIT = DelayLaw(0.5; πL = 0.05, mL = 1.0, πE = 0.05, mE = 1.0)
@@ -320,7 +320,7 @@ const _INIT = DelayLaw(0.5; πL = 0.05, mL = 1.0, πE = 0.05, mE = 1.0)
     fit_delay_law(groups::Vector, variant = :both; init, grid, iterations = 200)
 
 Delay law maximising `relative_loglik`, by Newton's method with a trust region (exact gradient and Hessian by
-ForwardDiff) on unconstrained parameters. `variant`: :core (s), :late (s, π_L, m_L) or :both (all five). `init`: a
+ForwardDiff) on unconstrained parameters. `variant`: :core (σc), :late (σc, π_L, m_L) or :both (all five). `init`: a
 starting `DelayLaw`. Returns (; law, v, variant, rel_ll, converged).
 
 Given several groups of stems (a vector of `order_samples` results, e.g. a wild type and its mutant), fits one law per
@@ -370,9 +370,9 @@ parameters (per-stem scores g_s, Hessian H of the summed terms, exact by Forward
 heterogeneity between stems is allowed), then the delta method. `se_model` is the model-based (−H⁻¹) version. pinv: a
 tail with π ≈ 0 leaves its distance unidentified.
 
-`estimate` and `se` hold the core sd s, the tail masses P(e > 1), P(e < −1), P(|e| > 1), and the overtaking profile
+`estimate` and `se` hold the core sd σc, the tail masses P(e > 1), P(e < −1), P(|e| > 1), and the overtaking profile
 q_1 … q_4 (`overtaking`). `profile = (; d, q, se, V)` repeats the profile with its covariance, for `compare_profiles`.
-The profile is identified by the orders; s, the tail masses and the late/early split are readings of the parametric
+The profile is identified by the orders; σc, the tail masses and the late/early split are readings of the parametric
 law, identified only through its shape.
 
 For a shared-core fit of several groups, `estimate`, `se` and `profile` are vectors (one entry per group), and
@@ -487,11 +487,11 @@ end
         torsion_mean = 0, torsion_sd = 0, rng)
 
 Stems under fold commitment with independent delays: the order of each stem is σ = sortperm(i + eᵢ) with eᵢ ~ f, and
-the angles y_p ~ vM(ϕ + o (σ[p] − 1) ψ + τ_s x_p, κ_s) as in the propensity model's simulator
+the angles y_p ~ vM(ϕ + o (σ[p] − 1) ψ + ω_s x_p, κ_s) as in the propensity model's simulator
 (κ_s ~ LogNormal(logμκ, σκ), golden with probability α, uniform ϕ and orientation, uniform outlier angles with
 probability `outlier`). `organs` is one count or
 one per stem; `x` the twist coordinate of each stem (e.g. mm of stem below each organ; default: the positions
-0, 1, …), and the twist τ_s ~ N(torsion_mean, torsion_sd²) is in degrees per unit of x. Returns (; angles, orders,
+0, 1, …), and the twist ω_s ~ N(torsion_mean, torsion_sd²) is in degrees per unit of x. Returns (; angles, orders,
 delays, torsion, κ, outliers, ψ, o).
 """
 function simulate_stems(

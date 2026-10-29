@@ -115,14 +115,11 @@ p(y) = \sum_{o,\,\psi} p(o)\,p(\psi) \int_0^{2\pi} \frac{d\phi}{2\pi} \int p(\ka
 ![Plate diagram of the angle likelihood](figures/m3_plate_diagram.svg)
 
 *Figure 3. The model as a graph, with the law of the order of [§4](propensity.md). Circles are unknown, the shaded
-circle is observed, and the shaded square is the stem length ``x_{sp}`` below each organ, which is given. Each arrow
-points from a quantity to the ones whose law depends on it. A box (plate) repeats what is inside it: once per stem,
-and within each stem once per organ. Dashed boxes are the fixed parameters of the priors (named as in
-`PhyllotaxisPrior` and `TorsionPrior`). ``z_{sp}`` says whether angle ``p`` of stem ``s`` is an outlier
-([§2.4](angles.md)). Double circles are discrete unknowns summed out exactly: the order ``\sigma_s`` ([§3](orders.md)),
-the orientation ``o_s`` and the divergence ``\psi_s`` ([§2.6](angles.md)), and ``z_{sp}`` (the mixture of
-[§2.4](angles.md)). Single circles inside the plates are continuous unknowns integrated out numerically: the offset
-``\phi_s``, the precision ``\kappa_s`` and the twist rate ``\omega_s`` ([§2.6](angles.md)).*
+circle is observed and the square is given; arrows point to the quantities whose law they set, and the plates repeat
+their content per stem and per organ. Double circles are summed out exactly: the order ``\sigma_s`` ([§3](orders.md)),
+``o_s`` and ``\psi_s`` ([§2.6](angles.md)), and the outlier indicator ``z_{sp}`` ([§2.4](angles.md)). Single circles
+are integrated numerically ([§2.6](angles.md)). Dashed boxes are the fixed parameters of `PhyllotaxisPrior` and
+`TorsionPrior`.*
 
 Everything here is fixed by this page except ``P(\sigma)``, the law of the order. The models of the package differ
 *only* in ``P(\sigma)`` (the propensity model of [§4](propensity.md), the timing laws of [§5](timing.md)), which is

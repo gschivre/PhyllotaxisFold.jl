@@ -194,7 +194,7 @@ end
 """
     in_hours(x, se, T)
 
-A delay `x ± se` in plastochrons (e.g. the core sd `s` of `delay_law_inference`), in hours, given the mean plastochron
+A delay `x ± se` in plastochrons (e.g. the core sd `σc` of `delay_law_inference`), in hours, given the mean plastochron
 `T = mean_plastochron(fit, ranks)`: the estimate x T̄, and the standard error √((T̄ se)² + (x se_T̄)²). The two
 uncertainties are taken as independent, since they come from different data (the angles and the flower counts).
 Returns (; estimate, se).

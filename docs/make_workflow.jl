@@ -87,10 +87,10 @@ function workflow_hours(res)
         counts = flowering_counts(seed)
         fit = fit_flowering(counts)
         T = mean_plastochron(fit, ranks)
-        (; counts, fit, T, s_alone = in_hours(g.inf.estimate.s, g.inf.se.s, T))
+        (; counts, fit, T, σc_alone = in_hours(g.inf.estimate.σc, g.inf.se.σc, T))
     end
     sh = res.shared_inf
-    shared = map(i -> in_hours(sh.estimate[i].s, sh.se[i].s, out[i].T), (wt = 1, mutant = 2))
+    shared = map(i -> in_hours(sh.estimate[i].σc, sh.se[i].σc, out[i].T), (wt = 1, mutant = 2))
     return (; out..., shared)
 end
 

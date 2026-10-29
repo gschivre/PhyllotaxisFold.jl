@@ -27,7 +27,7 @@ The stems are made to resemble the *Arabidopsis* data:
 
 The orders come from independent commitment delays ([§5.2](timing.md)), with three delay laws (in plastochrons):
 
-| scenario | core sd ``s`` | late tail | early tail | ``P(\lvert e\rvert > 1)`` |
+| scenario | core sd ``\sigma_c`` | late tail | early tail | ``P(\lvert e\rvert > 1)`` |
 |---|---|---|---|---|
 | no tails | 0.42 | — | — | 1.7 % |
 | light tails | 0.42 | 5 % (mean 1.5) | 5.4 % (mean 1.04) | 6.5 % |
@@ -138,7 +138,7 @@ beats the true one (triangles, the optimism of the fit).*
 
 Truth, then the `:both` fits of the three replicates (the readings of [§5.6](timing.md)):
 
-| scenario | ``s`` | ``P(e > 1)`` | ``P(e < -1)`` | ``P(\lvert e\rvert > 1)`` | tails gain (``\Delta\ell``) |
+| scenario | ``\sigma_c`` | ``P(e > 1)`` | ``P(e < -1)`` | ``P(\lvert e\rvert > 1)`` | tails gain (``\Delta\ell``) |
 |---|---|---|---|---|---|
 | no tails | 0.42 → 0.32, 0.39, 0.37 | 0.009 → 0.010, 0.029, 0.033 | 0.009 → 0.008, 0.002, 0.001 | 0.017 → 0.018, 0.031, 0.034 | 1.6, 0.2, 0.4 |
 | light tails | 0.42 → 0.41, 0.41, 0.38 | 0.035 → 0.043, 0.045, 0.043 | 0.030 → 0.018, 0.021, 0.026 | 0.065 → 0.061, 0.065, 0.069 | 129, 125, 96 |
@@ -147,7 +147,7 @@ Truth, then the `:both` fits of the three replicates (the readings of [§5.6](ti
 **What we find**, from the most to the least robust:
 
 1. **No false tails.** When the truth has none, the tails add 0.2 to 1.6 units of log-likelihood. The `:core` fit then
-   recovers the law: ``s`` = 0.40, 0.43, 0.42 and an off-time fraction of 0.013, 0.019, 0.018 for 0.017. The `:both`
+   recovers the law: ``\sigma_c`` = 0.40, 0.43, 0.42 and an off-time fraction of 0.013, 0.019, 0.018 for 0.017. The `:both`
    fit is too flexible here ([§5.6](timing.md)). In two replicates it puts nearly every site in a short "tail" (mean
    0.2 plastochron) that only reshapes the core, and its off-time fraction drifts to 0.031–0.034, about one standard
    error (0.015) above the truth. When the tails gain little, read the `:core` fit.
@@ -156,7 +156,7 @@ Truth, then the `:both` fits of the three replicates (the readings of [§5.6](ti
    error for the light-tailed law. For the heavy-tailed law it is about 0.02 too high in all three replicates (about
    2 se): a 10 % overestimate when a fifth of the organs are off time. Without tails it drifts (point 1).
 4. **The core sd is recovered when the tails are light** (0.38–0.41 for 0.42), **but not when they are heavy.** For
-   the heavy-tailed law (47 % of the sites in a tail), the fitted core collapses: ``s`` falls to about 0.01, below the
+   the heavy-tailed law (47 % of the sites in a tail), the fitted core collapses: ``\sigma_c`` falls to about 0.01, below the
    step of the delay grid (0.05), where a narrower core no longer changes anything. Its standard error is
    misleadingly small. A narrow core plus more tail mass predicts nearly the same orders. The overestimated off-time
    fraction of point 3 comes with this collapse; a shared core ([§6.5](validation.md)) usually removes both.
@@ -188,7 +188,7 @@ as real data would have.
 
 Truth, then the shared-core fit of each replicate (estimate ± se):
 
-| replicate | shared ``s`` | off-time, light tails | off-time, heavy tails | difference | likelihood ratio (``p``) |
+| replicate | shared ``\sigma_c`` | off-time, light tails | off-time, heavy tails | difference | likelihood ratio (``p``) |
 |---|---|---|---|---|---|
 | truth | 0.42 and 0.39 | 0.065 | 0.197 | 0.132 | |
 | 1 | 0.40 ± 0.02 | 0.062 ± 0.006 | 0.200 ± 0.010 | 0.138 ± 0.012 | 2.7 (0.10) |
@@ -206,18 +206,18 @@ from the orders, with no delay law: 0.100, 0.102, 0.102 for ``q_1`` (± 0.008), 
 **What we find.**
 
 - **When the light-tailed group holds the core, the shared core removes the bias** (replicates 1 and 2). The shared
-  ``s`` (0.40–0.41) lies between the two true cores. The heavy-tailed off-time fraction falls from 0.215–0.218 to
+  ``\sigma_c`` (0.40–0.41) lies between the two true cores. The heavy-tailed off-time fraction falls from 0.215–0.218 to
   0.200–0.203, for 0.197, and the difference between the groups is recovered within its standard error.
 - **The likelihood ratio does not reject the shared core**, even though the true cores differ by 0.03. A difference
   this small is beyond what 60 stems can detect, and it does no visible harm to the estimates.
 - **It can fail, and this can be seen** (replicate 3). There the shared core collapses as well, and the light-tailed
   group's off-time fraction is pulled up (0.093 for 0.065). This is the true maximum, not a failure of the optimiser:
-  profiled over ``s``, that light-tailed data set loses only 1 unit of log-likelihood when its core shrinks from 0.4 to
-  0.01, while the heavy-tailed one gains 3. Its own fit gave ``s`` = 0.38 ± 0.04, but the standard error hides a
+  profiled over ``\sigma_c``, that light-tailed data set loses only 1 unit of log-likelihood when its core shrinks from 0.4 to
+  0.01, while the heavy-tailed one gains 3. Its own fit gave ``\sigma_c`` = 0.38 ± 0.04, but the standard error hides a
   lopsided profile: the data bound the core from above, not from below.
 
 **In practice.** Compare the groups by their profiles. To read them in terms of the law, fit each group alone, then
-together. If the shared ``s`` stays close to the light-tailed group's own ``s``, report the shared-core estimates. If it collapses far below it, the light-tailed group does not hold the core:
+together. If the shared ``\sigma_c`` stays close to the light-tailed group's own ``\sigma_c``, report the shared-core estimates. If it collapses far below it, the light-tailed group does not hold the core:
 report the separate fits, with the caveat of [§6.4](validation.md) point 4.
 
 ## 6.6 The exact order likelihood and the weights
@@ -251,7 +251,7 @@ Here the orders are simulated from a clock of intervals ``1 + \xi_i``, ``\xi_i \
 followed by Gaussian commitment delays of sd 0.3. The delay law is fitted to the **true** orders (no angles), so only
 the timing model is tested: three data sets of 60 stems of 45 organs per value of ``\sigma_\xi``, and one of 1200
 stems to see the bias without noise. The *matched* law is the independent Gaussian with the same rate of neighbour
-swaps (``s^2 = 0.3^2 + \sigma_\xi^2/2``).
+swaps (``\sigma_c^2 = 0.3^2 + \sigma_\xi^2/2``).
 
 | ``\sigma_\xi`` | tails gain, 60 stems | off-time, 60 stems | tails gain, 1200 stems | off-time, 1200 stems | off-time, matched law |
 |---|---|---|---|---|---|

@@ -14,7 +14,7 @@ makedocs(;
     authors = "Geoffrey Schivre",
     format = Documenter.HTML(;
         prettyurls = get(ENV, "CI", "false") == "true", mathengine = Documenter.MathJax3(),
-        size_threshold_ignore = ["api.md"]
+        size_threshold_ignore = ["api.md"], assets = ["assets/custom.css"]
     ),
     pages = [
         "Home" => "index.md",

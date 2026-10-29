@@ -410,11 +410,11 @@ function fig_examples(ex = example_fit())
         tot = [relative_loglik(smp, withs(sd)) for sd in sgrid]
         one = [stem_terms([ss], withs(sd))[1] for sd in sgrid]
         ax3 = Axis(
-            fig[1, 3]; title = "(c) Δℓ against the core sd (tails at their true values)", xlabel = "core sd s (plastochrons)",
+            fig[1, 3]; title = "(c) Δℓ against the core sd (tails at their true values)", xlabel = rich("core sd σ", subscript("c"), " (plastochrons)"),
             ylabel = "Δℓ, 40 stems", titlesize = 15
         )
         lines!(ax3, sgrid, tot; color = :black, linewidth = 3, label = "sum over the 40 stems")
-        vlines!(ax3, [EX_LAW.s]; color = :gray, linestyle = :dash)
+        vlines!(ax3, [EX_LAW.σc]; color = :gray, linestyle = :dash)
         ax3b = Axis(fig[1, 3]; yaxisposition = :right, ylabel = rich("Δℓ", subscript("s"), ", example stem"), ylabelcolor = C_PATH, yticklabelcolor = C_PATH)
         hidexdecorations!(ax3b); hidespines!(ax3b)
         lines!(ax3b, sgrid, one; color = C_PATH, linewidth = 1.5)

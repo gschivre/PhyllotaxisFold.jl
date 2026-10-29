@@ -4,9 +4,9 @@
 # Design close to the Arabidopsis data: 60 stems of 45 organs, internodes long at the base and shorter higher up (mm),
 # κ ≈ 6.4 (log-normal across stems), 95 % golden spirals, a twist of 1.0 ± 0.7 °/mm. Three delay laws (plastochrons),
 # the tailed ones taken from fits to a wild type and to a mutant with many off-time organs:
-#   no tails     s = 0.42
-#   light tails  s = 0.42, 5 % late (m 1.5), 5.4 % early (m 1.04)
-#   heavy tails  s = 0.39, 19.6 % late (m 1.09), 26.9 % early (m 1.01)
+#   no tails     σc = 0.42
+#   light tails  σc = 0.42, 5 % late (m 1.5), 5.4 % early (m 1.04)
+#   heavy tails  σc = 0.39, 19.6 % late (m 1.09), 26.9 % early (m 1.01)
 # three replicates each. Per replicate: the propensity model with the twist integrated (fit_map_torsion!), the MAP
 # decoding, 200 exact posterior order samples (cached), then the :core, :late, :both delay laws with robust standard
 # errors; per replicate pair, the light and heavy laws with a shared core sd.
@@ -72,7 +72,7 @@ function timing_fits(v)
     smp, law = v.smp, v.law
     fits = Dict{Symbol, Any}()
     fits[:core] = fit_delay_law(smp, :core; init = DelayLaw(0.5))
-    fits[:late] = fit_delay_law(smp, :late; init = DelayLaw(fits[:core].law.s; πL = 0.05, mL = 1.0))
+    fits[:late] = fit_delay_law(smp, :late; init = DelayLaw(fits[:core].law.σc; πL = 0.05, mL = 1.0))
     fits[:both] = fit_delay_law(smp, :both)
     inf = delay_law_inference(smp, fits[:both])
     # effective sample size of the re-weighting at the fitted law (out of the 200 draws)
@@ -266,11 +266,11 @@ function fig_v3(res)
     return with_theme(VTHEME) do
         fig = Figure(size = (1800, 820))
         quantities = [
-            (:s, "core sd s (plastochron)", f -> f.s), (:late, "P(e > 1): late by > 1", f -> tail_masses(f).late),
+            (:σc, rich("core sd σ", subscript("c"), " (plastochron)"), f -> f.σc), (:late, "P(e > 1): late by > 1", f -> tail_masses(f).late),
             (:early, "P(e < −1): early by > 1", f -> tail_masses(f).early), (:off, "P(|e| > 1): off-time", f -> tail_masses(f).off),
         ]
         for (c, (q, lab, tf)) in enumerate(quantities)
-            ax = Axis(fig[1, c]; title = "($('a' + c - 1)) $(lab)", xticks = (1:3, [l for (_, l, _) in SCENARIOS]), ylabel = "estimate ± 2 se")
+            ax = Axis(fig[1, c]; title = rich("($('a' + c - 1)) ", lab), xticks = (1:3, [l for (_, l, _) in SCENARIOS]), ylabel = "estimate ± 2 se")
             for (i, (key, _, law)) in enumerate(SCENARIOS)
                 t = tf(law)
                 lines!(ax, [i - 0.35, i + 0.35], [t, t]; color = :black, linewidth = 2)
@@ -354,7 +354,7 @@ function validation_table(res)
         t = tail_masses(v.law)
         r3(x) = round(x; digits = 3)
         (;
-            key, rep, s = (v.law.s, r3(v.inf.estimate.s), r3(v.inf.se.s)), late = (r3(t.late), r3(v.inf.estimate.late), r3(v.inf.se.late)),
+            key, rep, σc = (v.law.σc, r3(v.inf.estimate.σc), r3(v.inf.se.σc)), late = (r3(t.late), r3(v.inf.estimate.late), r3(v.inf.se.late)),
             early = (r3(t.early), r3(v.inf.estimate.early), r3(v.inf.se.early)), off = (r3(t.off), r3(v.inf.estimate.off), r3(v.inf.se.off)), tails_gain = round(v.fits[:both].rel_ll - v.fits[:core].rel_ll; digits = 1),
             optimism = round(v.fits[:both].rel_ll - v.truth_ll; digits = 1), twist = (r3(v.fit.m_ω), r3(v.fit.s_ω)), logμκ = r3(v.fit.θ.logμκ),
             correct = round(mean(mean(d.σ .== σ) for (d, σ) in zip(v.dec, v.sim.orders)); digits = 3), ess_median = round(median(v.ess); digits = 1),
@@ -383,7 +383,7 @@ function shared_table(res)
         v = res[(:shared, rep)]
         e, se = v.inf.estimate, v.inf.se
         (;
-            rep, s = (r3(e[1].s), r3(se[1].s)), off_light = (r3(e[1].off), r3(se[1].off)), off_heavy = (r3(e[2].off), r3(se[2].off)),
+            rep, σc = (r3(e[1].σc), r3(se[1].σc)), off_light = (r3(e[1].off), r3(se[1].off)), off_heavy = (r3(e[2].off), r3(se[2].off)),
             Δoff = (r3(v.inf.Δoff[1].estimate), r3(v.inf.Δoff[1].se)), lr = round(v.test.lr; digits = 2), p = round(v.test.p; digits = 3),
             Δq_joint = (round.(v.inf.Δprofile[1].diff[1:3]; digits = 4), round.(v.inf.Δprofile[1].se[1:3]; digits = 4)),
             Δq_free = (round.(v.free.diff; digits = 4), round.(v.free.se; digits = 4), round(v.free.chi2; digits = 1)),

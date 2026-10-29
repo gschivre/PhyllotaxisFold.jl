@@ -73,13 +73,13 @@ function PermutationGraph(k::Int)
 end
 
 """
-    PermanentWorkspace(T, k, n_max; logspace = true)
+    PermanentWorkspace(T, k, n_max; logspace = false)
 
 Graph and buffers for permanents of size ≤ n_max with element type T (Float64, or a ForwardDiff dual type: build one
 workspace per number type, they are cheap). The caller always writes log-weights in `ws.w`.
-- `logspace = true`: messages are logs, accumulated with logaddexp. Robust at any κ.
-- `logspace = false`: scaled linear space (HMM scaling trick), about twice as fast; each call falls back to log-space
-  by itself when the scaled pass cannot be trusted (see `forward!`), so the result is the same in both modes.
+- `logspace = false` (default): scaled linear space (HMM scaling trick), about twice as fast; each call falls back to
+  log-space by itself when the scaled pass cannot be trusted (see `forward!`), so the result is the same in both modes.
+- `logspace = true`: messages are always logs, accumulated with logaddexp.
 """
 struct PermanentWorkspace{T}
     g::PermutationGraph
@@ -93,7 +93,7 @@ struct PermanentWorkspace{T}
     inlog::Base.RefValue{Bool} # whether the last forward! ran in log-space (read by backward! and sampling)
     nfallback::Base.RefValue{Int} # number of scaled calls redone in log-space (diagnostic)
 end
-function PermanentWorkspace(::Type{T}, k::Int, n_max::Int; logspace::Bool = true) where {T}
+function PermanentWorkspace(::Type{T}, k::Int, n_max::Int; logspace::Bool = false) where {T}
     g = PermutationGraph(k)
     K = 2 * k + 1
     return PermanentWorkspace{T}(
