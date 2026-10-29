@@ -62,7 +62,7 @@ function run_replicate(law, seed)
     smp = order_samples(post, θ.η)
     return (;
         law, sim = (; sim.orders, sim.delays, sim.torsion, sim.κ, sim.ψ, sim.o), x,
-        fit = (; θ, r.m_ω, r.s_ω, r.τ_mean, r.τ_sd, r.loglik), dec = [(; d.σ, d.o, d.ψ) for d in dec],
+        fit = (; θ, r.m_ω, r.s_ω, r.ω_mean, r.ω_sd, r.loglik), dec = [(; d.σ, d.o, d.ψ) for d in dec],
         ρ = [p.ρ for p in post], k = m.k, smp,
     )
 end
@@ -148,11 +148,11 @@ function fig_v1(res)
         R = [(key, res[(key, rep)]) for (key, _, _) in SCENARIOS for rep in 1:NREP]
         ax = Axis(fig[1, 1]; title = "(a) Twist rate of each stem", xlabel = "true twist (°/mm)", ylabel = "estimated (posterior mean)")
         for (key, v) in R
-            scatter!(ax, v.sim.torsion, v.fit.τ_mean; color = (SCOL[key], 0.35), markersize = 5)
+            scatter!(ax, v.sim.torsion, v.fit.ω_mean; color = (SCOL[key], 0.35), markersize = 5)
         end
         lim = extrema(reduce(vcat, [v.sim.torsion for (_, v) in R]))
         lines!(ax, [lim...], [lim...]; color = :black, linestyle = :dash)
-        r = cor(reduce(vcat, [v.sim.torsion for (_, v) in R]), reduce(vcat, [v.fit.τ_mean for (_, v) in R]))
+        r = cor(reduce(vcat, [v.sim.torsion for (_, v) in R]), reduce(vcat, [v.fit.ω_mean for (_, v) in R]))
         text!(ax, 0.03, 0.97; text = "r = $(round(r; digits = 3))", space = :relative, align = (:left, :top))
         ax = Axis(fig[1, 2]; title = "(b) Twist population", xticks = (1:2, [rich("mean m", subscript("ω")), rich("sd s", subscript("ω"))]), ylabel = "°/mm")
         for (j, (key, v)) in enumerate(R)

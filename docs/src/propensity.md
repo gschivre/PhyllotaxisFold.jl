@@ -26,7 +26,10 @@ W_{p,j} = e^{\eta_{j-p}}\; e^{\kappa \cos(y_p - \phi - o\,(j-1)\,\psi - \omega_s
 ```
 
 It is close in spirit to the stochastic model of Refahi et al. (2016), where each candidate site fires at a rate set
-by the inhibitory field, and keeps what the orders of a stem identify: how costly each displacement is.
+by the inhibitory field, and keeps what the orders of a stem identify: how costly each displacement is. In the
+language of ranking models, it is a Mallows model (Mallows 1957), which weighs each order by how far it is from the
+canonical one; here that distance is a sum of displacement costs. A Mallows model of this kind has recently been
+fitted with the same banded recursion (Alimohammadi & Asgari 2025).
 
 ## 4.2 What ``\eta`` means
 

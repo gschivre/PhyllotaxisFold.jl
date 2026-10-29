@@ -39,7 +39,7 @@ function run_variant(key, rep; nnodes = 5, outlier_sim = 0.0, outlier_fit = fals
     t_law = @elapsed fb = fit_delay_law(smp, :both)
     inf = delay_law_inference(smp, fb)
     out = (;
-        tag, t_fit, t_dec, t_post, t_law, θ, r.m_ω, r.s_ω, r.τ_mean, r.τ_sd, r.loglik,
+        tag, t_fit, t_dec, t_post, t_law, θ, r.m_ω, r.s_ω, r.ω_mean, r.ω_sd, r.loglik,
         truth = (; d.sim.torsion, d.sim.orders, d.sim.o, d.sim.ψ, d.sim.outliers),
         dec = [(; x.σ, x.o, x.ψ) for x in dec], ρ = [p.ρ for p in post], k = m.k,
         est = inf.estimate, se = inf.se, profile = overtaking_profile(smp),
@@ -56,9 +56,9 @@ function summarize(o)
         tag = o.tag, t = round.((o.t_fit, o.t_dec, o.t_post); digits = 1), m_ω = round(o.m_ω; digits = 3),
         s_ω = round(o.s_ω; digits = 3), logμκ = round(o.θ.logμκ; digits = 3), σκ = round(o.θ.σκ; digits = 3),
         πo = round(o.θ.outlier; digits = 4),
-        twist_rmse = round(sqrt(mean(abs2, o.τ_mean .- tw)); digits = 4),
-        twist_rmse_trim = round(sqrt(mean(abs2, filter(<(0.3), abs.(o.τ_mean .- tw)))); digits = 4),
-        cover95 = round(mean(abs.(o.τ_mean .- tw) .< 1.96 .* o.τ_sd); digits = 3),
+        twist_rmse = round(sqrt(mean(abs2, o.ω_mean .- tw)); digits = 4),
+        twist_rmse_trim = round(sqrt(mean(abs2, filter(<(0.3), abs.(o.ω_mean .- tw)))); digits = 4),
+        cover95 = round(mean(abs.(o.ω_mean .- tw) .< 1.96 .* o.ω_sd); digits = 3),
         correct = round(mean(mean(d.σ .== σ) for (d, σ) in zip(o.dec, o.truth.orders)); digits = 4),
         off = (round(o.est.off; digits = 3), round(o.se.off; digits = 3)), σc = round(o.est.σc; digits = 3),
         q = round.(o.profile.q[1:3]; digits = 4), loglik = round(o.loglik; digits = 1),

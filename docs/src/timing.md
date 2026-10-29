@@ -19,15 +19,16 @@ signalling reads an *input*: the strength of auxin signalling in that cell. The 
 the site, and it is lowered near young primordia, which inhibit the emergence of new ones around them. *Commitment* is
 the switch of the network to the organ-founder state, a switch that is not undone when the input falls back. In
 practice, a site has committed once removing auxin no longer prevents the organ from forming. The visible signs of the
-organ (a marker turning on, a bulge) come later. That extra delay is not amplified by the switch: its common part does
-not change the order, since ``f`` is defined up to a shift ([§5.2](timing.md)), and any jitter in it simply adds to
-``f``.
+organ (a marker turning on, a bulge) come later, but that extra lag does no harm: its common part shifts every site
+alike, which leaves the order unchanged ([§5.2](timing.md)), and its jitter simply adds to ``f``.
 
 **Why a fold.** The **assumption** is that the network has two stable states over a range of inputs, uncommitted and
-committed, and that the rising input makes the uncommitted state disappear. Nothing else is assumed: not the genes,
-nor their number, nor their kinetics. When a smoothly rising input makes a stable state disappear, the generic way is
-a *fold*: the state merges with the threshold that separates it from the committed state, and both vanish (figure 1).
-The other ways need special conditions, a symmetry or a finely tuned network.
+committed, and that the rising input makes the uncommitted state disappear. Positive feedback readily builds such a
+switch, as in the all-or-none maturation of *Xenopus* oocytes (Ferrell 2012). Nothing else is assumed: not the genes,
+nor their number, nor their kinetics. When a smoothly rising input makes a stable state disappear, the generic way is a
+*fold*: the state merges with the threshold that separates it from the committed state, and both vanish (figure 1). The
+other ways need special conditions, a symmetry or a finely tuned network (Sáez et al. 2022). The fold also explains why
+commitment lasts: the committed state is still there when the input falls back, so the cell stays in it (Ferrell 2012).
 
 !!! details "Why a fold is generic"
     Write the network as ``d\mathbf y/dt = \mathbf F(\mathbf y; u, \boldsymbol\theta)``, with ``\mathbf y`` its
@@ -36,7 +37,11 @@ The other ways need special conditions, a symmetry or a finely tuned network.
     a zero eigenvalue of the Jacobian ``\partial_{\mathbf y}\mathbf F``. With a single parameter varying, the input,
     the generic collision is a saddle-node at ``u = u_{\rm on}``: it has codimension one and needs no symmetry. A cusp,
     where bistability itself is born, needs a second parameter tuned; a pitchfork needs a symmetry of
-    ``\mathbf F``. The fold is assumed non-degenerate: non-zero curvature, and an input that enters transversally.
+    ``\mathbf F``. The fold also survives changes of the network: if a second parameter varies too (between cells, or
+    in a mutant), the folds form whole lines in the plane of the two parameters, while the other bifurcations sit at
+    single points. A path through that plane crosses fold lines without any tuning, but hits one of those points only
+    by chance (Sáez et al. 2022). The fold is assumed non-degenerate: its curvature is not zero, and raising the input
+    moves the system through the fold rather than just touching it.
 
 **One slow variable.** This is a **result**: near a fold, the whole network behaves as a single slow variable. All
 directions but one relax quickly, and along the remaining one the dynamics take the same form for every network,
@@ -76,6 +81,10 @@ where the uncommitted state used to be. The cell lingers there before it escapes
 smaller the margin, the longer it lingers: the passage takes a time proportional to ``1/\sqrt\mu``. This is how a
 network whose reactions are all fast can produce a slow commitment.
 
+The same slowness shows up just *before* a fold: a system knocked off its state returns ever more slowly as the
+threshold nears. This *critical slowing down* is used to anticipate tipping points (Scheffer et al. 2009), and it has
+been measured in a living system: a cyanobacterial population pushed towards a fold (Veraart et al. 2012).
+
 !!! details "Derivation"
     Without noise and at a constant margin ``\Delta > 0``, the time from the uncommitted state ``x_0 < 0`` to the
     point of no return ``x_c > 0`` is
@@ -96,26 +105,32 @@ imperfection added to it.
     ``\mathrm{Var}(T) \simeq \int k_m S_0\, v(x)^{-3}\, dx`` with ``v = k_m(\Delta + a_f x^2)``, so
     ``\mathrm{sd}(T) \simeq \frac{\sqrt{S_0}}{k_m}\sqrt{\tfrac{3\pi}{8}}\, a_f^{-1/4}\Delta^{-5/4}``. The mean grows
     as ``\Delta^{-1/2}`` and the sd as ``\Delta^{-5/4}``; in noise units, the coefficient of variation is
-    ``\mathrm{sd}/\text{mean} \simeq \sqrt{3/(8\pi)}\,\mu^{-3/4}``. Input noise (e.g. transcriptional bursting
-    upstream of the network) counts through its low-frequency intensity, provided its correlation time is short
-    compared with the passage.
+    ``\mathrm{sd}/\text{mean} \simeq \sqrt{3/(8\pi)}\,\mu^{-3/4}``. Fluctuations of the input itself (for
+    instance bursts of transcription upstream of the network) act the same way, as long as they are fast compared with
+    the passage: they simply add to the noise ``S_0``.
 
-**Why near the fold.** The fold makes the delay slow and variable only if cells commit close to it, at a small
-margin. The switch alone does not force this, so it is an **assumption**, but a natural one. Auxin accumulates at a
-site much more slowly than the network in each cell responds. An input that rises this slowly is always just ahead of
-the switch: the cell commits shortly after the uncommitted state has disappeared, while the margin is still small
-(**result**, box below). The meristem points the same way. A new primordium inhibits the emergence of primordia
-around it, which keeps the input of the nearby sites from rising far above threshold. And cells of the meristem
-integrate auxin over time before changing fate (Galvan-Ampudia et al., 2020), as a switch near its fold does: it
-commits only if the input stays above threshold long enough to cross the slow region.
+**Why near the fold.** The fold makes the delay slow and variable only if cells commit close to it, at a small margin.
+The switch alone does not force this, so it is an **assumption**, but a natural one. Auxin accumulates at a site much
+more slowly than the network in each cell responds, and a switch driven this slowly lags just behind its input: the cell
+commits shortly after the uncommitted state has disappeared, while the margin is still small (**result**, box below).
+Such slow passages through a bifurcation are known to shape cell fates in morphogen gradients, where *when* a cell
+crosses, not only how far the input goes, decides the outcome (Wedgwood & Ashwin 2022).
+
+The meristem points the same way. A new primordium inhibits the emergence of primordia around it, which keeps the input
+of the nearby sites from rising far above threshold. And cells of the meristem integrate auxin over time before changing
+fate: the transcriptional response is out of phase with the build-up of auxin, and longer auxin treatments give stronger
+responses (Galvan-Ampudia et al. 2020). A switch near its fold behaves this way: a brief rise above threshold is not
+enough, since the cell must cross the slow region before the input falls back. With noise, this becomes a matter of
+odds: the longer the input stays above threshold, the more likely the cell commits.
 
 !!! details "Derivation"
     Without noise, let the margin rise through the fold, ``\Delta(t) = \dot\Delta\, t``, in
     ``dx/dt = k_m(\Delta + a_f x^2)``. Rescaling time by ``T_0 = (k_m^2 a_f \dot\Delta)^{-1/3}`` gives
     ``dX/d\tau = \tau + X^2``, whose solution from the uncommitted state escapes at a fixed ``\tau`` (a zero of the
     Airy function). The cell therefore commits a time of order ``T_0`` after the fold, at a margin of order
-    ``(\dot\Delta/k_m)^{2/3}``, which is small whenever the input rises slowly compared with the switch. Noise
-    spreads the passage around this time without making the margin larger.
+    ``(\dot\Delta/k_m)^{2/3}``, which is small whenever the input rises slowly compared with the switch: the classical
+    delay of a slow passage through a fold. Noise spreads the passage around this time; strong enough noise can even
+    trigger the escape a little before the fold, but it never makes the margin larger (Berglund & Gentz 2002).
 
 **Delays in the network.** Some steps take time by themselves (a transcript must be elongated and matured; the
 feedback that locks the switch may lag). A delay upstream of the switch shifts every commitment equally and leaves the
@@ -141,6 +156,8 @@ flexible law ([§5.6](timing.md)) and lets the orders decide its shape.
 Recall the mechanism of [§1.4](problem.md): site ``i`` is ready at time ``i`` (in plastochrons), it commits at
 ``\tau_i = i + e_i`` with independent delays ``e_i \sim f``, and the order on the stem is the ranking of the
 ``\tau_i``. Only differences of delays matter, so ``f`` is defined up to a shift, and its core is centred at 0.
+Ranking items by independent noisy times is a classical model: Thurstone's law of comparative judgment
+(Thurstone 1927), here with commitment times as the noisy values.
 
 **Two sites first.** Sites 1 and 2 are swapped when site 2 commits first: ``2 + e_2 < 1 + e_1``, that is
 ``e_1 - e_2 > 1``. If the delays are Gaussian with sd ``\sigma_c``, their difference is Gaussian with sd ``\sigma_c\sqrt 2``, and
@@ -303,21 +320,22 @@ seconds: neither the angles nor the permanents are recomputed.
 
 ![Re-weighting the orders of the example stem](figures/e5_example_reweighting.png)
 
-*Figure 2. The example stem. (a) Its distinct posterior orders, with their frequencies among 200 samples. (b) The
-log-weight ``\log P_f(\sigma) - \log P_A(\sigma)`` of each, under the true delay law: a ratio of two probabilities,
-not the probability of the order under ``f``. The true order is in orange.
-(c) ``\Delta\ell`` summed over the 40 stems (black) and the term of the example stem (orange, right axis), as a
-function of the core sd ``\sigma_c``, the tails kept at their true values. The dashed line is the true ``\sigma_c``.*
+*Figure 2. The example stem; its true order is in orange. (a) Its distinct posterior orders and their frequencies
+among 200 samples. (b) The log-weight ``\log P_f(\sigma) - \log P_A(\sigma)`` of each order under the true delay law
+(a ratio of two probabilities, not the probability of the order). (c) ``\Delta\ell`` against the core sd
+``\sigma_c``, tails at their true values: summed over the 40 stems (black) and for the example stem (orange, right
+axis). Dashed: the true ``\sigma_c``.*
 
 Figure 2 shows the identity at work. On the example stem, the true order carries 90 % of the posterior samples and
 seven others share the rest (a). The true delay law finds the true order about six times more probable than the
 propensity model does (log-weight +1.8), and most alternatives less probable (b): ``\Delta\ell_s > 0``.
 
-Order 4 has a log-weight as high as the true order's, yet ``f`` finds it 16 times *less* probable (``\log P_f`` = −18.0
-against −15.2): ``A`` finds it less probable still. Where the true order has two neighbours displaced by one (−1, +1),
-order 4 has them displaced by two (+2, −2), a pattern the product form penalises a little more than a tailed law does
-([§5.3](timing.md)), and the weight corrects for this. Holding 0.5 % of the samples, order 4 adds 0.03 to the sum,
-against 5.3 for the true order. Summed over the stems, ``\Delta\ell`` peaks close to the true core sd (c).
+Order 4 is a nice contrast. Its log-weight is as high as the true order's, yet ``f`` finds it 16 times *less*
+probable (``\log P_f`` = −18.0 against −15.2): ``A`` simply finds it even less probable. Where the true order displaces
+two neighbours by one (−1, +1), order 4 displaces them by two (+2, −2), a pattern the product form penalises a little
+more than a tailed law does ([§5.3](timing.md)); the weight corrects for this. With 0.5 % of the samples, order 4 adds
+only 0.03 to the sum, against 5.3 for the true order. Summed over the stems, ``\Delta\ell`` peaks close to the true core
+sd (c).
 
 **When can the average be trusted?** When the weights ``r_j = P_f(\sigma_j)/P_A(\sigma_j)`` are of similar size. The
 *effective sample size* over the ``N`` draws, ``(\sum r)^2 / \sum r^2``, measures this: ``N`` when all weights are
@@ -371,13 +389,13 @@ q_d = P(\text{site } i + d \text{ commits before site } i) = P(e_i - e_{i+d} > d
 - **It has no direction.** ``q_d`` depends on ``f`` only through the law of a *difference* of two delays, which is
   the same whether the off-time sites are late or early. The late/early split rests on rarer patterns of three
   organs (2 3 1 against 3 1 2), and is only weakly identified.
-- **The parameters of ``f`` are readings of its shape.** The core sd ``\sigma_c``, the tail masses ``\pi`` and ``m``, and
-  properties of ``f`` itself such as the **off-time fraction** ``P(|e| > 1)`` (`tail_masses`) are not seen directly.
-  They follow from the profile only through the assumed shape (a Gaussian core with exponential tails). When that
-  shape is unambiguous they are well determined: for light tails, the core and the off-time fraction are recovered.
-  When it is not, they drift with no change in the orders. Without tails, a short "tail" holding most of the sites
-  only reshapes the core. With heavy tails, a narrower core plus more tail mass predicts the same orders, and the core
-  collapses. In both cases the profile does not move.
+- **The parameters of ``f`` are readings of its shape.** The core sd ``\sigma_c``, the tails ``\pi`` and ``m``, and the
+  **off-time fraction** ``P(|e| > 1)`` (`tail_masses`) are not seen directly: they follow from the profile through the
+  assumed shape, a Gaussian core with exponential tails. When the shape is clear-cut, they are well determined (for
+  light tails, the core and the off-time fraction are recovered). When it is not, they can drift while the orders stay
+  the same: without tails, a short "tail" holding most of the sites just reshapes the core; with heavy tails, a
+  narrower core plus more tail mass predicts the same orders, and the core collapses. Either way, the profile does not
+  move.
 
 So the profile is the result to report and to compare between groups (`overtaking_profile` reads it from the
 posterior orders, with no delay law; `delay_law_inference` gives that of the fitted law). The fitted law interprets
@@ -406,16 +424,15 @@ it, within its assumed shape: how precise a typical commitment is, and how many 
   come from `overtaking_profile` (no delay law) or from each group's fitted law. Separate laws can also be compared
   with one shared law by the difference of their summed ``\Delta\ell`` (a likelihood ratio). The terms of ``A``
   cancel in these differences, because each stem's term is relative to its own group's fit of ``A``.
-- **A shared core.** To read the off-time fraction of a group with heavy tails, whose own core sd is not identified
-  (§5.6), the groups can be
-  fitted together with **one core sd and their own tails**: `fit_delay_law([smp_wt, smp_mutant], :both)`. This states
-  a biological hypothesis, *the mutant changes the off-time organs, not the precision of a typical commitment*, and
-  the group with light tails carries the core. `shared_core_test` tests it, by the likelihood ratio of one core
-  against one per group (χ² with one degree of freedom per extra group; a permutation of the group labels among the
-  stems calibrates it when the tails are heavy). `delay_law_inference` on the joint fit gives each group's off-time
-  fraction and their difference, with standard errors that account for the shared core. Check that the shared core
-  stays close to the light-tailed group's own: if it collapses instead, that group does not hold the core, and the
-  separate fits should be reported ([§6.5](validation.md)).
+- **A shared core.** A group with heavy tails has no identified core sd of its own ([§5.6](timing.md)). To still read
+  its off-time fraction, fit the groups together with **one core sd and their own tails**:
+  `fit_delay_law([smp_wt, smp_mutant], :both)`. This states a biological hypothesis, *the mutant changes the off-time
+  organs, not the precision of a typical commitment*, with the light-tailed group carrying the core.
+  `shared_core_test` tests it by the likelihood ratio of one core against one per group (χ² with one degree of freedom
+  per extra group; with heavy tails, permuting the group labels among the stems calibrates it). `delay_law_inference`
+  on the joint fit gives each group's off-time fraction and their difference, with standard errors that account for
+  the shared core. Check that the shared core stays close to the light-tailed group's own; if it collapses, report the
+  separate fits instead ([§6.5](validation.md)).
 - **Delays in hours.** The delays are in plastochrons. The `Plastochron` module estimates the plastochron at each
   flower rank from daily counts of open flowers (box below), and converts a delay to hours with the mean plastochron
   of the measured organs (`mean_plastochron`, `in_hours`; [worked analysis](workflow.md), step 5).

@@ -33,9 +33,9 @@ export StemTorsion, TorsionPrior, TorsionNodes, torsion_coordinate, torsion_corr
     torsion_nodes, fit_map_torsion!, golden_section_max
 
 """
-    corrected_angles(model, s; τ)
+    corrected_angles(model, s; ω)
 
-Angles of plant s with its twist removed (rate τ, the fitted one by default). Methods for
+Angles of plant s with its twist removed (rate ω, the fitted one by default). Methods for
 `PhyllotaxisModelAD`.
 """
 function corrected_angles end
@@ -63,13 +63,13 @@ function torsion_nodes end
 MAP of the global parameters and of the twist population (m_ω, log s_ω), with each stem's rate integrated out:
 1. fit without torsion; 2. nodes at that fit, rates set to each stem's best mode; 3. fit with these rates fixed;
 4. nodes at that fit; 5. Newton on the integrated objective; then `recenter` times: nodes at the new fit and refit.
-Returns (; fit, m_ω, s_ω, τ, τ_mean, τ_sd, loglik, nodes) (loglik: Σ of the integrated stem log-likelihoods, priors
+Returns (; fit, m_ω, s_ω, ω, ω_mean, ω_sd, loglik, nodes) (loglik: Σ of the integrated stem log-likelihoods, priors
 excluded): fit = (; θ, u, H, result) with u = [global u; m_ω; log s_ω] and H the
-Hessian of the log posterior in u (−inv(H): Laplace covariance); per stem, τ the most probable mode (used by
-`corrected_angles`), τ_mean and τ_sd the posterior mean and sd of the rate (aliases included). Methods:
+Hessian of the log posterior in u (−inv(H): Laplace covariance); per stem, ω the most probable mode (used by
+`corrected_angles`), ω_mean and ω_sd the posterior mean and sd of the rate (aliases included). Methods:
 `PhyllotaxisModelAD` (or its `TransformedLogDensityProblem`).
 
-The model's stored twist rates (`model.torsion.τ`, the default rate of `stem_loglik`, `corrected_angles` and of the
+The model's stored twist rates (`model.torsion.ω`, the default rate of `stem_loglik`, `corrected_angles` and of the
 decoding functions given plain parameters u) are overwritten: by each stem's most probable mode at the end.
 """
 function fit_map_torsion! end
@@ -77,7 +77,7 @@ function fit_map_torsion! end
 "torsion coordinates (one vector per stem) and rates (degrees per unit of the coordinate, one per stem, start at 0)"
 struct StemTorsion
     x::Vector{Vector{Float64}}
-    τ::Vector{Float64}
+    ω::Vector{Float64}
 end
 StemTorsion(x::AbstractVector{<:AbstractVector}) = StemTorsion([collect(Float64, xs) for xs in x], zeros(length(x)))
 
@@ -104,8 +104,8 @@ torsion_coordinate(ℓ::AbstractVector{<:Real}) = vcat(0.0, cumsum(Float64.(ℓ)
 "mean step of a coordinate (1 per position, or the mean internode): the scale of a rate"
 torsion_step(x::AbstractVector) = x[end] / (length(x) - 1)
 
-"angles with the twist of rate τ (degrees per unit of x) removed (generic in τ: a dual rate gives dual angles)"
-torsion_corrected(y::AbstractVector, x::AbstractVector, τ::Real) = ((τ isa AbstractFloat && iszero(τ)) ? y : y .- deg2rad(τ) .* x)
+"angles with the twist of rate ω (degrees per unit of x) removed (generic in ω: a dual rate gives dual angles)"
+torsion_corrected(y::AbstractVector, x::AbstractVector, ω::Real) = ((ω isa AbstractFloat && iszero(ω)) ? y : y .- deg2rad(ω) .* x)
 
 """
     scan_rate(f, step; scan = -25:0.5:25, tol = 0.01)

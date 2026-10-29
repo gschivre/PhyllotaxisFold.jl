@@ -56,8 +56,8 @@ function workflow_group(law, seed)
     end
     return (;
         law, x, sim = (; sim.angles, sim.orders, sim.torsion), θ = r.fit.θ, r.m_ω, r.s_ω, r.loglik,
-        dec = [(; d.σ, d.o, d.ψ, d.τ) for d in dec], ρ = [p.ρ for p in post], τ_mean = [p.τ_mean for p in post],
-        τ_sd = [p.τ_sd for p in post], smp, fits, inf, prof, ess, truth_ll = relative_loglik(smp, law), k = m.k,
+        dec = [(; d.σ, d.o, d.ψ, d.ω) for d in dec], ρ = [p.ρ for p in post], ω_mean = [p.ω_mean for p in post],
+        ω_sd = [p.ω_sd for p in post], smp, fits, inf, prof, ess, truth_ll = relative_loglik(smp, law), k = m.k,
     )
 end
 
@@ -151,10 +151,10 @@ function workflow_figures(res = workflow_data())
         ax = Axis(fig[1, 1]; title = "(a) Twist of each stem (± 2 sd)", xlabel = "stems (sorted)", ylabel = "twist (°/mm)", titlesize = 15)
         off = 0
         for (key, lab, g) in groups
-            o = sortperm(g.τ_mean)
+            o = sortperm(g.ω_mean)
             xs = off .+ (1:length(o))
-            errorbars!(ax, xs, g.τ_mean[o], 2 .* g.τ_sd[o]; color = (W_COL[key], 0.6))
-            scatter!(ax, xs, g.τ_mean[o]; color = W_COL[key], markersize = 6, label = lab)
+            errorbars!(ax, xs, g.ω_mean[o], 2 .* g.ω_sd[o]; color = (W_COL[key], 0.6))
+            scatter!(ax, xs, g.ω_mean[o]; color = W_COL[key], markersize = 6, label = lab)
             off += length(o) + 5
         end
         axislegend(ax; position = :lt, framevisible = false)

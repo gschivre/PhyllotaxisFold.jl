@@ -509,7 +509,7 @@ function simulate_stems(
         (; σ, e, _simulate_angles(rng, σ, xs[s]; logμκ, σκ, α, outlier, torsion_mean, torsion_sd)...)
     end
     return (;
-        angles = [z.y for z in out], orders = [z.σ for z in out], delays = [z.e for z in out], torsion = [z.τ for z in out],
+        angles = [z.y for z in out], orders = [z.σ for z in out], delays = [z.e for z in out], torsion = [z.ω for z in out],
         κ = [z.κ for z in out], outliers = [z.outliers for z in out], ψ = [z.ψ for z in out], o = [z.o for z in out],
     )
 end

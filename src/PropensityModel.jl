@@ -121,7 +121,7 @@ function PhyllotaxisModelAD(
     )
 end
 
-corrected_angles(model::PhyllotaxisModelAD, s::Int; τ::Real = model.torsion.τ[s]) = torsion_corrected(model.data[s], model.torsion.x[s], τ)
+corrected_angles(model::PhyllotaxisModelAD, s::Int; ω::Real = model.torsion.ω[s]) = torsion_corrected(model.data[s], model.torsion.x[s], ω)
 
 LogDensityProblems.dimension(model::PhyllotaxisModelAD) = model.k + 3 + model.outlier
 LogDensityProblems.capabilities(::Type{<:PhyllotaxisModelAD}) = LogDensityProblems.LogDensityOrder{0}()
@@ -308,14 +308,14 @@ function angle_nuisance(model::PhyllotaxisModelAD, u::AbstractVector)
     return (; logμκ, σκ, α, outlier = πo)
 end
 function stem_value_grad(
-        model::PhyllotaxisModelAD, u::AbstractVector, s::Int; τ::Real = model.torsion.τ[s], with_grad::Bool = false,
+        model::PhyllotaxisModelAD, u::AbstractVector, s::Int; ω::Real = model.torsion.ω[s], with_grad::Bool = false,
         fws::StemWorkspace = StemWorkspace(eltype(u), model.k, length(model.data[s]), model.ngrid_ϕ, model.ngrid_κ; logspace = model.logspace)
     )
     k, K = model.k, 2 * model.k + 1
     θ = model.binv(u)
     logμκ, σκ, α, πo = _nuisance(model, θ)
     fill!(fws.grad, 0)
-    ℓ = stem_loglik!(fws, stem_grid(model), corrected_angles(model, s; τ), full_eta(model, θ), logμκ, σκ, α, with_grad; outlier = πo)
+    ℓ = stem_loglik!(fws, stem_grid(model), corrected_angles(model, s; ω), full_eta(model, θ), logμκ, σκ, α, with_grad; outlier = πo)
     with_grad || return ℓ, nothing
     g = fws.grad
     gη = [g[k + 1 + d] + g[k + 1 - d] for d in 1:k]
@@ -346,8 +346,8 @@ torsion_nodes(model::PhyllotaxisModelAD, u::AbstractVector; kw...) = angle_torsi
 """
     fit_map_torsion!(model::PhyllotaxisModelAD; prior, u0, recenter, nodes_kw, options)
 
-MAP with the twist rates integrated out (ω_s ~ N(m_ω, s_ω²), hyperprior `prior`). Returns (; fit, m_ω, s_ω, τ, τ_mean,
-τ_sd, loglik, nodes); fit = (; θ, u, H, result), fit.u = [model parameters; m_ω; log s_ω].
+MAP with the twist rates integrated out (ω_s ~ N(m_ω, s_ω²), hyperprior `prior`). Returns (; fit, m_ω, s_ω, ω, ω_mean,
+ω_sd, loglik, nodes); fit = (; θ, u, H, result), fit.u = [model parameters; m_ω; log s_ω].
 """
 function fit_map_torsion!(
         model::PhyllotaxisModelAD; prior::TorsionPrior = TorsionPrior(), u0 = prior_mean_parameters(model), recenter::Int = 1,
@@ -356,7 +356,7 @@ function fit_map_torsion!(
     r = angle_fit_map_torsion!(model; u0, prior, recenter, nodes_kw, options)
     G = length(u0)
     fit = (; θ = constrained_parameters(model, r.u[1:G]), r.u, r.H, r.result)
-    return (; fit, r.m_ω, r.s_ω, r.τ, r.τ_mean, r.τ_sd, r.loglik, r.nodes)
+    return (; fit, r.m_ω, r.s_ω, r.ω, r.ω_mean, r.ω_sd, r.loglik, r.nodes)
 end
 fit_map_torsion!(prob::TransformedLogDensityProblem; kw...) = fit_map_torsion!(prob.prob; kw...)
 
@@ -475,7 +475,7 @@ function simulate_stems(
         (; σ, _simulate_angles(rng, σ, xs[s]; logμκ, σκ, α, outlier, torsion_mean, torsion_sd)...)
     end
     return (;
-        angles = [z.y for z in out], orders = [z.σ for z in out], torsion = [z.τ for z in out], κ = [z.κ for z in out],
+        angles = [z.y for z in out], orders = [z.σ for z in out], torsion = [z.ω for z in out], κ = [z.κ for z in out],
         outliers = [z.outliers for z in out], ψ = [z.ψ for z in out], o = [z.o for z in out],
     )
 end

@@ -135,8 +135,8 @@ let k = 2, n = 8, σ = [2, 1, 3, 5, 6, 4, 7, 8], irow = 5
         xlabel = "step p (row being assigned)", xticks = 1:(n + 1), yticks = (1:g.M, fill("", g.M)),
         xgridvisible = false, ygridvisible = false
     )
-    # reachable states only (forward from start and backward from end, with unit weights)
-    ws = PermanentWorkspace(k, n); toeplitz_weights!(ws, zeros(2k + 1), n); forward!(ws, n); backward!(ws, n)
+    # reachable states only (forward from start and backward from end, with unit weights; log-space, as F and B are read)
+    ws = PermanentWorkspace(k, n; logspace = true); toeplitz_weights!(ws, zeros(2k + 1), n); forward!(ws, n); backward!(ws, n)
     reach(i, s) = isfinite(ws.F[s, i]) && ws.F[s, i] > -1.0e300 && (i == n + 1 ? s == g.end_s : isfinite(ws.B[s, i]) && ws.B[s, i] > -1.0e300)
     # the edges between reachable states: exactly the edges of the start-to-end paths
     for i in 1:n, s in 1:g.M, e in g.edge_ptr[s]:(g.edge_ptr[s + 1] - 1)
@@ -262,7 +262,7 @@ function example_fit()
     r = fit_map_torsion!(m; prior = EX_TPRIOR)
     dec = decode_orders(m, r; full = true)
     post = order_posterior(m, r; nsamples = 200, rng = Xoshiro(7))
-    ex = (; x, sim, θ = r.fit.θ, r.m_ω, r.s_ω, r.τ, dec, post)
+    ex = (; x, sim, θ = r.fit.θ, r.m_ω, r.s_ω, r.ω, dec, post)
     serialize(EX_CACHE, ex)
     return (; ex..., m)
 end
@@ -295,7 +295,7 @@ function fig_examples(ex = example_fit())
             ylabel = "azimuth (°)", yticks = 0:90:360, titlesize = 15
         )
         scatter!(
-            ax, x, mod.(rad2deg.(ϕ .+ o .* (0:(n - 1)) .* ψ .+ deg2rad(dec.τ) .* x), 360); color = :white,
+            ax, x, mod.(rad2deg.(ϕ .+ o .* (0:(n - 1)) .* ψ .+ deg2rad(dec.ω) .* x), 360); color = :white,
             strokecolor = :gray50, strokewidth = 1.2, markersize = 13, label = "site of the spiral at this height"
         )
         scatter!(ax, x, mod.(rad2deg.(y), 360); color = [off[p] ? C_PATH : :black for p in 1:n], markersize = 8, label = "organ")

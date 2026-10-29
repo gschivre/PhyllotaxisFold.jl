@@ -308,13 +308,13 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         r = fit_map_torsion!(m; prior = tp, recenter = 0)
         @test PhyllotaxisFold.PropensityModel.Optim.converged(r.fit.result)
         @test abs(r.m_ω - mean(sim.torsion)) < 1.0 && 0.4 < r.s_ω / std(sim.torsion) < 2.5
-        @test cor(r.τ, sim.torsion) > 0.95 && all(r.τ_sd .> 0)
+        @test cor(r.ω, sim.torsion) > 0.95 && all(r.ω_sd .> 0)
         # decoding with the twist: the joint MAP recovers the orders and the rates, the posterior agrees with the fit
         dec = decode_orders(m, r; full = true)
         @test mean(mean(d.σ .== σ) for (d, σ) in zip(dec, sim.orders)) > 0.9
-        @test cor([d.τ for d in dec], sim.torsion) > 0.95
+        @test cor([d.ω for d in dec], sim.torsion) > 0.95
         post = order_posterior(m, r; nsamples = 400, rng = Xoshiro(4))
-        @test [p.τ_mean for p in post] ≈ r.τ_mean rtol = 1.0e-6 # same nodes, same population law, same parameters
+        @test [p.ω_mean for p in post] ≈ r.ω_mean rtol = 1.0e-6 # same nodes, same population law, same parameters
         @test all(p -> all(sum(p.ρ; dims = 2) .≈ 1), post)
         k = m.k
         emp = [mean(σ[i] - i == d for σ in post[1].samples) for i in 1:40, d in -k:k]
