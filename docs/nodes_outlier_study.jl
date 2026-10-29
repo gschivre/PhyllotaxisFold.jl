@@ -3,7 +3,7 @@
 # Run in the docs environment after include("docs/make_validation_figures.jl"), then e.g.
 #   run_variant(:heavy, 2; nnodes = 9); run_variant(:light, 1; outlier_sim = 0.02, outlier_fit = true)
 #   run_variant(:light, 1; outlier_sim = 0.02, outlier_fit = true, flat_prior = true); summarize.(values(STUDY))
-# Results cached in docs/nodes_outlier_study.jls (≈ 10 min per variant on 18 threads).
+# Results cached in docs/nodes_outlier_study.jls.
 const STUDY_FILE = joinpath(@__DIR__, "nodes_outlier_study.jls")
 STUDY = isfile(STUDY_FILE) ? deserialize(STUDY_FILE) : Dict{Any, Any}()
 

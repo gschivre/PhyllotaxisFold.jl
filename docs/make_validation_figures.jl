@@ -11,9 +11,9 @@
 # decoding, 200 exact posterior order samples (cached), then the :core, :late, :both delay laws with robust standard
 # errors; per replicate pair, the light and heavy laws with a shared core sd.
 #
-# Run in the docs environment, with threads (≈ 1.5 h on 18 threads; the replicates are cached in validation.jls, and
+# Run in the docs environment, with threads (the replicates are cached in validation.jls, and
 # run_validation(; refit_timing = true) refits only the delay laws from the cached order samples):
-#   julia -t 18 --project=docs docs/make_validation_figures.jl
+#   julia -t auto --project=docs docs/make_validation_figures.jl
 
 using PhyllotaxisFold, Random, Statistics, Serialization, LinearAlgebra
 using CairoMakie
@@ -23,7 +23,7 @@ const VCACHE = joinpath(@__DIR__, "validation.jls")
 const NSTEMS, NORGANS = 60, 45
 const TWIST = (mean = 1.0, sd = 0.7) # °/mm
 const KAPPA = (logμκ = 1.85, σκ = 0.15)
-const TPRIOR = TorsionPrior(m0 = 0.0, sm = 2.0, νs = 4.0, τs = 1.0) # °/mm
+const TPRIOR = TorsionPrior(m0 = 0.0, sm = 2.0, νω = 4.0, τω = 1.0) # °/mm
 const SCENARIOS = [
     (:none, "no tails", DelayLaw(0.42)),
     (:light, "light tails", DelayLaw(0.42; πL = 0.05, mL = 1.5, πE = 0.054, mE = 1.04)),
@@ -40,7 +40,7 @@ function stem_coordinates(rng)
     end
 end
 
-# in Kaimon, a message per stage (a replicate takes ≈ 10 min; Kaimon stops waiting after 10 min without any message)
+# a progress message per stage when run through KaimonGate (no-op otherwise)
 stage(msg) = isdefined(Main, :KaimonGate) && Main.KaimonGate.progress(msg)
 
 function run_replicate(law, seed)

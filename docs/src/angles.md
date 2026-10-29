@@ -110,6 +110,19 @@ p(y) = \sum_{o,\,\psi} p(o)\,p(\psi) \int_0^{2\pi} \frac{d\phi}{2\pi} \int p(\ka
 \;\sum_{\sigma} P(\sigma) \prod_{p=1}^{n} \mathrm{vM}\big(y_p \mid \phi + o\,(\sigma(p) - 1)\,\psi + \omega\, x_p,\ \kappa\big).
 ```
 
+(With the outlier term of [§2.4](angles.md), each von Mises factor is replaced by the mixture written there.)
+
+![Plate diagram of the angle likelihood](figures/m3_plate_diagram.svg)
+
+*Figure 3. The model as a graph, with the law of the order of [§4](propensity.md). Circles are unknown, the shaded
+circle is observed, and the shaded square is the stem length ``x_{sp}`` below each organ, which is given. Each arrow
+points from a quantity to the ones whose law depends on it. A box (plate) repeats what is inside it: once per stem,
+and within each stem once per organ. Dashed boxes are the fixed parameters of the priors (named as in
+`PhyllotaxisPrior` and `TorsionPrior`). The order ``\sigma_s`` (double circle) is summed out exactly ([§3](orders.md)),
+and ``\phi_s``, ``o_s``, ``\psi_s``, ``\kappa_s`` and ``\omega_s`` are integrated out ([§2.6](angles.md)). ``z_{sp}``
+marks an outlier angle: it is summed out in the mixture of [§2.4](angles.md). The timing laws of [§5](timing.md)
+replace ``\eta`` by a delay law; the rest of the graph is unchanged.*
+
 Everything here is fixed by this page except ``P(\sigma)``, the law of the order. The models of the package differ
 *only* in ``P(\sigma)`` (the propensity model of [§4](propensity.md), the timing laws of [§5](timing.md)), which is
 what makes the comparison of [§1.5](problem.md) possible. Two parts remain hard: the sum over ``\sigma``

@@ -239,11 +239,11 @@ end
 #################################################################################################################
 #################################################################################################################
 # e1–e5. the running example: 40 simulated stems of 35 organs (WT-like delay law, twist in mm), one of them followed
-# through the whole manual. The fit (≈ 5 min on 18 threads) is cached in docs/example.jls.
+# through the whole manual. The fit is cached in docs/example.jls.
 #################################################################################################################
 const EX_CACHE = joinpath(@__DIR__, "example.jls")
 const EX_LAW = DelayLaw(0.42; πL = 0.06, mL = 1.5, πE = 0.06, mE = 1.0)
-const EX_TPRIOR = TorsionPrior(m0 = 0.0, sm = 2.0, νs = 4.0, τs = 1.0) # °/mm
+const EX_TPRIOR = TorsionPrior(m0 = 0.0, sm = 2.0, νω = 4.0, τω = 1.0) # °/mm
 
 function example_data()
     rng = Xoshiro(2024)

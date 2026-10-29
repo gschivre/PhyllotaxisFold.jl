@@ -82,20 +82,20 @@ end
 StemTorsion(x::AbstractVector{<:AbstractVector}) = StemTorsion([collect(Float64, xs) for xs in x], zeros(length(x)))
 
 """
-    TorsionPrior(m0 = 0.0, sm = 2.0, νs = 4.0, τs = 1.0)
+    TorsionPrior(m0 = 0.0, sm = 2.0, νω = 4.0, τω = 1.0)
 
 Hyperprior of the twist population ω_s ~ N(m_ω, s_ω²), in degrees per unit of the coordinate (°/mm with internodes):
-m_ω ~ N(m0, sm²), s_ω ~ half-t(νs, τs). An informative prior on the mean twist is a small sm.
+m_ω ~ N(m0, sm²), s_ω ~ half-t(νω, τω). An informative prior on the mean twist is a small sm.
 """
 Base.@kwdef struct TorsionPrior
     m0::Float64 = 0.0
     sm::Float64 = 2.0
-    νs::Float64 = 4.0
-    τs::Float64 = 1.0
+    νω::Float64 = 4.0
+    τω::Float64 = 1.0
 end
 
 "log hyperprior of (m_ω, log s_ω), Jacobian of the log included"
-torsion_hyperprior(p::TorsionPrior, m, logs) = logpdf(Normal(p.m0, p.sm), m) + logpdf(_halft(p.νs, p.τs), exp(logs)) + logs
+torsion_hyperprior(p::TorsionPrior, m, logs) = logpdf(Normal(p.m0, p.sm), m) + logpdf(_halft(p.νω, p.τω), exp(logs)) + logs
 
 "x_p = p − 1 (degrees per stem position) for a stem of n organs, or the stem length below p from its n − 1 internodes"
 torsion_coordinate(n::Integer) = collect(0.0:(n - 1))

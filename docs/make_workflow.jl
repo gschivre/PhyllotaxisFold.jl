@@ -1,7 +1,7 @@
 # The worked analysis of the manual (docs/src/workflow.md): a wild type and a mutant, simulated, analysed exactly as
-# real data would be. The fits (≈ 10 min on 18 threads) are cached in docs/workflow.jls; the figures go to
+# real data would be. The fits are cached in docs/workflow.jls; the figures go to
 # docs/src/figures/w*.png. Run in the docs environment, with threads:
-#   julia -t 18 --project=docs docs/make_workflow.jl
+#   julia -t auto --project=docs docs/make_workflow.jl
 
 using PhyllotaxisFold, Random, Statistics, Serialization
 using Distributions: Poisson
@@ -10,7 +10,7 @@ using CairoMakie
 const WFIG = joinpath(@__DIR__, "src", "figures")
 const WCACHE = joinpath(@__DIR__, "workflow.jls")
 const W_STEMS, W_ORGANS = 50, 40
-const W_TPRIOR = TorsionPrior(m0 = 0.0, sm = 2.0, νs = 4.0, τs = 1.0) # °/mm
+const W_TPRIOR = TorsionPrior(m0 = 0.0, sm = 2.0, νω = 4.0, τω = 1.0) # °/mm
 # the truth, hidden from the analysis: the mutant has more late organs, with the same core
 const W_LAWS = (
     wt = DelayLaw(0.42; πL = 0.05, mL = 1.5, πE = 0.05, mE = 1.0),

@@ -3,7 +3,7 @@
 # like a random walk) and Gaussian commitment c_i ~ N(0, σc²). The delay law is fitted on the TRUE orders (one sample
 # per stem, log P_A = 0), so the objective is Σ log P_f(σ_true): no angles, only the question of the timing model.
 # Under independent jitter the lag-1 swap rate matches s² = σc² + σξ²/2; a random-walk clock has more lag-2 swaps.
-# Run in the docs environment with threads (≈ 2 min on 18 threads; results cached in clock_drift.jls):
+# Run in the docs environment with threads (results cached in clock_drift.jls):
 #   include("docs/validation_clock_drift.jl"); CD = run_clock_drift(); clock_row(CD[(0.4, 1)])
 
 using PhyllotaxisFold, Random, Statistics, Serialization
