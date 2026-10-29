@@ -10,7 +10,7 @@ using CairoMakie
 const WFIG = joinpath(@__DIR__, "src", "figures")
 const WCACHE = joinpath(@__DIR__, "workflow.jls")
 const W_STEMS, W_ORGANS = 50, 40
-const W_TPRIOR = TorsionPrior(m0 = 0.0, sm = 2.0, νω = 4.0, τω = 1.0) # °/mm
+const W_TPRIOR = TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0) # °/mm
 # the truth, hidden from the analysis: the mutant has more late organs, with the same core
 const W_LAWS = (
     wt = DelayLaw(0.42; πL = 0.05, mL = 1.5, πE = 0.05, mE = 1.0),

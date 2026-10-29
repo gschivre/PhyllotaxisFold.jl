@@ -295,7 +295,7 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         end
         sim = simulate_stems(LAW; plants = 8, organs = 40, logμκ = 1.8, torsion_mean = 4.0, torsion_sd = 3.0, rng = Xoshiro(21))
         m = PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6, outlier = false)
-        tp = TorsionPrior(m0 = 0.0, sm = 10.0, νω = 4.0, τω = 5.0) # per position
+        tp = TorsionPrior(mt = 0.0, st = 10.0, νt = 4.0, τt = 5.0) # per position
         u = prior_mean_parameters(m)
         nodes = torsion_nodes(m, u)
         v = [u; 3.5; log(2.5)]

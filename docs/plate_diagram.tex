@@ -23,8 +23,8 @@
   \node[hyper] (heta) at (0.3, 0)    {$\mu_\Delta, \sigma_\Delta$};
   \node[hyper] (hmu)  at (2.1, 0)  {$m_\kappa, s_\kappa$};
   \node[hyper] (hsig) at (3.9, 0)  {$\nu_\kappa, \tau_\kappa$};
-  \node[hyper] (hm)   at (5.7, 0)  {$m_0, s_m$};
-  \node[hyper] (hs)   at (7.5, 0)  {$\nu_\omega, \tau_\omega$};
+  \node[hyper] (hm)   at (5.7, 0)  {$m_t, s_t$};
+  \node[hyper] (hs)   at (7.5, 0)  {$\nu_t, \tau_t$};
   \node[hyper] (halp) at (9.3, 0)  {$a_\alpha, b_\alpha$};
   \node[hyper] (hpi)  at (11.1, 0) {$a_\pi, b_\pi$};
 
@@ -41,14 +41,14 @@
   \node[summed] (ord) at (0.3, -4.9)   {$\sigma_s$};
   \node[latent] (phi) at (1.5, -4.1) {$\phi_s$};
   \node[latent] (kap) at (3.0, -3.6) {$\kappa_s$};
-  \node[latent] (o)   at (4.2, -4.0) {$o_s$};
+  \node[summed] (o)   at (4.2, -4.0) {$o_s$};
   \node[latent] (om)  at (6.6, -3.6) {$\omega_s$};
-  \node[latent] (psi) at (9.3, -3.6) {$\psi_s$};
+  \node[summed] (psi) at (9.3, -3.6) {$\psi_s$};
 
   % organ
   \node[obs]       (y) at (4.2, -6.2)  {$y_{sp}$};
   \node[covariate] (x) at (2.3, -6.2)  {$x_{sp}$};
-  \node[latent]    (z) at (11.1, -6.2) {$z_{sp}$};
+  \node[summed]    (z) at (11.1, -6.2) {$z_{sp}$};
 
   \edge {heta} {eta}; \edge {hmu} {mukap}; \edge {hsig} {sigkap}; \edge {hm} {mom}; \edge {hs} {som};
   \edge {halp} {alp}; \edge {hpi} {pio};

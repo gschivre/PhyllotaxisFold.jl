@@ -243,7 +243,7 @@ end
 #################################################################################################################
 const EX_CACHE = joinpath(@__DIR__, "example.jls")
 const EX_LAW = DelayLaw(0.42; πL = 0.06, mL = 1.5, πE = 0.06, mE = 1.0)
-const EX_TPRIOR = TorsionPrior(m0 = 0.0, sm = 2.0, νω = 4.0, τω = 1.0) # °/mm
+const EX_TPRIOR = TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0) # °/mm
 
 function example_data()
     rng = Xoshiro(2024)

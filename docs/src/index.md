@@ -24,7 +24,7 @@ using PhyllotaxisFold
 
 # angles: one vector of azimuths per stem (radians, bottom to top); x: the stem length (mm) below each organ
 m = PhyllotaxisModelAD(angles; torsion_x = x)
-r = fit_map_torsion!(m; prior = TorsionPrior(m0 = 0.0, sm = 2.0, νω = 4.0, τω = 1.0))
+r = fit_map_torsion!(m; prior = TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0))
 smp = order_samples(order_posterior(m, r; nsamples = 200), r.fit.θ.η)
 
 prof = overtaking_profile(smp)   # how often an organ is overtaken by the one d places up: the result to report

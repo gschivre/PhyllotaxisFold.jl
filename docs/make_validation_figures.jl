@@ -23,7 +23,7 @@ const VCACHE = joinpath(@__DIR__, "validation.jls")
 const NSTEMS, NORGANS = 60, 45
 const TWIST = (mean = 1.0, sd = 0.7) # °/mm
 const KAPPA = (logμκ = 1.85, σκ = 0.15)
-const TPRIOR = TorsionPrior(m0 = 0.0, sm = 2.0, νω = 4.0, τω = 1.0) # °/mm
+const TPRIOR = TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0) # °/mm
 const SCENARIOS = [
     (:none, "no tails", DelayLaw(0.42)),
     (:light, "light tails", DelayLaw(0.42; πL = 0.05, mL = 1.5, πE = 0.054, mE = 1.04)),

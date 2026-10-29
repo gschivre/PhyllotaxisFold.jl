@@ -47,7 +47,7 @@ angles = simulate_stems(law; plants = 60, organs = 45, x, logμκ = 1.8, torsion
 
 # 1. reconstruct the orders (the twist of each stem is integrated out)
 m = PhyllotaxisModelAD(angles; torsion_x = x)
-r = fit_map_torsion!(m; prior = TorsionPrior(m0 = 0.0, sm = 2.0, νω = 4.0, τω = 1.0))  # twist prior in °/mm
+r = fit_map_torsion!(m; prior = TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0))  # twist prior in °/mm
 dec = decode_orders(m, r; full = true)       # the most probable order of each stem, with its twist and spiral
 post = order_posterior(m, r; nsamples = 200) # the full posterior of the order: probabilities and samples
 

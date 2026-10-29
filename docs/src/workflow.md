@@ -37,7 +37,7 @@ Each group is fitted on its own. The twist of each stem is integrated out, with 
 ```julia
 using PhyllotaxisFold
 
-prior = TorsionPrior(m0 = 0.0, sm = 2.0, νω = 4.0, τω = 1.0)
+prior = TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0)
 m = PhyllotaxisModelAD(angles_wt; torsion_x = x_wt)
 r = fit_map_torsion!(m; prior)                     # the longest step: use several threads
 post = order_posterior(m, r; nsamples = 200)       # the posterior of the order of each stem

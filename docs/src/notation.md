@@ -5,12 +5,17 @@
 | symbol | meaning |
 |---|---|
 | ``p``, ``n``, ``j`` | height on the stem (bottom-up), number of organs, site of the spiral (canonical order) |
+| ``s``, ``S``, ``n_s`` | stem, number of stems, number of organs of stem ``s``; the subscript ``s`` marks a quantity of stem ``s`` (``y_{sp}``, ``\kappa_s``) |
 | ``\sigma``, ``d_p = \sigma(p) - p``, ``N_d`` | order, displacement (``d < 0``: late organ), number of organs displaced by ``d`` |
 | ``y_p``, ``x_p`` | absolute azimuth, stem length below position ``p`` |
 | ``\phi``, ``o``, ``\psi``, ``\alpha`` | spiral offset, orientation, divergence (golden or Lucas), probability of golden |
 | ``\kappa``, ``\mu_\kappa``, ``\sigma_\kappa`` | angular concentration of a stem, its log-normal population law |
 | ``\omega_s``, ``m_\omega``, ``s_\omega`` | twist rate of stem ``s``, its population mean and sd |
+| ``\pi_o``, ``z_{sp}`` | probability of an outlier angle, whether angle ``p`` of stem ``s`` is one ([§2.4](angles.md)) |
 | ``\eta_d`` | cost (log-propensity) of displacement ``d`` |
+| ``\Delta_d`` | gap between successive costs, ``\eta_d = -(\Delta_1 + \dots + \Delta_d)`` ([§4.3](propensity.md)) |
+| ``\mu_\Delta, \sigma_\Delta``, ``m_\kappa, s_\kappa``, ``\nu_\kappa, \tau_\kappa``, ``a_\alpha, b_\alpha``, ``a_\pi, b_\pi`` | fixed parameters of the priors on ``\Delta``, ``\log\mu_\kappa``, ``\sigma_\kappa``, ``\alpha``, ``\pi_o`` (`PhyllotaxisPrior`) |
+| ``m_t, s_t``, ``\nu_t, \tau_t`` | fixed parameters of the priors on ``m_\omega``, ``s_\omega`` (`TorsionPrior`) |
 | ``A``, ``P_A(\sigma)`` | the propensity model ([§4](propensity.md)), its law of the order |
 | ``P_f(\sigma)`` | the law of the order when the sites commit with independent delays ``f`` ([§5.2](timing.md)) |
 | ``W``, ``\rho_{p,d}`` | weight matrix, marginal probability ``P(\sigma(p) = p + d)`` |
