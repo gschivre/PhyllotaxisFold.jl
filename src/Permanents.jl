@@ -77,7 +77,7 @@ end
 
 Graph and buffers for permanents of size ≤ n_max with element type T (Float64, or a ForwardDiff dual type: build one
 workspace per number type, they are cheap). The caller always writes log-weights in `ws.w`.
-- `logspace = false` (default): scaled linear space (HMM scaling trick), about twice as fast; each call falls back to
+- `logspace = false` (default): scaled linear space (HMM scaling trick), faster; each call falls back to
   log-space by itself when the scaled pass cannot be trusted (see `forward!`), so the result is the same in both modes.
 - `logspace = true`: messages are always logs, accumulated with logaddexp.
 """

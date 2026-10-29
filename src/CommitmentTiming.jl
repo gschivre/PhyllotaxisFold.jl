@@ -1,8 +1,8 @@
 """
     CommitmentTiming
 
-The fold-commit timing law of organ order (independent delays), scored through the posterior orders of the propensity
-model.
+Laws of commitment delays (independent delays, one law for every site) as laws of organ order, scored through the
+posterior orders of the propensity model.
 
 Site i becomes ready at time i (plastochron units) and commits after an i.i.d. delay eᵢ ~ f; the organ order is
 σ = sortperm(i + eᵢ). The propensity model fitted to the angles gives, per stem, exact posterior samples of σ
@@ -154,10 +154,9 @@ overtaking(f::DelayLaw; d = 1:4, grid = DELAY_GRID) = _overtaking(f, d, grid)
 
 Exact log P(σ) for sites 1..n with readiness iγ and i.i.d. delay density g:
 P(σ) = ∫_{τ_1 < … < τ_n} ∏_p g(τ_p − σ[p] γ) dτ, by a forward recursion on a time grid with step Δz. Two times in the
-same grid cell are ordered with probability ½ (midpoint rule): counting such ties as ordered biased log P(σ) upwards at
-first order in Δz (Gaussian delays of sd 0.43 on a 0.05 grid: +0.28 for an order with three displacements); the error
-is second order (≤ 0.01 there). Grid cells where g is more than e^18 below its peak are skipped (≈ 10⁻⁸ of the mass
-per site). g is interpolated linearly between grid points (exact when γ is a multiple of the grid step, as for γ = 1). Generic in the element type of `logg` (ForwardDiff duals).
+same grid cell are ordered with probability ½ (midpoint rule): counting such ties as ordered would bias log P(σ) upwards
+at first order in Δz, while the midpoint rule leaves an error of second order. Grid cells where g is more than e^18
+below its peak are skipped. g is interpolated linearly between grid points (exact when γ is a multiple of the grid step, as for γ = 1). Generic in the element type of `logg` (ForwardDiff duals).
 """
 function loglik_order_exact(σ::AbstractVector{Int}, logg::AbstractVector{T}, z_grid, γ::Real) where {T <: Real}
     n = length(σ)
@@ -454,8 +453,10 @@ end
 
 Wald test of two independent groups' overtaking profiles (each from `overtaking_profile` or the `profile` of
 `delay_law_inference`), over the lags `d`: `diff` = b − a with its standard errors, χ² with one degree of freedom per
-informative lag, and its p-value. For groups fitted jointly with a shared core, use the `Δprofile` of
-`delay_law_inference` instead (it accounts for their correlation).
+informative lag, and its p-value. The default stops at d = 3: an overtaking at distance d needs two displacements that
+differ by more than d, so with the default band k = 4 the lag 4 rests on displacements near the edge of the band, where
+the band and the prior of the propensity model weigh most. For groups fitted jointly with a shared core,
+use the `Δprofile` of `delay_law_inference` instead (it accounts for their correlation).
 """
 function compare_profiles(a, b; d = 1:3)
     ia, ib = [findfirst(==(x), a.d) for x in d], [findfirst(==(x), b.d) for x in d]
@@ -486,7 +487,7 @@ end
     simulate_stems(f::DelayLaw; plants = 100, organs = 50, x = nothing, logμκ = 1.5, σκ = 0, α = 0.95, outlier = 0,
         torsion_mean = 0, torsion_sd = 0, rng)
 
-Stems under fold commitment with independent delays: the order of each stem is σ = sortperm(i + eᵢ) with eᵢ ~ f, and
+Stems whose orders come from independent commitment delays: the order of each stem is σ = sortperm(i + eᵢ) with eᵢ ~ f, and
 the angles y_p ~ vM(ϕ + o (σ[p] − 1) ψ + ω_s x_p, κ_s) as in the propensity model's simulator
 (κ_s ~ LogNormal(logμκ, σκ), golden with probability α, uniform ϕ and orientation, uniform outlier angles with
 probability `outlier`). `organs` is one count or

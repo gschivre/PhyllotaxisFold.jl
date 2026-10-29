@@ -56,7 +56,8 @@ Prior of the propensity model; its band k is the length N of the gap tuples (k =
   default (`η_prior`);
 - log μκ ~ N(mκ, sκ²) and σκ ~ half-t(νκ, τκ): the log-normal population of the per-stem κ;
 - α ~ Beta(aα, bα): the probability of the golden spiral (else the Lucas one);
-- π_o ~ Beta(aπ, bπ): the outlier probability (mean 2 %, median 1.4 %), unused with `outlier = false`.
+- π_o ~ Beta(aπ, bπ): the outlier probability (the default Beta(1, 49) has mean 2 %, median 1.4 %), unused with
+  `outlier = false`.
 """
 Base.@kwdef struct PhyllotaxisPrior{N}
     # LogNormal prior on the gaps Δ_d = η_{d−1} − η_d (mean m, variance v of each gap)

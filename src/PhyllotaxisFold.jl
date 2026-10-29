@@ -2,8 +2,8 @@
     PhyllotaxisFold
 
 Statistical models of the order of organs along a plant stem, from the absolute azimuths of the organs: the propensity
-model (free log-propensity of each displacement) decodes the orders, and the fold-commit timing law (each site commits
-after a random delay) is fitted through its posterior orders. Submodules, in dependency order:
+model (free log-propensity of each displacement) decodes the orders, and a law of commitment delays (each site commits
+after an independent random delay) is fitted through its posterior orders. Submodules, in dependency order:
 
 | submodule          | content                                                                                     |
 |--------------------|---------------------------------------------------------------------------------------------|
@@ -13,7 +13,7 @@ after a random delay) is fitted through its posterior orders. Submodules, in dep
 | `AngleLikelihood`  | the angle likelihood of one stem and its analytic gradient; decoding and order posterior     |
 | `PropensityPriors` | log-normal softplus prior on free log-propensities η and its bijectors                        |
 | `PropensityModel`  | the propensity model: free symmetric log-propensities η, `PhyllotaxisModelAD`                 |
-| `CommitmentTiming` | fold-commit delay laws, exact order likelihood, re-weighting of the posterior orders          |
+| `CommitmentTiming` | commitment delay laws, exact order likelihood, re-weighting of the posterior orders           |
 | `Plastochron`      | plastochron by flower rank from daily open-flower counts (delays in hours)                    |
 
 Every submodule's exported names are re-exported here. The method is described in the manual (`docs/src`). The earlier

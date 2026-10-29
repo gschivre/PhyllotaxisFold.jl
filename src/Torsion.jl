@@ -10,7 +10,7 @@ rate ω_s per stem (degrees per unit of x) and x_p the torsion coordinate of the
 - p − 1, `torsion_coordinate(n)`, when the length is not measured (degrees per stem position).
 
 The rates are random effects, like κ: ω_s ~ N(m_ω, s_ω²), with (m_ω, s_ω) fitted (hyperprior `TorsionPrior`) and each
-ω_s integrated out of its stem's likelihood. The per-stem likelihood is sharp (≈ 0.1°/mm) and multimodal in ω (a twist
+ω_s integrated out of its stem's likelihood. The per-stem likelihood is sharp compared with the population law, and can be multimodal in ω (a twist
 per position is confounded with the divergence angle; alternative spirals with a few permutations give secondary modes),
 so the integral uses *adaptive* quadrature: Gauss–Hermite nodes placed on each mode of the stem's own likelihood, found
 by a scan at preliminary parameters (`stem_nodes`), and kept fixed during the fit (an importance-sampling rule with a

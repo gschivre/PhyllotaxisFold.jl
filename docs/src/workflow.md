@@ -92,6 +92,13 @@ cmp = compare_profiles(prof_wt, prof_mutant)       # mutant − wild type, with 
 Wald test over ``d = 1, 2, 3``: ``\chi^2 = 54.3`` on 3 degrees of freedom, ``p \approx 10^{-11}``. Standard errors
 are clustered by stem, the unit of replication.
 
+**Why stop at ``d = 3``?** ``q_4`` rests on very few events (about 7 inversions at distance 4 in the wild type), and
+read from the orders it comes out too low. On the simulated data sets of [§6](validation.md) that have tails, it falls
+below the rate of the stems' own true orders every time, by 1 to 4.5 standard errors, while ``q_1`` to ``q_3`` do not.
+An organ overtaken four places up needs displacements near the edge of the band ``|d| \le 4``, where the band and the
+prior of step 1 weigh most. Here, including it would change little (``\chi^2 = 54.6`` on 4 degrees of freedom), so
+``q_4`` is shown in the table but left out of the test (`compare_profiles(a, b; d = 1:3)`, the default).
+
 ![The overtaking profiles](figures/w3_profiles.png)
 
 *Figure 3. (a) The overtaking profile of each group, read from the orders (dots, ± 2 se) and from the fitted delay law
