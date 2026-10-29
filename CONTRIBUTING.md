@@ -29,6 +29,7 @@ simulated data only. Each script says at its top how to run it.
 - `docs/make_validation_figures.jl`: the validation on simulated stems (manual §6). `run_validation(; refit_timing =
   true)` refits only the delay laws, from the cached replicates.
 - `docs/validation_clock_drift.jl`: the drifting-clock simulation of manual §6.7.
+- `docs/validation_plackett_luce.jl`: the exact check of the re-weighting of manual §6.8.
 - `docs/make_workflow.jl`: the figures of the worked analysis.
 - `docs/make_plate_diagram.jl`: the plate diagram of manual §2.5, from `docs/plate_diagram.tex` (TikZ, `bayesnet`).
   It installs its own TeX engine in a temporary environment; no LaTeX installation is needed.

@@ -52,7 +52,7 @@ end
 
 function summarize(o)
     tw = o.truth.torsion
-    (;
+    return (;
         tag = o.tag, t = round.((o.t_fit, o.t_dec, o.t_post); digits = 1), m_ω = round(o.m_ω; digits = 3),
         s_ω = round(o.s_ω; digits = 3), logμκ = round(o.θ.logμκ; digits = 3), σκ = round(o.θ.σκ; digits = 3),
         πo = round(o.θ.outlier; digits = 4),

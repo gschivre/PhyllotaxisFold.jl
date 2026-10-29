@@ -11,8 +11,8 @@ Each step of the method rests on assumptions and approximations, and could go wr
 The way to know is to run the whole pipeline on stems whose truth is known, and compare. This page does so step by
 step: the angle model and the twist ([§6.2](validation.md)), the orders ([§6.3](validation.md)), the delay law
 ([§6.4](validation.md)) and a remedy for its weak point ([§6.5](validation.md)), the two computations behind the delay
-law ([§6.6](validation.md)), and a clock that drifts ([§6.7](validation.md)). The figures are made by
-`docs/make_validation_figures.jl`.
+law ([§6.6](validation.md)), a clock that drifts ([§6.7](validation.md)), and an exact check of the re-weighting
+([§6.8](validation.md)). The figures are made by `docs/make_validation_figures.jl`.
 
 ## 6.1 The simulated stems
 
@@ -275,3 +275,37 @@ swaps (``\sigma_c^2 = 0.3^2 + \sigma_\xi^2/2``).
   (sd 0.3) and 60 stems, a gain slightly above the threshold of about 5 of [§6.4](validation.md) can occur by chance.
 
 The simulation is `docs/validation_clock_drift.jl`.
+
+## 6.8 An exact check of the re-weighting
+
+**What could go wrong.** The re-weighting of [§5.5](timing.md) replaces an exact sum over all orders by an average over
+posterior samples. [§6.6](validation.md) shows that the weights are even, but not that the average lands on the right
+value: for that, we need the exact answer.
+
+**An exact answer.** For one family of delay laws, we have it. If each delay is minus a Gumbel variable of scale
+``\beta``, the order on the stem follows a Plackett–Luce law: going up the stem, the next organ comes from site ``j``
+with a probability proportional to ``e^{-j/\beta}``, among the sites not yet used. The recursion of [§3](orders.md)
+already knows which sites are used, so it can sum this law over all orders exactly, with the same angle model and the
+same twist. That gives ``\log p(y \mid f)`` exactly, to compare with the re-weighting.
+
+The test uses one data set of 60 stems of 45 organs ([§6.1](validation.md)), with Gumbel delays of scale 0.34 (about
+one neighbour swap in twenty). The propensity model is fitted as usual, then each Gumbel law on a grid of ``\beta`` is
+scored both ways.
+
+![Exact check of the re-weighting](figures/v5_plackett_luce.png)
+
+*Figure 5. (a) ``\Delta\ell`` summed over the stems: exact (line) and re-weighted with 200 or 2000 posterior samples
+(symbols). (b) The error per stem: typical (solid) and worst stem (dashed). Dashed vertical line: the true ``\beta``.*
+
+**What we find.**
+
+- **The two agree.** For the laws the data do not reject outright (``\beta`` from 0.32 to 0.48), the summed error is
+  at most 0.14 with the default 200 samples, and a typical stem is off by 0.01. Both curves peak at the same ``\beta``,
+  next to the truth.
+- **Far from the truth, the error grows.** For laws much narrower than the truth, the weights become uneven: at
+  ``\beta = 0.2``, rejected by 165 units, 200 samples are off by 2 (too low), and 2000 samples by 0.3. Such laws are
+  rejected anyway, so fits and comparisons are not affected.
+- **The limits of the check.** It is one data set and one family of laws, whose tail is on the early side only. It
+  tests the re-weighting itself, not the choice of the delay law.
+
+The script is `docs/validation_plackett_luce.jl`.
