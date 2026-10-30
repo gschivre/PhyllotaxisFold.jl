@@ -182,7 +182,7 @@ changes *which* organs are off time, and not the precision of a typical commitme
 one core sd. The wild type, whose tails are light, then carries it ([§5.7](timing.md)).
 
 To test this, each replicate's light- and heavy-tailed data sets are fitted together, with one core sd and their own
-tails (`fit_delay_law([light, heavy], :both)`), and the shared core is tested against separate cores
+tails (`fit_delay_law([light, heavy], GaussianExpTails(:both))`), and the shared core is tested against separate cores
 (`shared_core_test`). The true cores are close but *not* equal (0.42 and 0.39): a mild violation of the hypothesis,
 as real data would have.
 
@@ -286,7 +286,10 @@ value: for that, we need the exact answer.
 ``\beta``, the order on the stem follows a Plackett–Luce law: going up the stem, the next organ comes from site ``j``
 with a probability proportional to ``e^{-j/\beta}``, among the sites not yet used. The recursion of [§3](orders.md)
 already knows which sites are used, so it can sum this law over all orders exactly, with the same angle model and the
-same twist. That gives ``\log p(y \mid f)`` exactly, to compare with the re-weighting.
+same twist. That gives ``\log p(y \mid f)`` exactly, to compare with the re-weighting. The law is the `GumbelDelay` of
+[Custom delay laws](custom_laws.md), where it is also fitted to the worked analysis. As a side check, the package's
+exact score of one order, the grid recursion of [§5.4](timing.md) that serves every delay law, matches the closed form
+within 0.008 on orders of 45 sites.
 
 The test uses one data set of 60 stems of 45 organs ([§6.1](validation.md)), with Gumbel delays of scale 0.34 (about
 one neighbour swap in twenty). The propensity model is fitted as usual, then each Gumbel law on a grid of ``\beta`` is

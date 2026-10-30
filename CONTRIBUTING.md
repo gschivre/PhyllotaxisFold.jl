@@ -9,6 +9,9 @@
 The tests check the numerical core against independent references (brute-force enumeration, Monte Carlo, finite
 differences), the recovery of known parameters on simulated stems, and code quality with
 [Aqua.jl](https://github.com/JuliaTesting/Aqua.jl) and [ExplicitImports.jl](https://github.com/JuliaTesting/ExplicitImports.jl).
+They are grouped by module, step 1 then step 2. The delay laws of the manual page "Custom delay laws"
+(`StudentDelay`, `GumbelDelay`) are defined at the top of `test/runtests.jl` as on the page (the Student law without
+its sampler, to test the fallback): keep the two in sync.
 
 ## The manual
 
@@ -44,4 +47,32 @@ The slow fits are cached (`docs/*.jls`) and reused on the next run; delete a cac
   `only_fgh!` callback where the gradient is analytic (the angle model), `TwiceDifferentiable` with
   `AutoForwardDiff()` otherwise (the delay law, the flowering rate).
 - Formatting: [Runic.jl](https://github.com/fredrikekre/Runic.jl) (`runic --inplace src test docs/*.jl`).
-- The earlier fold-commitment model and its variants are in the tag `with-model-B`.
+
+## History: the tag `with-model-B`
+
+Before version 0.2 (October 2026), the package held a second angle model. Its name, "model B" (the propensity model
+was "model A"; "fold-commitment model" in the paper drafts), says nothing about what it did; this section describes
+it. The tag `with-model-B` (commit b5c2127, still in the history of `main`) is its last version, and reproduces the
+numbers of the supplementary negative result.
+
+**What it did.** Like the propensity model, it summed the angles over all orders with the banded permanent. But its
+displacement costs η were not free parameters: they were computed from a mechanism. Each site commits after the
+first-passage time of a noisy switch through its fold (`PassageTime`: Fokker–Planck tables, with a constant or a
+rising margin), with the sites ready at a regular spacing γ. The exact law of the order this produces is not of
+product form, so it was projected (Kullback–Leibler) onto the costs η of a banded permanent with the same displacement
+marginals (`OrderStatistics`), tabulated over the shape of the passage law and γ, and fitted to the angles
+(`FoldAngleModel`, `FoldModel`). Variants: a margin that varies between sites ("B-mix", `MixturePassage`: a mixture of
+passage laws, with a heavier late tail), and a readiness spacing that follows the plastochron along the stem ("tempo",
+one exponent β, from `Plastochron`). The tag also holds a simulator of commitment-paced readiness (`Level1`: a site
+becomes ready only once the older primordia that frame it have committed, so timing errors propagate), with the
+statistics that would tell it from independent delays.
+
+**Why it was removed** (2026-10-17). The two-step approach of the current package does the same job more generally:
+the orders are reconstructed once by the propensity model, and any delay law, a fold's passage law included, is then
+scored with its exact order law, without the projection, which cost the fold law up to 28 units of log-likelihood. On
+the real stems, no fold passage law, single or mixed, came near a precise core with separate late and early tails
+(gaps of 2 to 42 units across groups). The fold remains the interpretation of the delay ([manual §5.1](docs/src/timing.md)).
+To test a fold passage law today, write it as a `DelayLaw` ([manual, "Custom delay laws"](docs/src/custom_laws.md)).
+
+To work with the old code: `git checkout with-model-B` (in a separate worktree, e.g.
+`git worktree add ../PhyllotaxisFold-modelB with-model-B`).

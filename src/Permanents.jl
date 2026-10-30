@@ -11,7 +11,7 @@ assigns row i to column i + d. On this graph:
 - `map_permutation`: most likely permutation (Viterbi)
 
 Edge log-weights live in `ws.w[i, d + k + 1]` (in both modes): any position-dependent weight table can be used,
-`toeplitz_weights!` fills the stationary case η_d.
+`toeplitz_weights!` fills the stationary case `η_d`.
 
 Convention: σ[i] is the canonical index of the organ observed at position i, displacement d = σ[i] − i.
 """
@@ -75,7 +75,7 @@ end
 """
     PermanentWorkspace(T, k, n_max; logspace = false)
 
-Graph and buffers for permanents of size ≤ n_max with element type T (Float64, or a ForwardDiff dual type: build one
+Graph and buffers for permanents of size ≤ `n_max` with element type T (Float64, or a ForwardDiff dual type: build one
 workspace per number type, they are cheap). The caller always writes log-weights in `ws.w`.
 - `logspace = false` (default): scaled linear space (HMM scaling trick), faster; each call falls back to
   log-space by itself when the scaled pass cannot be trusted (see `forward!`), so the result is the same in both modes.
@@ -106,7 +106,7 @@ PermanentWorkspace(k::Int, n_max::Int; kwargs...) = PermanentWorkspace(Float64, 
 """
     toeplitz_weights!(ws, η, n)
 
-Stationary log-weights w[i, d] = η_d for every row; η has length 2k + 1, η[d + k + 1] = η_d (η_0 = 0 by gauge).
+Stationary log-weights `w[i, d] = η_d` for every row; η has length 2k + 1, `η[d + k + 1] = η_d` (`η_0 = 0` by gauge).
 """
 function toeplitz_weights!(ws::PermanentWorkspace, η::AbstractVector, n::Int)
     for d_idx in axes(ws.w, 2)
@@ -129,8 +129,8 @@ const SCALED_DEFICIT_MAX = 600.0
 
 Forward pass on the log-weights stored in ws.w, returns the log-permanent.
 - log-space: F[s, i] = log of the summed weight of all partial paths reaching state s at step i.
-- scaled linear space: row i of the weights is exponentiated relative to its largest entry m_i, the messages are
-  renormalised at each step (Σ_s F[s, i] = 1) and log perm = Σ_i (m_i + log c_i). The row maxima absorb a row where
+- scaled linear space: row i of the weights is exponentiated relative to its largest entry `m_i`, the messages are
+  renormalised at each step (`Σ_s F[s, i] = 1`) and `log perm = Σ_i (m_i + log c_i)`. The row maxima absorb a row where
   every candidate is unlikely (an outlier angle at large κ); the call is redone in log-space when a step normaliser
   falls below `SCALED_STEP_MIN` or the accumulated deficit exceeds `SCALED_DEFICIT_MAX` (see above), so the result
   never depends on underflow. `ws.inlog[]` records which pass produced F.
@@ -314,7 +314,7 @@ end
 """
     sample_permutation!(rng, ws, n)
 
-Exact sample of σ with P(σ) ∝ ∏_i exp(w[i, σ[i] − i]) (log-weights in ws.w): forward and backward passes, then from the
+Exact sample of σ with `P(σ) ∝ ∏_i exp(w[i, σ[i] − i])` (log-weights in ws.w): forward and backward passes, then from the
 start state choose each edge with probability ∝ w B(next state).
 """
 function sample_permutation!(rng::AbstractRNG, ws::PermanentWorkspace, n::Int)

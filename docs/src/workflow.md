@@ -1,8 +1,8 @@
 # A worked analysis
 
-This page walks through a complete analysis, the way you would run it on your own stems: a wild type and a mutant,
-each reconstructed, checked, then compared. The data are simulated, so we can peek at the truth at the end of each
-step and see how well the package did. The code is that of `docs/make_workflow.jl`; the method behind each step is
+This page walks through a complete analysis, in the order it would be run on real stems: a wild type and a mutant,
+each reconstructed, checked, then compared. The data are simulated, so the estimates of each step can be compared
+with the truth. The code is that of `docs/make_workflow.jl`; the method behind each step is
 explained in the following pages.
 
 ## The data
@@ -54,15 +54,15 @@ and the same for the mutant. Below, `smp_wt` and `smp_mutant` are the two groups
   of golden spirals (truth 95 %). The twist of each stem is sharply determined (figure 2a).
 - **The band is wide enough, mostly.** The model allows displacements up to ``k = 4``. If organs pile up at that edge,
   the band is too narrow. Here the median stem puts almost nothing there (figure 2b), but a few stems put 2–5 % of
-  their organs at ``|d| = 4``: the stems with a very late organ, a hallmark of tails. In such a case, it is worth
+  their organs at ``|d| = 4``: the stems with a very late organ, as expected under tails. In such a case, it is worth
   refitting with a wider band (a `PhyllotaxisPrior` with five gaps instead of four) and checking that the results
   hold; [§3.2](orders.md) explains the band.
 - **Look at a few stems.** Most heights are certain; where they are not, the probability is shared between a few
   orders (figure 2c). This is why step 2 works on posterior samples, not on the single most probable order.
 
-*Peeking at the truth:* the most probable order puts 98.6 % (wild type) and 96.3 % (mutant) of the organs on their
-true site, and finds 20.4 % and 34.2 % of the organs displaced, for 20.6 % and 34.8 %. And the band check was right
-to raise an eyebrow: 0.3 % (wild type) and 0.65 % (mutant) of the organs are truly displaced by more than 4.
+*Comparison with the truth:* the most probable order puts 98.6 % (wild type) and 96.3 % (mutant) of the organs on their
+true site, and finds 20.4 % and 34.2 % of the organs displaced, for 20.6 % and 34.8 %. The band check was justified:
+0.3 % (wild type) and 0.65 % (mutant) of the organs are truly displaced by more than 4.
 
 ![Checks of step 1](figures/w2_step1_checks.png)
 
@@ -107,9 +107,10 @@ of step 3 (dashed); diamonds: the truth. (b) The difference between the groups, 
 **Reading it.** In the wild type, an organ is overtaken by its neighbour about once in ten, and by the organ two
 places up once in forty. The mutant is more disordered at every distance, but not uniformly: neighbour swaps rise by
 60 %, overtakings at distance 2 and 3 nearly triple. Long-range overtakings growing faster than short ones is the
-signature of organs committing much later (or earlier) than their turn, rather than of a uniformly sloppier clock.
+signature of organs committing much later (or earlier) than their turn, rather than of a uniformly less precise
+clock.
 
-*Peeking at the truth:* every estimate is within about one standard error of the profile of the stems' own true
+*Comparison with the truth:* every estimate is within about one standard error of the profile of the stems' own true
 orders (wild type 0.091, 0.024, 0.009, 0.004; mutant 0.139, 0.057, 0.028, 0.014), and so is the difference (truth
 +0.060, +0.038, +0.020).
 
@@ -121,11 +122,16 @@ The profile says *how often* organs are overtaken. A delay law says *why*: how p
 how many organs commit out of their turn. Fit three nested laws, from the simplest:
 
 ```julia
-core = fit_delay_law(smp, :core)                   # a Gaussian core only
-late = fit_delay_law(smp, :late)                   # plus late organs
-both = fit_delay_law(smp, :both)                   # plus late and early organs
+core = fit_delay_law(smp, GaussianExpTails(:core)) # a Gaussian core only
+late = fit_delay_law(smp, GaussianExpTails(:late)) # plus late organs
+both = fit_delay_law(smp, GaussianExpTails(:both)) # plus late and early organs
 inf = delay_law_inference(smp, both)               # estimates and standard errors, clustered by stem
 ```
+
+These are three variants of the package's default law, a Gaussian core with exponential tails
+([§5.6](timing.md)), each named by the tails it fits (`:early` also exists). It is one hypothesis among others: any
+law of the delay can be defined in a few lines and fitted in the same way, and its `rel_ll` compared with the values
+below ([Custom delay laws](custom_laws.md) shows how, with two examples fitted to these same stems).
 
 Each fit returns `rel_ll`, the log-likelihood of the law relative to the propensity model of step 1. The gains tell
 whether the orders call for tails:
@@ -161,13 +167,13 @@ with it. The next step addresses this.
 ## Step 4: a shared core
 
 If the mutant changes *which* organs commit off time, but not the precision of a typical commitment, the two groups
-share one core sd, and the wild type, whose tails are light, can carry it. This is a biological hypothesis, so test
-it:
+share one core sd, and the wild type, whose tails are light, can carry it. This is a biological hypothesis, to be
+tested:
 
 ```julia
-sct = shared_core_test([smp_wt, smp_mutant], :both)           # one core sd against one per group
-inf2 = delay_law_inference([smp_wt, smp_mutant], sct.shared)  # estimates under the shared core
-inf2.Δoff                                                     # mutant − wild type off-time fraction
+sct = shared_core_test([smp_wt, smp_mutant], GaussianExpTails(:both))  # one core sd against one per group
+inf2 = delay_law_inference([smp_wt, smp_mutant], sct.shared)           # estimates under the shared core
+inf2.Δoff                                                              # mutant − wild type off-time fraction
 ```
 
 The likelihood ratio is 1.1 (``p = 0.30``): nothing against a shared core. The shared sd, 0.38 ± 0.05, stays close to
@@ -179,7 +185,7 @@ reported instead; [§6.5](validation.md)). Under the shared core:
 | off time, ``P(\lvert e\rvert > 1)`` | 0.076 ± 0.013 | 0.150 ± 0.011 | +0.074 ± 0.013 | +0.078 |
 
 The mutant's off-time fraction comes down from 0.160 to 0.150 (truth 0.140), and the difference between the groups
-lands on the truth.
+matches the truth.
 
 ![The fitted delay laws](figures/w4_delay_laws.png)
 
@@ -195,8 +201,8 @@ maturation takes the same time throughout flowering), so the counts give the pla
 ```julia
 # counts: one vector per plant, the cumulative number of open flowers at the end of each day (NaN: a day not recorded)
 fl = fit_flowering(counts_wt)
-T = mean_plastochron(fl, [1:40 for _ in 1:50])      # mean plastochron of the measured organs (ranks 1–40), in hours
-in_hours(inf2.estimate[1].σc, inf2.se[1].σc, T)       # the shared core sd, in hours
+T = mean_plastochron(fl, [1:40 for _ in 1:50])   # mean plastochron of the measured organs (ranks 1–40), in hours
+in_hours(inf2.estimate[1].σc, inf2.se[1].σc, T)  # the shared core sd, in hours
 ```
 
 `fit_flowering` fits a flowering rate that rises, then declines from a change point specific to each plant, until the
@@ -245,5 +251,6 @@ With one stem in fifty this does not matter; with many, draw more posterior samp
 
 - **How far to trust each number.** [Validation on simulated stems](validation.md) repeats this analysis on replicated
   data sets, including a mutant with much heavier tails.
+- **Other delay laws.** [Custom delay laws](custom_laws.md) fits two other laws to these stems.
 - **Why it works.** The next pages explain each step, from [the problem](problem.md) to
   [commitment timing](timing.md).

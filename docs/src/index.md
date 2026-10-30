@@ -27,12 +27,17 @@ m = PhyllotaxisModelAD(angles; torsion_x = x)
 r = fit_map_torsion!(m; prior = TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0))
 smp = order_samples(order_posterior(m, r; nsamples = 200), r.fit.θ.η)
 
-prof = overtaking_profile(smp)   # how often an organ is overtaken by the one d places up: the result to report
-fit = fit_delay_law(smp, :both)  # a delay law that interprets it
+prof = overtaking_profile(smp)                     # how often an organ is overtaken d places up: the result to report
+fit = fit_delay_law(smp, GaussianExpTails(:both))  # a delay law that interprets it
 ```
 
 [**A worked analysis**](workflow.md) runs the whole workflow on a simulated wild type and mutant, with the checks to
 make and how to read the results.
+
+!!! tip "Custom delay laws"
+    The orders are reconstructed without any assumption on timing. Hypotheses about timing are then tested on these
+    orders: a hypothesis written as a law of the commitment delay, in a few lines of code, is fitted and compared with
+    the default law or with other laws. See [**Custom delay laws**](custom_laws.md).
 
 ## The method in five steps
 

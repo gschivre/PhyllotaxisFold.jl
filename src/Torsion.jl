@@ -1,21 +1,21 @@
 """
     Torsion
 
-Stem torsion, shared by the models. The organ at stem position p is rotated by ω_s x_p in the absolute frame, with one
-rate ω_s per stem (degrees per unit of x) and x_p the torsion coordinate of the stem:
+Stem torsion, shared by the models. The organ at stem position p is rotated by `ω_s x_p` in the absolute frame, with one
+rate `ω_s` per stem (degrees per unit of x) and `x_p` the torsion coordinate of the stem:
 
 - the stem length below p in mm, `torsion_coordinate(ℓ)` from the n − 1 internodes (preferred: the twist accumulates
   along the length; Landrein et al. 2013: an internode of length I on a stem of radius r twisted by α rotates the organs
-  above it by I tan α / r, so ω_s = tan α / r for a constant α / r);
+  above it by I tan α / r, so `ω_s = tan α / r` for a constant α / r);
 - p − 1, `torsion_coordinate(n)`, when the length is not measured (degrees per stem position).
 
-The rates are random effects, like κ: ω_s ~ N(m_ω, s_ω²), with (m_ω, s_ω) fitted (hyperprior `TorsionPrior`) and each
-ω_s integrated out of its stem's likelihood. The per-stem likelihood is sharp compared with the population law, and can be multimodal in ω (a twist
+The rates are random effects, like κ: `ω_s ~ N(m_ω, s_ω²)`, with (`m_ω`, `s_ω`) fitted (hyperprior `TorsionPrior`) and each
+`ω_s` integrated out of its stem's likelihood. The per-stem likelihood is sharp compared with the population law, and can be multimodal in ω (a twist
 per position is confounded with the divergence angle; alternative spirals with a few permutations give secondary modes),
 so the integral uses *adaptive* quadrature: Gauss–Hermite nodes placed on each mode of the stem's own likelihood, found
 by a scan at preliminary parameters (`stem_nodes`), and kept fixed during the fit (an importance-sampling rule with a
 Gaussian-mixture proposal, `TorsionNodes`). The fitted objective is then a smooth function of the global parameters and
-(m_ω, log s_ω), maximised by Newton (`newton_map`; the derivatives are in `AngleLikelihood`).
+(`m_ω`, `log s_ω`), maximised by Newton (`newton_map`; the derivatives are in `AngleLikelihood`).
 """
 module Torsion
 
@@ -60,13 +60,13 @@ function torsion_nodes end
 """
     fit_map_torsion!(model; prior = TorsionPrior(), u0, recenter = 1, nodes_kw = (;), options)
 
-MAP of the global parameters and of the twist population (m_ω, log s_ω), with each stem's rate integrated out:
+MAP of the global parameters and of the twist population (`m_ω`, `log s_ω`), with each stem's rate integrated out:
 1. fit without torsion; 2. nodes at that fit, rates set to each stem's best mode; 3. fit with these rates fixed;
 4. nodes at that fit; 5. Newton on the integrated objective; then `recenter` times: nodes at the new fit and refit.
-Returns (; fit, m_ω, s_ω, ω, ω_mean, ω_sd, loglik, nodes) (loglik: Σ of the integrated stem log-likelihoods, priors
-excluded): fit = (; θ, u, H, result) with u = [global u; m_ω; log s_ω] and H the
+Returns (; fit, `m_ω`, `s_ω`, ω, `ω_mean`, `ω_sd`, loglik, nodes) (loglik: Σ of the integrated stem log-likelihoods, priors
+excluded): fit = (; θ, u, H, result) with `u = [global u; m_ω; log s_ω]` and H the
 Hessian of the log posterior in u (−inv(H): Laplace covariance); per stem, ω the most probable mode (used by
-`corrected_angles`), ω_mean and ω_sd the posterior mean and sd of the rate (aliases included). Methods:
+`corrected_angles`), `ω_mean` and `ω_sd` the posterior mean and sd of the rate (aliases included). Methods:
 `PhyllotaxisModelAD` (or its `TransformedLogDensityProblem`).
 
 The model's stored twist rates (`model.torsion.ω`, the default rate of `stem_loglik`, `corrected_angles` and of the
@@ -84,8 +84,8 @@ StemTorsion(x::AbstractVector{<:AbstractVector}) = StemTorsion([collect(Float64,
 """
     TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0)
 
-Hyperprior of the twist population ω_s ~ N(m_ω, s_ω²), in degrees per unit of the coordinate (°/mm with internodes):
-m_ω ~ N(mt, st²), s_ω ~ half-t(νt, τt). An informative prior on the mean twist is a small st.
+Hyperprior of the twist population `ω_s ~ N(m_ω, s_ω²)`, in degrees per unit of the coordinate (°/mm with internodes):
+`m_ω ~ N(mt, st²)`, `s_ω ~ half-t(νt, τt)`. An informative prior on the mean twist is a small st.
 """
 Base.@kwdef struct TorsionPrior
     mt::Float64 = 0.0
@@ -94,10 +94,10 @@ Base.@kwdef struct TorsionPrior
     τt::Float64 = 1.0
 end
 
-"log hyperprior of (m_ω, log s_ω), Jacobian of the log included"
+"log hyperprior of (`m_ω`, `log s_ω`), Jacobian of the log included"
 torsion_hyperprior(p::TorsionPrior, m, logs) = logpdf(Normal(p.mt, p.st), m) + logpdf(_halft(p.νt, p.τt), exp(logs)) + logs
 
-"x_p = p − 1 (degrees per stem position) for a stem of n organs, or the stem length below p from its n − 1 internodes"
+"`x_p = p − 1` (degrees per stem position) for a stem of n organs, or the stem length below p from its n − 1 internodes"
 torsion_coordinate(n::Integer) = collect(0.0:(n - 1))
 torsion_coordinate(ℓ::AbstractVector{<:Real}) = vcat(0.0, cumsum(Float64.(ℓ)))
 
@@ -149,10 +149,10 @@ end
 """
     TorsionNodes(ω, logw, modes)
 
-Fixed quadrature rule for each stem's rate: ∫ L_s(ω) p(ω) dω ≈ Σ_j exp(logw[s][j]) L_s(ω[s][j]) p(ω[s][j]), with
-logw = log(Gauss–Hermite weight × mixture weight) − log q_s(ω) for the Gaussian-mixture proposal q_s placed on the modes
-of L_s (`modes[s]`: (centre, sd, log-likelihood) of each). Exact in expectation for any p (multiple importance sampling,
-balance heuristic); accurate when L_s is close to Gaussian around each mode and p varies slowly on the scale of the sd.
+Fixed quadrature rule for each stem's rate: `∫ L_s(ω) p(ω) dω ≈ Σ_j exp(logw[s][j]) L_s(ω[s][j]) p(ω[s][j])`, with
+`logw = log(Gauss–Hermite weight × mixture weight) − log q_s(ω)` for the Gaussian-mixture proposal `q_s` placed on the modes
+of `L_s` (`modes[s]`: (centre, sd, log-likelihood) of each). Exact in expectation for any p (multiple importance sampling,
+balance heuristic); accurate when `L_s` is close to Gaussian around each mode and p varies slowly on the scale of the sd.
 """
 struct TorsionNodes
     ω::Vector{Vector{Float64}}
@@ -202,7 +202,7 @@ function stem_nodes(f, step::Real; scan = -25.0:0.5:25.0, Δ::Real = 8.0, maxmod
     return ω, logw, [(c, h, m[3]) for ((c, h), m) in zip(comps, modes)]
 end
 
-"log terms a_j = logw_j + ℓ_j + log N(ω_j | m, s) of one stem's integral; the stem's integrated log-likelihood is logsumexp(a)"
+"log terms `a_j = logw_j + ℓ_j + log N(ω_j | m, s)` of one stem's integral; the stem's integrated log-likelihood is logsumexp(a)"
 node_logterms(ω, logw, ℓ, m, s) = [logw[j] + ℓ[j] + logpdf(Normal(m, s), ω[j]) for j in eachindex(ω)]
 
 "posterior of one stem's rate from its node terms a (Float64): (mean, sd, most probable mode centre)"

@@ -13,8 +13,8 @@ const W_STEMS, W_ORGANS = 50, 40
 const W_TPRIOR = TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0) # °/mm
 # the truth, hidden from the analysis: the mutant has more late organs, with the same core
 const W_LAWS = (
-    wt = DelayLaw(0.42; πL = 0.05, mL = 1.5, πE = 0.05, mE = 1.0),
-    mutant = DelayLaw(0.42; πL = 0.2, mL = 1.5, πE = 0.05, mE = 1.0),
+    wt = GaussianExpTails(0.42; πL = 0.05, mL = 1.5, πE = 0.05, mE = 1.0),
+    mutant = GaussianExpTails(0.42; πL = 0.2, mL = 1.5, πE = 0.05, mE = 1.0),
 )
 const W_COL = (wt = "#2a78d6", mutant = "#eb6834")
 # the flowering of the plants (Plastochron): about 2.5 flowers a day at first, rising, then a decline from day ≈ 14 to
@@ -42,9 +42,9 @@ function workflow_group(law, seed)
     smp = order_samples(post, r.fit.θ.η)
     wstage("seed $(seed): delay laws")
     fits = (
-        core = fit_delay_law(smp, :core; init = DelayLaw(0.5)),
-        late = fit_delay_law(smp, :late),
-        both = fit_delay_law(smp, :both),
+        core = fit_delay_law(smp, GaussianExpTails(:core)),
+        late = fit_delay_law(smp, GaussianExpTails(:late)),
+        both = fit_delay_law(smp, GaussianExpTails(:both)),
     )
     inf = delay_law_inference(smp, fits.both)
     prof = overtaking_profile(smp)
@@ -100,7 +100,7 @@ function workflow_data(; refit = false)
     mutant = workflow_group(W_LAWS.mutant, 12)
     wstage("comparing the groups")
     cmp = compare_profiles(wt.prof, mutant.prof)
-    sct = shared_core_test([wt.smp, mutant.smp], :both)
+    sct = shared_core_test([wt.smp, mutant.smp], GaussianExpTails(:both))
     shared_inf = delay_law_inference([wt.smp, mutant.smp], sct.shared)
     res = (; wt, mutant, cmp, sct, shared_inf)
     serialize(WCACHE, res)

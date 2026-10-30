@@ -1,13 +1,13 @@
 """
     PropensityPriors
 
-Prior on free log-propensities η_1 > η_2 > … > η_k (all negative, decreasing in |d|), built from positive log-normal gaps:
+Prior on free log-propensities `η_1 > η_2 > … > η_k` (all negative, decreasing in |d|), built from positive log-normal gaps:
 
     η_d = −(Δ_1 + … + Δ_d),   Δ_j ~ LogNormal(μΔ_j, σΔ_j)
 
-`LogNormalSoftPlus`, its bijector to ℝ^k (θ_j = softplus⁻¹(Δ_j)), and `η_prior` (log-normal location and scale from
+`LogNormalSoftPlus`, its bijector to ℝ^k (`θ_j = softplus⁻¹(Δ_j)`), and `η_prior` (log-normal location and scale from
 the mean and variance of each gap). Used by the free-η angle model (`PropensityModel`), whose costs are symmetric
-(η_{−d} = η_d).
+(`η_{−d} = η_d`).
 """
 module PropensityPriors
 
@@ -20,9 +20,9 @@ export LogNormalSoftPlus, η_prior, marginal_quantiles
 """
     LogNormalSoftPlus(μΔ, σΔ)
 
-Distribution of the free log-propensities (η_1, …, η_k), η_d = −(Δ_1 + … + Δ_d) with independent gaps
-Δ_j ~ LogNormal(μΔ_j, σΔ_j): negative and decreasing in d. Supports `rand`, `logpdf`, `mean` and `marginal_quantiles`;
-its bijector to ℝ^k is θ_j = softplus⁻¹(Δ_j). `η_prior(m, v)` gives (μΔ, σΔ) from the mean and variance of each gap.
+Distribution of the free log-propensities (`η_1, …, η_k`), `η_d = −(Δ_1 + … + Δ_d)` with independent gaps
+`Δ_j ~ LogNormal(μΔ_j, σΔ_j)`: negative and decreasing in d. Supports `rand`, `logpdf`, `mean` and `marginal_quantiles`;
+its bijector to ℝ^k is `θ_j = softplus⁻¹(Δ_j)`. `η_prior(m, v)` gives (μΔ, σΔ) from the mean and variance of each gap.
 """
 struct LogNormalSoftPlus{V <: AbstractVector} <: ContinuousMultivariateDistribution
     μΔ::V
@@ -52,7 +52,7 @@ function Distributions.mean(d::LogNormalSoftPlus)
     return -cumsum(Δm)
 end
 
-"marginal quantiles of each η_d by Monte Carlo"
+"marginal quantiles of each `η_d` by Monte Carlo"
 function marginal_quantiles(d::LogNormalSoftPlus, α::Real; N::Int = 100_000)
     samples = rand(d, N)
     return [quantile(samples[i, :], α) for i in 1:length(d)]

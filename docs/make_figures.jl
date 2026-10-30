@@ -242,7 +242,7 @@ end
 # through the whole manual. The fit is cached in docs/example.jls.
 #################################################################################################################
 const EX_CACHE = joinpath(@__DIR__, "example.jls")
-const EX_LAW = DelayLaw(0.42; πL = 0.06, mL = 1.5, πE = 0.06, mE = 1.0)
+const EX_LAW = GaussianExpTails(0.42; πL = 0.06, mL = 1.5, πE = 0.06, mE = 1.0)
 const EX_TPRIOR = TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0) # °/mm
 
 function example_data()
@@ -406,7 +406,7 @@ function fig_examples(ex = example_fit())
         )
         barplot!(ax2, 1:length(ordr), lw; color = [ss.orders[j] == σ ? C_PATH : :steelblue for j in ordr], strokewidth = 0)
         sgrid = range(0.2, 0.8; length = 25)
-        withs(sd) = DelayLaw(sd; πL = EX_LAW.πL, mL = EX_LAW.mL, πE = EX_LAW.πE, mE = EX_LAW.mE)
+        withs(sd) = GaussianExpTails(sd; πL = EX_LAW.πL, mL = EX_LAW.mL, πE = EX_LAW.πE, mE = EX_LAW.mE)
         tot = [relative_loglik(smp, withs(sd)) for sd in sgrid]
         one = [stem_terms([ss], withs(sd))[1] for sd in sgrid]
         ax3 = Axis(

@@ -149,7 +149,8 @@ mean, a little less variable. Either way, the picture of a slow and random delay
 From this picture the package keeps only what [§1.4](problem.md) assumed: each site commits after a random delay,
 with the same law for every site. A fold is not the only source of such a delay (a long cascade of steps, or a precise
 switch reading a jittery input, give one too), so the package does not impose the delay law of a fold: it fits a
-flexible law ([§5.6](timing.md)) and lets the orders decide its shape.
+flexible law ([§5.6](timing.md)) and lets the orders decide its shape. Any other law, a fold's included, can be put in
+its place ([Custom delay laws](custom_laws.md)).
 
 ## 5.2 The law of the order of a paced meristem
 
@@ -226,24 +227,25 @@ form, with one price per swap, can follow neither effect.
 !!! details "Reproducing the numbers"
     ```julia
     using PhyllotaxisFold
-    P(σ, f) = exp(loglik_order_exact(σ, f))      # exact probability of an order under f (§5.4)
+    P(σ, f) = exp(loglik_order_exact(σ, f))                                # exact probability of an order under f (§5.4)
     odds(f) = (P([2, 1, 3, 4], f) / P([1, 2, 3, 4], f), P([2, 1, 4, 3], f) / P([1, 2, 4, 3], f))
-    gauss = DelayLaw(0.42)                       # Gaussian delays, sd 0.42 plastochron
-    ex = DelayLaw(0.42; πL = 0.06, mL = 1.5, πE = 0.06, mE = 1.0) # the law of the running example
-    P([2, 1], gauss)                             # 0.046 (§5.2)
-    odds(gauss)                                  # (0.0508, 0.0487)
-    odds(ex)                                     # (0.0913, 0.0941)
-    P([3, 1, 2], gauss) + P([2, 3, 1], gauss), P([3, 1, 2], ex) + P([2, 3, 1], ex) # 0.0003, 0.024 (§5.6)
+    gauss = GaussianExpTails(0.42)                                         # Gaussian delays, sd 0.42 plastochron
+    ex = GaussianExpTails(0.42; πL = 0.06, mL = 1.5, πE = 0.06, mE = 1.0)  # the law of the running example
+    P([2, 1], gauss)                                                       # 0.046 (§5.2)
+    odds(gauss)                                                            # (0.0508, 0.0487)
+    odds(ex)                                                               # (0.0913, 0.0941)
+    # the orders 3 1 2 and 2 3 1 (§5.6): 0.0003 under gauss, 0.024 under ex
+    P([3, 1, 2], gauss) + P([2, 3, 1], gauss), P([3, 1, 2], ex) + P([2, 3, 1], ex)
     ```
 
-Two lessons:
+Two consequences:
 
-- **the bad one**: ``P_f`` is outside the family for which the sum of [§3](orders.md) is exact, so
+- **a limitation**: ``P_f`` is outside the family for which the sum of [§3](orders.md) is exact, so
   ``p(y \mid f) = \sum_\sigma P_f(\sigma)\, p(y \mid \sigma)`` cannot be computed that way;
-- **the good one**: the deviation is a few percent. A product-form law cannot *be* ``P_f``, but it can come close, and
+- **an opportunity**: the deviation is a few percent. A product-form law cannot *be* ``P_f``, but it can come close, and
   the propensity model, fitted to the same stems, is such a law. The next two sections exploit this.
 
-## 5.4 One order at a time is easy
+## 5.4 The exact probability of one order
 
 ``P_f`` cannot be summed over all orders, but it is exact and fast for *one* order. As in [§3](orders.md), go up the
 stem one height at a time, carrying only what the next height needs: here, the distribution of the commitment time of
@@ -330,7 +332,7 @@ Figure 2 shows the identity at work. On the example stem, the true order carries
 seven others share the rest (a). The true delay law finds the true order about six times more probable than the
 propensity model does (log-weight +1.8), and most alternatives less probable (b): ``\Delta\ell_s > 0``.
 
-Order 4 is a nice contrast. Its log-weight is as high as the true order's, yet ``f`` finds it 16 times *less*
+Order 4 is an instructive contrast. Its log-weight is as high as the true order's, yet ``f`` finds it 16 times *less*
 probable (``\log P_f`` = −18.0 against −15.2): ``A`` simply finds it even less probable. Where the true order displaces
 two neighbours by one (−1, +1), order 4 displaces them by two (+2, −2), a pattern the product form penalises a little
 more than a tailed law does ([§5.3](timing.md)); the weight corrects for this. With 0.5 % of the samples, order 4 adds
@@ -349,7 +351,8 @@ sample size is small is scored imprecisely; more posterior samples help.
 
 ## 5.6 The delay law
 
-**assumption** — the delay is a precise Gaussian core, plus two exponential tails for sites committed late or early:
+**assumption** — the delay is a precise Gaussian core, plus two exponential tails for sites committed late or early
+(the package's default law, `GaussianExpTails`):
 
 ```math
 f = (1 - \pi_L - \pi_E)\, \mathcal N(0, \sigma_c^2)
@@ -364,8 +367,11 @@ Gaussian cannot: one organ displaced by two or three positions while its neighbo
 the orders 3 1 2 and 2 3 1 have a probability of 0.03 % under the Gaussian core alone, and 2.4 % under the law of the
 running example, whose tails hold 12 % of the sites.
 
-Three nested variants are fitted: `:core` (``\sigma_c``), `:late` (``\sigma_c, \pi_L, m_L``) and `:both` (all five). Comparing their
-``\Delta\ell`` tells whether the orders call for tails, and on which side.
+Its variants are named by the tails they fit: `:core` (``\sigma_c``), `:late` (``\sigma_c, \pi_L, m_L``), `:early`
+(``\sigma_c, \pi_E, m_E``) and `:both` (all five); `GaussianExpTails(:late)` is the starting law of the `:late` fit.
+The nested sequence `:core`, `:late`, `:both` is the usual one: comparing their ``\Delta\ell`` tells whether the
+orders call for tails, and on which side. This law is a default, not a requirement: everything below works for any
+delay law, and [Custom delay laws](custom_laws.md) shows how to define one and why this one is the default.
 
 !!! details "The density"
     A Gaussian of sd ``\sigma_c`` convolved with an exponential of rate ``\lambda = 1/m`` (an exponentially modified
@@ -404,8 +410,11 @@ it, within its assumed shape: how precise a typical commitment is, and how many 
 
 ## 5.7 Fit, uncertainty and comparisons
 
-- **Fit.** `fit_delay_law(samples, variant)` maximises ``\Delta\ell`` by Newton's method with a trust region, on
-  unconstrained parameters: ``\log \sigma_c``; for `:both`, ``\operatorname{logit}(\pi_L + \pi_E)``, the logit of the late
+- **Fit.** `fit_delay_law(samples, f)` maximises ``\Delta\ell`` by Newton's method with a trust region, starting
+  from the law ``f``, on the unconstrained free parameters that ``f`` declares ([Custom delay laws](custom_laws.md)).
+  For the default law, ``f`` is a variant such as `GaussianExpTails(:both)`, or `GaussianExpTails(:both, g)` to
+  start from the values of a law ``g``. Its free parameters: ``\log \sigma_c``; for `:both`,
+  ``\operatorname{logit}(\pi_L + \pi_E)``, the logit of the late
   share ``\pi_L/(\pi_L + \pi_E)``, ``\log m_L`` and ``\log m_E``. The tail mass and the late share are separate
   coordinates because the first is better determined than the second. The grid is fixed, so ``\Delta\ell``
   is a smooth function of the parameters. Its gradient and Hessian are exact: forward-mode dual numbers pass through
@@ -426,8 +435,9 @@ it, within its assumed shape: how precise a typical commitment is, and how many 
   cancel in these differences, because each stem's term is relative to its own group's fit of ``A``.
 - **A shared core.** A group with heavy tails has no identified core sd of its own ([§5.6](timing.md)). To still read
   its off-time fraction, fit the groups together with **one core sd and their own tails**:
-  `fit_delay_law([smp_wt, smp_mutant], :both)`. This states a biological hypothesis, *the mutant changes the off-time
-  organs, not the precision of a typical commitment*, with the light-tailed group carrying the core.
+  `fit_delay_law([smp_wt, smp_mutant], GaussianExpTails(:both))`. This states a biological hypothesis, *the mutant
+  changes the off-time organs, not the precision of a typical commitment*, with the light-tailed group carrying the
+  core.
   `shared_core_test` tests it by the likelihood ratio of one core against one per group (χ² with one degree of freedom
   per extra group; with heavy tails, permuting the group labels among the stems calibrates it). `delay_law_inference`
   on the joint fit gives each group's off-time fraction and their difference, with standard errors that account for
@@ -456,7 +466,8 @@ it, within its assumed shape: how precise a typical commitment is, and how many 
     standard error of ``\bar T`` is the delta method through the covariance of the fit, and that of ``x\,\bar T``
     combines both, as independent: ``\sqrt{(\bar T\,\mathrm{se}_x)^2 + (x\,\mathrm{se}_{\bar T})^2}``.
 
-**Code.** `DelayLaw(σc; πL, mL, πE, mE)`, `rand([rng,] f)`, `delay_logdensity(f)`, `tail_masses(f; a = 1)`;
+**Code.** `GaussianExpTails(σc; πL, mL, πE, mE)`, `GaussianExpTails(variant)`, any `DelayLaw` (`delay_logpdf`, `free_parameters`,
+`with_free_parameters`, `reported_parameters`, `nshared_parameters`), `rand([rng,] f)`, `delay_logdensity(f)`, `tail_masses(f; a = 1)`;
 `loglik_order_exact(σ, f)` (or `(σ, logg, grid, γ)`); `order_samples(order_posterior(m, fit; nsamples), η)`,
 `stem_terms(samples, f)`, `relative_loglik(samples, f)` (`stem_terms(samples, logP)` scores any law of the order given
 as ``\sigma \mapsto \log P(\sigma)``); `fit_delay_law`, `delay_law_inference`, `shared_core_test`; the profile:

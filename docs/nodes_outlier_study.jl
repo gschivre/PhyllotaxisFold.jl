@@ -36,7 +36,7 @@ function run_variant(key, rep; nnodes = 5, outlier_sim = 0.0, outlier_fit = fals
     t_post = @elapsed post = order_posterior(m, r; nsamples, rng = Xoshiro(d.seed + 1))
     smp = order_samples(post, θ.η)
     stage("$(tag): delay law")
-    t_law = @elapsed fb = fit_delay_law(smp, :both)
+    t_law = @elapsed fb = fit_delay_law(smp, GaussianExpTails(:both))
     inf = delay_law_inference(smp, fb)
     out = (;
         tag, t_fit, t_dec, t_post, t_law, θ, r.m_ω, r.s_ω, r.ω_mean, r.ω_sd, r.loglik,

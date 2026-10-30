@@ -16,9 +16,7 @@ after an independent random delay) is fitted through its posterior orders. Submo
 | `CommitmentTiming` | commitment delay laws, exact order likelihood, re-weighting of the posterior orders           |
 | `Plastochron`      | plastochron by flower rank from daily open-flower counts (delays in hours)                    |
 
-Every submodule's exported names are re-exported here. The method is described in the manual (`docs/src`). The earlier
-fold-commitment model (costs from the passage law of a switch near its fold), its variants and the simulator of a
-paced meristem are in the tagged version `with-model-B`.
+Every submodule's exported names are re-exported here. The method is described in the manual (`docs/src`).
 """
 module PhyllotaxisFold
 

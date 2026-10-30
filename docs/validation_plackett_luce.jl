@@ -26,8 +26,19 @@ function pl_logP(σ::AbstractVector{Int}, β::Real)
     return lp
 end
 
-# orders drawn from the delay law: τ_i = i − β G_i
-pl_order(rng, n, β) = sortperm([i + β * log(-log(rand(rng))) for i in 1:n])
+# the delay law, defined as in the manual page "Custom delay laws": e = −β G, G a standard Gumbel variable (a site
+# commits when the first of its cells does). Its order law is the Plackett–Luce law of pl_logP
+struct GumbelDelay{T <: Real} <: DelayLaw
+    β::T
+end
+PF.delay_logpdf(f::GumbelDelay, z) = z / f.β - exp(z / f.β)
+PF.free_parameters(f::GumbelDelay) = [log(f.β)]
+PF.with_free_parameters(::GumbelDelay, v) = GumbelDelay(exp(v[1]))
+PF.reported_parameters(f::GumbelDelay) = (; β = f.β)
+Base.rand(rng::AbstractRNG, f::GumbelDelay) = f.β * log(-log(rand(rng)))
+
+# the order of n sites with delays f: τ_i = i + e_i
+pl_order(rng, n, f::DelayLaw) = sortperm((1:n) .+ [rand(rng, f) for _ in 1:n])
 
 # the state masks of the banded graph, in the order of PermutationGraph (bit b ↔ column i − k + b, set = used)
 pl_masks(k) = [m for m in 0:((1 << (2k)) - 1) if count_ones(m) == k]
@@ -114,9 +125,12 @@ end
 allperms(n) = n == 1 ? [[1]] : [vcat(σ[1:(i - 1)], n, σ[i:end]) for σ in allperms(n - 1) for i in 1:n]
 
 # the machinery against brute force: (a) the banded sum of Plackett–Luce equals the sum of the closed form over the
-# banded orders, and is 1 when the band holds every order; (b) pass 1 rebuilt here reproduces `stem_loglik!`
+# banded orders, and is 1 when the band holds every order; (b) pass 1 rebuilt here reproduces `stem_loglik!`; (c) the
+# exact order likelihood of the package (a recursion on the delay grid, as for any DelayLaw) matches the closed form
 function pl_checks(; β = 0.4)
     out = Dict{Symbol, Float64}()
+    orders = [pl_order(Xoshiro(j), 45, GumbelDelay(β)) for j in 1:20]
+    out[:grid_vs_closed_form] = maximum(abs(loglik_order_exact(σ, GumbelDelay(β)) - pl_logP(σ, β)) for σ in orders)
     for (n, k) in ((7, 2), (5, 4))
         ws = PermanentWorkspace(k, n; logspace = true)
         toeplitz_weights!(ws, [-d / β for d in -k:k], n)
@@ -158,7 +172,7 @@ function run_plackett_luce(; β = 0.34, βs = 0.2:0.04:0.6, seed = 5001, nsample
     stage("PL $(key): simulating and fitting")
     rng = Xoshiro(seed)
     x = stem_coordinates(rng)
-    orders = [pl_order(rng, NORGANS, β) for _ in 1:NSTEMS]
+    orders = [pl_order(rng, NORGANS, GumbelDelay(β)) for _ in 1:NSTEMS]
     sims = [AL._simulate_angles(rng, σ, x[s]; KAPPA..., α = 0.95, outlier = 0.0, torsion_mean = TWIST.mean, torsion_sd = TWIST.sd) for (s, σ) in enumerate(orders)]
     m = PhyllotaxisModelAD([z.y for z in sims]; torsion_x = x)
     r = fit_map_torsion!(m; prior = TPRIOR)

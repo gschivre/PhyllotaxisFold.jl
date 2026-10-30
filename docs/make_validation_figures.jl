@@ -25,9 +25,9 @@ const TWIST = (mean = 1.0, sd = 0.7) # °/mm
 const KAPPA = (logμκ = 1.85, σκ = 0.15)
 const TPRIOR = TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0) # °/mm
 const SCENARIOS = [
-    (:none, "no tails", DelayLaw(0.42)),
-    (:light, "light tails", DelayLaw(0.42; πL = 0.05, mL = 1.5, πE = 0.054, mE = 1.04)),
-    (:heavy, "heavy tails", DelayLaw(0.39; πL = 0.196, mL = 1.09, πE = 0.269, mE = 1.01)),
+    (:none, "no tails", GaussianExpTails(0.42)),
+    (:light, "light tails", GaussianExpTails(0.42; πL = 0.05, mL = 1.5, πE = 0.054, mE = 1.04)),
+    (:heavy, "heavy tails", GaussianExpTails(0.39; πL = 0.196, mL = 1.09, πE = 0.269, mE = 1.01)),
 ]
 const SCOL = Dict(:none => :gray40, :light => "#2a78d6", :heavy => "#eb6834")
 const NREP = 3
@@ -71,9 +71,9 @@ end
 function timing_fits(v)
     smp, law = v.smp, v.law
     fits = Dict{Symbol, Any}()
-    fits[:core] = fit_delay_law(smp, :core; init = DelayLaw(0.5))
-    fits[:late] = fit_delay_law(smp, :late; init = DelayLaw(fits[:core].law.σc; πL = 0.05, mL = 1.0))
-    fits[:both] = fit_delay_law(smp, :both)
+    fits[:core] = fit_delay_law(smp, GaussianExpTails(:core))
+    fits[:late] = fit_delay_law(smp, GaussianExpTails(:late; σc = fits[:core].law.σc))
+    fits[:both] = fit_delay_law(smp, GaussianExpTails(:both))
     inf = delay_law_inference(smp, fits[:both])
     # effective sample size of the re-weighting at the fitted law (out of the 200 draws)
     lg = delay_logdensity(fits[:both].law)
@@ -95,7 +95,7 @@ end
 # are close but not equal), and the likelihood ratio against separate cores
 function shared_fits(res, rep)
     groups = [res[(:light, rep)].smp, res[(:heavy, rep)].smp]
-    t = shared_core_test(groups, :both)
+    t = shared_core_test(groups, GaussianExpTails(:both))
     return (;
         test = t, inf = delay_law_inference(groups, t.shared),
         free = compare_profiles(res[(:light, rep)].free, res[(:heavy, rep)].free),

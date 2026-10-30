@@ -6,6 +6,11 @@ using Bijectors: Bijectors
 using SpecialFunctions: SpecialFunctions
 using Aqua: Aqua
 using ExplicitImports: check_no_stale_explicit_imports
+import PhyllotaxisFold: delay_logpdf, free_parameters, with_free_parameters, reported_parameters, nshared_parameters
+
+#################################################################################################################
+# helpers and shared fixtures
+#################################################################################################################
 
 # all permutations of 1:n with |σ[i] − i| ≤ k
 function banded_perms(n, k)
@@ -29,10 +34,64 @@ function banded_perms(n, k)
     return out
 end
 
-# test data: fold-commit stems with independent delays (the model of the analysis) with a twist per position
-const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
+# central differences of f at u along the directions in `dirs`
+fd_dir(f, u, dirs; h = 1.0e-5) = [(f(u .+ h .* e) - f(u .- h .* e)) / 2h for e in dirs]
+
+# the delay law of the simulated stems (orders from independent delays, the model of the analysis)
+const LAW = GaussianExpTails(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
+# wide costs for stems whose order is known: a band k = 8 holds every simulated order
+const ηWIDE = [-1.0 * abs(d) for d in -8:8]
+# order samples of stems whose order is known (a posterior concentrated on the true order): the re-weighting then
+# reduces to the exact likelihood, so a delay-law fit on them is a maximum-likelihood fit
+known_samples(f, S, n, seed) = order_samples([(; samples = [σ]) for σ in simulate_stems(f; plants = S, organs = n, rng = Xoshiro(seed)).orders], ηWIDE)
+
+# delay laws defined outside the package, as a user would, those of the manual page "Custom delay laws"; and a
+# one-sided law (support z ≥ 0) whose overtaking profile is known exactly
+struct StudentDelay{T <: Real} <: DelayLaw
+    s::T
+    ν::T
+end
+delay_logpdf(f::StudentDelay, z) = -(f.ν + 1) / 2 * log1p((z / f.s)^2 / f.ν)
+free_parameters(f::StudentDelay) = [log(f.s), log(f.ν)]
+with_free_parameters(::StudentDelay, v) = StudentDelay(exp(v[1]), exp(v[2]))
+reported_parameters(f::StudentDelay) = (; s = f.s, ν = f.ν)
+nshared_parameters(::StudentDelay) = 1 # no rand: simulate_stems uses the fallback sampler
+
+struct GumbelDelay{T <: Real} <: DelayLaw
+    β::T
+end
+delay_logpdf(f::GumbelDelay, z) = z / f.β - exp(z / f.β)
+free_parameters(f::GumbelDelay) = [log(f.β)]
+with_free_parameters(::GumbelDelay, v) = GumbelDelay(exp(v[1]))
+reported_parameters(f::GumbelDelay) = (; β = f.β)
+Base.rand(rng::AbstractRNG, f::GumbelDelay) = f.β * log(-log(rand(rng)))
+# its order law in closed form (Plackett–Luce): going up, site j with probability ∝ e^{−j/β} among the unused sites
+function plackett_luce_logP(σ, β)
+    used = falses(length(σ))
+    lp = 0.0
+    for j in σ
+        lp += -j / β - logsumexp(-l / β for l in eachindex(σ) if !used[l])
+        used[j] = true
+    end
+    return lp
+end
+
+struct ExpDelay{T <: Real} <: DelayLaw
+    m::T
+end
+delay_logpdf(f::ExpDelay, z) = z < 0 ? -Inf : -z / f.m
+free_parameters(f::ExpDelay) = [log(f.m)]
+with_free_parameters(::ExpDelay, v) = ExpDelay(exp(v[1]))
+
+# stems with a twist (degrees per position) for the angle-model and twist tests: one simulation, a coarse nuisance grid
+const TWIST = simulate_stems(LAW; plants = 8, organs = 40, logμκ = 1.8, torsion_mean = 4.0, torsion_sd = 3.0, rng = Xoshiro(21))
+twist_model() = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, outlier = false)
 
 @testset verbose = true "PhyllotaxisFold" begin
+
+    #############################################################################################################
+    # numerical tools and banded permanents
+    #############################################################################################################
 
     @testset "Common: log Iₙ and the Bessel ratio, values and dual derivatives" begin
         # against SpecialFunctions (besselix = e^{-x} Iₙ(x)), on both sides of the switch to the asymptotic series at x = 100
@@ -42,7 +101,7 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         @test logbesseli(0, 0.0) == 0 && logbesseli(2, 0.0) == -Inf
         for x in (0.3, 5.0, 150.0, 2.0e4)
             @test besseliratio(x) ≈ SpecialFunctions.besselix(1, x) / SpecialFunctions.besselix(0, x) rtol = 1.0e-8
-            # d log I₀ / dx = I₁ / I₀, and the dual rule of the ratio against a central difference
+            # d log I₀ / dx = I₁ / I₀
             @test ForwardDiff.derivative(z -> logbesseli(0, z), x) ≈ besseliratio(x) rtol = 1.0e-8
             # dual rule against a central difference, or against A'(x) ≈ 1/(2x²) + 1/(4x³) where differences lose precision
             ref = x < 1.0e3 ? (besseliratio(x + 1.0e-4 * x) - besseliratio(x - 1.0e-4 * x)) / (2.0e-4 * x) : 1 / (2x^2) + 1 / (4x^3)
@@ -51,8 +110,7 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         @test ForwardDiff.derivative(besseliratio, 0.0) == 0.5
     end
 
-
-    @testset "Permanents: forward / backward / Viterbi against enumeration" begin
+    @testset "Permanents: forward / backward / Viterbi / sampling against enumeration" begin
         rng = Xoshiro(1)
         n, k = 7, 2
         L = randn(rng, n, 2k + 1) # log-weights
@@ -61,33 +119,29 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         logZ = logsumexp(lw.(perms))
         for logspace in (true, false)
             ws = PermanentWorkspace(k, n; logspace)
-            for i in 1:n, d in -k:k
-                ws.w[i, d + k + 1] = L[i, d + k + 1]
-            end
+            ws.w[1:n, :] .= L
             @test forward!(ws, n) ≈ logZ
-            rho = backward!(ws, n)
             exact = [sum(exp(lw(σ) - logZ) for σ in perms if σ[i] == i + d; init = 0.0) for i in 1:n, d in -k:k]
-            @test rho ≈ exact atol = 1.0e-12
+            @test backward!(ws, n) ≈ exact atol = 1.0e-12
         end
         @test map_permutation(PermutationGraph(k), L, n) == perms[argmax(lw.(perms))]
         # tridiagonal case (k = 1): the number of banded permutations is a Fibonacci number
         ws1 = PermanentWorkspace(1, 10)
         toeplitz_weights!(ws1, zeros(3), 10)
         @test exp(forward!(ws1, 10)) ≈ 89
-        # sampling frequencies
+        # exact sampling: frequencies of the most probable order
         ws = PermanentWorkspace(k, n)
-        ws.w[1:n, :] .= L
         counts = Dict{Vector{Int}, Int}()
         for _ in 1:20_000
-            σ = sample_permutation!(rng, ws, n)
             ws.w[1:n, :] .= L
+            σ = sample_permutation!(rng, ws, n)
             counts[σ] = get(counts, σ, 0) + 1
         end
         σmax = perms[argmax(lw.(perms))]
         @test counts[σmax] / 20_000 ≈ exp(lw(σmax) - logZ) atol = 0.01
         @test sort(cycle_lengths([2, 1, 3, 5, 6, 4])) == [1, 2, 3]
-        @test logprob_permutation(PermanentWorkspace(k, n), [-1.0, -0.5, 0.0, -0.5, -1.0], collect(1:n)) ≈
-            -forward!((w = PermanentWorkspace(k, n); toeplitz_weights!(w, [-1.0, -0.5, 0.0, -0.5, -1.0], n); w), n)
+        η = [-1.0, -0.5, 0.0, -0.5, -1.0]
+        @test sum(exp(logprob_permutation(PermanentWorkspace(k, n), η, σ)) for σ in perms) ≈ 1
         # a tilt of the costs, η_d → η_d + a d, changes no order probability (the displacements of an order sum to zero):
         # with free early and late costs, this direction would be set by the prior alone
         ηa = [-1.3, -0.4, 0.0, -0.7, -2.0]
@@ -127,6 +181,10 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         @test g(false, 3.0e3) ≈ g(true, 3.0e3)
     end
 
+    #############################################################################################################
+    # step 1: the propensity model, the angle likelihood and the twist
+    #############################################################################################################
+
     @testset "PropensityPriors: bijector and prior" begin
         m, v = (0.5, 1.25, 2.0, 3.75), (0.1, 0.75, 2.0, 4.0)
         μΔ, σΔ = η_prior(m, v)
@@ -143,7 +201,395 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         @test isfinite(logpdf(d, η))
         @test mean(d) ≈ -cumsum([m...])
         @test mean(rand(Xoshiro(3), d, 200_000); dims = 2) ≈ mean(d) rtol = 0.02
+        q = marginal_quantiles(d, 0.5; N = 20_000)
+        @test all(q .< 0) && issorted(q; rev = true)
     end
+
+    @testset "Propensity model: densities, parameters, frequencies, simulation" begin
+        data = [rand(Xoshiro(s), VonMises(0.0, 1.0), 20) for s in 1:3]
+        model = PhyllotaxisModelAD(data, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, logspace = true, outlier = false)
+        θ = prior_mean(model)
+        @test isfinite(LogDensityProblems.logdensity(model, θ))
+        lin = PhyllotaxisModelAD(data, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, logspace = false, outlier = false)
+        @test LogDensityProblems.logdensity(lin, θ) ≈ LogDensityProblems.logdensity(model, θ)
+        @test_throws ArgumentError PhyllotaxisModelAD([data[1][1:3]]) # band k = 4 longer than the stem
+        # symmetric costs: k of them, mirrored in the full vector; the prior covers its own mean
+        @test LogDensityProblems.dimension(model) == 4 + 3
+        @test vec(log_propensity(model, θ)) == θ[1:4]
+        ηf = full_eta(model, θ)
+        @test ηf ≈ reverse(ηf) && ηf[5] == 0
+        @test θ[6] ≈ 0.25 # prior mean of σκ: the half-t mean for ν = 4, τ = 0.25
+        @test all(prior_CIs(model)[:, 1] .< θ .< prior_CIs(model)[:, 2])
+        θr = rand_priorparameters(model; rng = Xoshiro(8))
+        @test length(θr) == 7 && isfinite(LogDensityProblems.logdensity(model, θr))
+        # the transformed problem: log density = angle log-likelihood + log prior with its Jacobian
+        prob = TransformedLogDensityProblem(model)
+        u = Bijectors.bijector(model)(θ)
+        @test LogDensityProblems.logdensity(prob, u) ≈ angle_loglikelihood(model, u) + global_logprior(model, u)
+        @test angle_loglikelihood(prob, u) ≈ angle_loglikelihood(model, u)
+        @test LogDensityProblems.dimension(prob) == length(u)
+        @test sum(stem_loglik(model, u, s) for s in 1:3) ≈ angle_loglikelihood(model, u)
+        # parameters: round trip, a half or a full symmetric η, and the errors
+        η = [-3.0, -2.4, -1.9, -0.8, 0.0, -0.8, -1.9, -2.4, -3.0]
+        uA = unconstrained_parameters(model; η, logμκ = 1.8, σκ = 0.1, α = 0.95)
+        θA = constrained_parameters(model, uA)
+        @test θA.η ≈ η && θA.σκ ≈ 0.1
+        nu = angle_nuisance(model, uA)
+        @test [nu.logμκ, nu.σκ, nu.α] ≈ [θA.logμκ, θA.σκ, θA.α] && nu.outlier === nothing
+        @test decode_orders(prob, uA) == decode_orders(model, uA)
+        @test unconstrained_parameters(model; η = η[6:end], logμκ = 1.8, σκ = 0.1, α = 0.95) ≈ uA
+        @test_throws ArgumentError unconstrained_parameters(model; η = [-3.0, -2.4, -1.9, -0.8, 0.0, -0.9, -1.8, -2.6, -3.1], logμκ = 1.8, σκ = 0.1, α = 0.95) # asymmetric
+        @test_throws ArgumentError unconstrained_parameters(model; η = η[6:8], logμκ = 1.8, σκ = 0.1, α = 0.95)
+        # displacement probabilities and realised frequencies
+        @test all(sum(displacement_probability(model, θ); dims = 1) .≈ 1)
+        @test sum(displacement_probability(model, θ)[2:end]) ≈ 2 * sum(exp, θ[1:4]) / (1 + 2 * sum(exp, θ[1:4]))
+        steep = model.binv(unconstrained_parameters(model; η = [-12.0, -24.0, -36.0, -48.0], logμκ = 1.5, σκ = 0.2, α = 0.95))
+        fd, _ = estimate_displacement_frequencies(model, [steep]; N = 3, n = 30, rng = Xoshiro(1))
+        @test fd[1] > 0.999 # steep costs: nearly every organ in place
+        @test sum(fd) ≈ 1 atol = 1.0e-6
+        fp, _ = estimate_permutation_frequencies(model, nothing; N = 200, n = 30, rng = Xoshiro(2))
+        @test sum(fp) ≈ 1
+        s = sample_prior(model; n = 60, Nsample = 2, rng = Xoshiro(5)) # n larger than the data
+        @test length(s[1].data) == 60 && isperm(s[1].permutation)
+        # simulate_stems(η): η_1..η_k of any length (k odd or even), or the full vector
+        maxdisp(r) = maximum(maximum(abs.(σ .- eachindex(σ))) for σ in r.orders)
+        for η in ([-1.0, -2.5, -4.0], [-1.0, -2.5, -4.0, -6.0])
+            r = simulate_stems(η; plants = 300, organs = 40, rng = Xoshiro(1))
+            @test 1 < maxdisp(r) ≤ length(η)
+            @test simulate_stems(vcat(reverse(η), 0.0, η); plants = 300, organs = 40, rng = Xoshiro(1)).orders == r.orders
+        end
+    end
+
+    @testset "Angle likelihood: analytic gradients and Hessian, per stem and summed" begin
+        m = PhyllotaxisModelAD(TWIST.angles[1:3]; ngrid_ϕ = 8, ngrid_κ = 4, outlier = false)
+        prob = TransformedLogDensityProblem(m)
+        v = prior_mean_parameters(m) .+ 0.1
+        l, g, H = angle_vgh(prob, v, 2)
+        @test l ≈ LogDensityProblems.logdensity(prob, v)
+        @test g ≈ ForwardDiff.gradient(w -> LogDensityProblems.logdensity(prob, w), v) rtol = 1.0e-6
+        @test H ≈ ForwardDiff.hessian(w -> LogDensityProblems.logdensity(prob, w), v) rtol = 1.0e-5
+        # one stem: the analytic gradient against duals through the same function
+        ℓ2, g2 = stem_value_grad(m, v, 2; with_grad = true)
+        @test ℓ2 ≈ stem_loglik(m, v, 2)
+        @test g2 ≈ ForwardDiff.gradient(w -> first(stem_value_grad(m, w, 2)), v) rtol = 1.0e-8
+        # outlier angles: gradient and Hessian, and π_o → 0 gives back the model without outliers
+        mo = PhyllotaxisModelAD(TWIST.angles[1:3]; ngrid_ϕ = 8, ngrid_κ = 4, outlier = true)
+        uo = prior_mean_parameters(mo) .+ 0.1
+        lo, go, Ho = angle_vgh(mo, uo, 2)
+        fo(w) = angle_vgh(mo, w, 0)[1]
+        @test go ≈ ForwardDiff.gradient(fo, uo) rtol = 1.0e-6
+        @test Ho ≈ ForwardDiff.hessian(fo, uo) rtol = 1.0e-4
+        u0 = prior_mean_parameters(m)
+        @test angle_loglikelihood(mo, [u0; -40.0]) ≈ angle_loglikelihood(m, u0) atol = 1.0e-8
+    end
+
+    @testset "Angle model: recovery of the outlier rate and of the spiral of each stem" begin
+        # outliers: π_o recovered on stems whose orders come from the banded permanent (the law of the model)
+        η = [-3.5, -2.5, -1.2, 0.0, -1.2, -2.5, -3.5]
+        sA = simulate_stems(η; plants = 30, organs = 35, logμκ = 2.0, σκ = 0.2, outlier = 0.06, rng = Xoshiro(9))
+        μΔ, σΔ = η_prior((0.5, 1.25, 2.0), (0.1, 0.75, 2.0))
+        mA = PhyllotaxisModelAD(sA.angles, PhyllotaxisPrior(; μΔ, σΔ); ngrid_ϕ = 8, ngrid_κ = 4, outlier = true)
+        fA = fit_map(mA)
+        se = sqrt(-inv(fA.H)[end, end]) * fA.θ.outlier * (1 - fA.θ.outlier) # delta method on logit π_o
+        @test abs(fA.θ.outlier - 0.06) < 3 * se + 0.01
+        # spiral of each stem: golden vs Lucas and the orientation
+        sp = simulate_stems(LAW; plants = 30, organs = 30, logμκ = 1.8, α = 0.6, rng = Xoshiro(12))
+        m = PhyllotaxisModelAD(sp.angles; ngrid_ϕ = 8, ngrid_κ = 4, outlier = false)
+        post = spiral_posterior(m, unconstrained_parameters(m; η = [-0.8, -1.9, -2.4, -3.0], logμκ = 1.8, σκ = 0.1, α = 0.6))
+        @test mean((p.p_lucas > 0.5) == (ψ == PhyllotaxisFold.Lucas_angle) for (p, ψ) in zip(post, sp.ψ)) ≥ 0.9
+        @test mean((p.p_ccw > 0.5) == (o == 1) for (p, o) in zip(post, sp.o)) ≥ 0.9
+    end
+
+    @testset "Torsion: coordinates, corrected angles, quadrature, per-stem rates" begin
+        @test torsion_coordinate(4) == [0.0, 1.0, 2.0, 3.0]
+        @test torsion_coordinate([2.0, 3.0, 5.0]) == [0.0, 2.0, 5.0, 10.0]
+        @test torsion_step([0.0, 2.0, 5.0, 10.0]) ≈ 10 / 3
+        @test scan_rate(τ -> -(τ - 0.37)^2, 5.0) ≈ 0.37 atol = 0.005 # scan in degrees per mean step of 5 units
+        x, fx = golden_section_max(t -> (; v = -(t - 1.234)^2), 0.0, 3.0; tol = 1.0e-8, score = r -> r.v)
+        @test x ≈ 1.234 atol = 1.0e-6
+        @test fx.v ≈ -(x - 1.234)^2
+        # the twist coordinate of the simulators: explicit positions give the default stems
+        η = [-0.8, -1.9, -2.4, -3.0]
+        pos = [collect(0.0:29.0) for _ in 1:3]
+        for law in (η, LAW)
+            @test simulate_stems(law; plants = 3, organs = 30, torsion_mean = 2.0, rng = Xoshiro(4)).angles ==
+                simulate_stems(law; plants = 3, organs = 30, x = pos, torsion_mean = 2.0, rng = Xoshiro(4)).angles
+        end
+        @test_throws ArgumentError simulate_stems(η; plants = 3, organs = 30, x = pos[1:2])
+        # corrected angles: the twist removed, rate in degrees per unit of the coordinate
+        m = twist_model()
+        @test corrected_angles(m, 2; ω = 3.0) ≈ TWIST.angles[2] .- deg2rad(3.0) .* torsion_coordinate(40)
+        @test torsion_corrected(TWIST.angles[2], torsion_coordinate(40), 0.0) === TWIST.angles[2]
+        # adaptive quadrature on a bimodal, sharp log-likelihood against a fine grid, for a few population laws; and
+        # the posterior of the rate from the same nodes
+        f(ω) = logaddexp(-0.5 * ((ω - 1.3) / 0.08)^2, -2.0 - 0.5 * ((ω - 0.4) / 0.1)^2)
+        ω, logw, modes = stem_nodes(f, 5.0) # coordinate step 5: scan ±5 per unit
+        @test length(modes) == 2
+        grid = range(-3, 5; length = 200_001)
+        for (mω, sω) in ((1.0, 0.8), (0.0, 2.0), (2.0, 0.5))
+            lg = [f(x) + logpdf(Normal(mω, sω), x) for x in grid]
+            exact = logsumexp(lg) + log(step(grid))
+            a = node_logterms(ω, logw, f.(ω), mω, sω)
+            @test logsumexp(a) ≈ exact atol = 1.0e-3
+            μ, sd, mode = node_posterior(ω, a, modes)
+            p = exp.(lg .- logsumexp(lg))
+            @test μ ≈ sum(p .* grid) atol = 1.0e-3
+            @test sd ≈ sqrt(sum(p .* (grid .- μ) .^ 2)) atol = 1.0e-3
+        end
+        # per-stem rates at fixed parameters: correcting the twist raises the likelihood
+        u = prior_mean_parameters(m)
+        l0 = angle_loglikelihood(m, u)
+        τA = copy(update_torsion!(m, u))
+        @test cor(τA, TWIST.torsion) > 0.95
+        @test maximum(abs, τA .- TWIST.torsion) < 1.5 # degrees per position
+        @test angle_loglikelihood(m, u) > l0
+    end
+
+    @testset "Torsion: rates integrated out; decoding and order posterior" begin
+        m = twist_model()
+        tp = TorsionPrior(mt = 0.0, st = 10.0, νt = 4.0, τt = 5.0) # per position
+        u = prior_mean_parameters(m)
+        nodes = torsion_nodes(m, u)
+        v = [u; 3.5; log(2.5)]
+        l0, g, H = torsion_vgh(m, tp, nodes, v, 2)
+        fv(w) = torsion_vgh(m, tp, nodes, w, 0)[1]
+        dirs = [normalize(randn(Xoshiro(j), length(v))) for j in 1:2] # two random directions: the gradient as a whole
+        @test fd_dir(fv, v, dirs) ≈ [g' * e for e in dirs] rtol = 1.0e-4
+        @test issymmetric(round.(H; digits = 6)) && l0 ≈ fv(v)
+        # fit: population law and rates recovered
+        r = fit_map_torsion!(m; prior = tp, recenter = 0)
+        @test PhyllotaxisFold.PropensityModel.Optim.converged(r.fit.result)
+        @test abs(r.m_ω - mean(TWIST.torsion)) < 1.0 && 0.4 < r.s_ω / std(TWIST.torsion) < 2.5
+        @test cor(r.ω, TWIST.torsion) > 0.95 && all(r.ω_sd .> 0)
+        # decoding with the twist: the joint MAP recovers the orders and the rates, the posterior agrees with the fit
+        dec = decode_orders(m, r; full = true)
+        @test mean(mean(d.σ .== σ) for (d, σ) in zip(dec, TWIST.orders)) > 0.9
+        @test cor([d.ω for d in dec], TWIST.torsion) > 0.95
+        post = order_posterior(m, r; nsamples = 400, rng = Xoshiro(4))
+        @test [p.ω_mean for p in post] ≈ r.ω_mean rtol = 1.0e-6 # same nodes, same population law, same parameters
+        @test all(p -> all(sum(p.ρ; dims = 2) .≈ 1), post)
+        emp = [mean(σ[i] - i == d for σ in post[1].samples) for i in 1:40, d in -(m.k):(m.k)]
+        @test maximum(abs, emp .- post[1].ρ) < 0.1 # exact samples reproduce the marginals
+    end
+
+    #############################################################################################################
+    # step 2: commitment timing
+    #############################################################################################################
+
+    @testset "CommitmentTiming: the default law, its sampler, tails and parameters" begin
+        rng = Xoshiro(31)
+        zg = DELAY_GRID
+        @test rand(GaussianExpTails(0.4)) isa Float64 # default RNG
+        for f in (GaussianExpTails(0.4), LAW, GaussianExpTails(0.3; πL = 0.2, mL = 0.8, πE = 0.3, mE = 1.5))
+            g = exp.(delay_logdensity(f)) .* step(zg)
+            @test sum(g) ≈ 1
+            e = [rand(rng, f) for _ in 1:400_000]
+            @test sum(g .* zg) ≈ mean(e) atol = 0.01 # the density on the grid is the law of the sampler
+            @test sqrt(sum(g .* zg .^ 2) - sum(g .* zg)^2) ≈ std(e) rtol = 0.01
+            t = tail_masses(f)
+            @test t.late ≈ mean(e .> 1) atol = 0.003
+            @test t.early ≈ mean(e .< -1) atol = 0.003
+            @test t.off ≈ t.late + t.early
+            @test tail_masses(f; a = 2).late ≈ mean(e .> 2) atol = 0.003
+        end
+        # free parameters: the tails present in the starting law, and back
+        for (f, n) in ((GaussianExpTails(0.4), 1), (GaussianExpTails(0.4; πL = 0.1), 3), (GaussianExpTails(0.4; πE = 0.1, mE = 2.0), 3), (LAW, 5))
+            v = free_parameters(f)
+            @test length(v) == n
+            @test free_parameters(with_free_parameters(f, v)) ≈ v
+            @test delay_logdensity(with_free_parameters(f, v)) ≈ delay_logdensity(f)
+        end
+        @test reported_parameters(LAW) == (; σc = 0.45) && nshared_parameters(LAW) == 1
+        # the named variants: starting laws with the tails they fit, from keyword values or from a law
+        @test GaussianExpTails(:core) == GaussianExpTails(0.5)
+        @test GaussianExpTails(:late) == GaussianExpTails(0.5; πL = 0.05, mL = 1.0)
+        @test GaussianExpTails(:early; σc = 0.3, mE = 2.0) == GaussianExpTails(0.3; πE = 0.05, mE = 2.0)
+        @test GaussianExpTails(:both) == GaussianExpTails(0.5; πL = 0.05, mL = 1.0, πE = 0.05, mE = 1.0)
+        @test [length(free_parameters(GaussianExpTails(v))) for v in (:core, :late, :early, :both)] == [1, 3, 3, 5]
+        @test GaussianExpTails(:both, LAW) == LAW && GaussianExpTails(:late, LAW) == GaussianExpTails(0.45; πL = 0.05, mL = 1.2)
+        @test GaussianExpTails(:early, GaussianExpTails(0.4)).πE == 1.0e-6 # a tail absent from the law starts at 1e-6
+        @test_throws ArgumentError GaussianExpTails(:tails)
+        # 231: the organ of the lowest site sits two positions late; 312: the highest site's organ two positions early
+        @test order_diagnostics([[1, 2, 3, 4], [2, 3, 1, 4], [3, 1, 2, 4]]) == (; displaced = 0.5, n231 = 1, n312 = 1)
+    end
+
+    @testset "CommitmentTiming: exact order likelihood" begin
+        s, zg = 0.43, DELAY_GRID
+        lg = [-(z / s)^2 / 2 - log(s * sqrt(2π)) for z in zg]
+        # two sites: P(in order) = Φ(1 / (s √2))
+        @test exp(loglik_order_exact([1, 2], lg, zg, 1.0)) ≈ cdf(Normal(), 1 / (s * sqrt(2))) atol = 5.0e-4
+        # the probabilities of all orders of 4 sites sum to 1 (ties counted as ordered made them sum above 1), tails too
+        perms = [[a, b, c, d] for a in 1:4 for b in 1:4 for c in 1:4 for d in 1:4 if allunique((a, b, c, d))]
+        @test sum(exp(loglik_order_exact(σ, lg, zg, 1.0)) for σ in perms) ≈ 1 atol = 2.0e-3
+        @test sum(exp(loglik_order_exact(σ, GaussianExpTails(0.3; πL = 0.2, mL = 0.8, πE = 0.3, mE = 1.5))) for σ in perms) ≈ 1 atol = 2.0e-3
+        # Gumbel delays: the order law is Plackett–Luce, in closed form for any number of sites; an asymmetric law with a
+        # long tail, checked on 45 sites
+        for (j, β) in enumerate((0.25, 0.4, 0.7))
+            orders = [sortperm((1:45) .+ [rand(Xoshiro(100j + i), GumbelDelay(β)) for _ in 1:45]) for i in 1:5]
+            @test all(abs(loglik_order_exact(σ, GumbelDelay(β)) - plackett_luce_logP(σ, β)) < 0.01 for σ in orders)
+        end
+    end
+
+    @testset "CommitmentTiming: the overtaking profile" begin
+        # Gaussian delays: q_d = Φ(−d / (σ√2)); exponential delays: the difference is Laplace, q_d = e^{−d/m} / 2
+        @test overtaking(GaussianExpTails(0.42)) ≈ [cdf(Normal(), -d / (0.42 * sqrt(2))) for d in 1:4] rtol = 0.01
+        @test overtaking(ExpDelay(1.3)) ≈ [exp(-d / 1.3) / 2 for d in 1:4] rtol = 1.0e-6
+        f = GaussianExpTails(0.42; πL = 0.06, mL = 1.5, πE = 0.06, mE = 1.0)
+        rng = Xoshiro(17)
+        e = [rand(rng, f) - rand(rng, f) for _ in 1:400_000]
+        @test overtaking(f) ≈ [mean(e .> d) for d in 1:4] atol = 0.001
+        @test_throws ArgumentError overtaking(f; d = [0.33]) # not a multiple of the grid step
+        # model-free from known orders: the fraction of inverted pairs, with clustered standard errors
+        orders = simulate_stems(f; plants = 150, organs = 40, rng = Xoshiro(23)).orders
+        known = order_samples([(; samples = [σ]) for σ in orders], ηWIDE)
+        pf = overtaking_profile(known)
+        @test pf.d == 1:4 && size(pf.V) == (4, 4)
+        @test pf.q[1] ≈ mean(count(invperm(σ)[i + 1] < invperm(σ)[i] for i in 1:39) / 39 for σ in orders)
+        @test all(abs.(pf.q .- overtaking(f)) .< 3 .* pf.se .+ 1.0e-4)
+        # the fitted law's profile, with its covariance, agrees with the model-free one
+        fit = fit_delay_law(known) # the default: GaussianExpTails(:both)
+        @test fit.init == GaussianExpTails(:both)
+        inf = delay_law_inference(known, fit)
+        @test inf.profile.q ≈ overtaking(fit.law)
+        @test [inf.estimate.q1, inf.estimate.q2] ≈ inf.profile.q[1:2]
+        @test all(abs.(inf.profile.q[1:3] .- pf.q[1:3]) .< 3 .* pf.se[1:3])
+        # comparison: a group against itself (no difference) and against a law with more overtaking (the profile needs
+        # only the orders and their weights, not the propensity costs)
+        t0 = compare_profiles(pf, pf)
+        @test t0.diff == zeros(3) && t0.df == 3
+        g = GaussianExpTails(0.42; πL = 0.2, mL = 1.5, πE = 0.2, mE = 1.0)
+        pg = overtaking_profile([(; orders = [σ], w = [1.0]) for σ in simulate_stems(g; plants = 150, organs = 40, rng = Xoshiro(24)).orders])
+        t1 = compare_profiles(pf, pg)
+        @test all(t1.diff .> 0) && t1.p < 1.0e-6
+        @test_throws ArgumentError compare_profiles(pf, pg; d = 1:5)
+    end
+
+    @testset "CommitmentTiming: re-weighting identity and recovery from known orders" begin
+        k = 4
+        η = [-3.1, -2.5, -1.9, -0.8, 0.0, -0.8, -1.9, -2.5, -3.1]
+        # if the law scored is the propensity model's own order law, every stem term is exactly 0
+        post = [(; samples = [simulate_stems(η; plants = 1, organs = 30, rng = Xoshiro(100 * s + j)).orders[1] for j in 1:20]) for s in 1:5]
+        smp = order_samples(post, η)
+        @test all(sum(s.w) ≈ 1 for s in smp)
+        # one workspace per call: stem_terms is threaded over stems
+        @test all(abs.(stem_terms(smp, σ -> logprob_permutation(PermanentWorkspace(k, 30), η, σ))) .< 1.0e-10)
+        @test_throws ArgumentError order_samples([(; samples = [[6, 1, 2, 3, 4, 5, 7]])], η) # beyond the band
+        # known orders: relative_loglik is the exact likelihood minus the propensity terms; the fit recovers the law
+        truth = GaussianExpTails(0.42; πL = 0.06, mL = 1.3, πE = 0.05, mE = 1.0)
+        orders = simulate_stems(truth; plants = 150, organs = 40, rng = Xoshiro(5)).orders
+        known = order_samples([(; samples = [σ]) for σ in orders], ηWIDE)
+        @test relative_loglik(known, truth) ≈ sum(loglik_order_exact(σ, truth) for σ in orders) - sum(s.logA[1] for s in known)
+        fit = fit_delay_law(known, GaussianExpTails(:both; πL = 0.1, πE = 0.1))
+        @test fit.converged && fit.init isa GaussianExpTails && fit.v ≈ free_parameters(fit.law)
+        inf = delay_law_inference(known, fit)
+        tt = tail_masses(truth)
+        @test inf.names == (:σc, :late, :early, :off, :q1, :q2, :q3, :q4)
+        @test abs(inf.estimate.σc - truth.σc) < 3 * inf.se.σc + 0.01
+        @test abs(inf.estimate.late - tt.late) < 3 * inf.se.late + 0.005
+        @test abs(inf.estimate.early - tt.early) < 3 * inf.se.early + 0.005
+        @test all(x -> x > 0, values(inf.se))
+        # no false tails: from a core-only truth, the two-tail fit gains almost nothing over the core-only fit, and its
+        # loosely determined off-time fraction is checked against its own standard error
+        kc = known_samples(GaussianExpTails(0.42), 150, 40, 6)
+        f0, f2 = fit_delay_law(kc, GaussianExpTails(:core)), fit_delay_law(kc, GaussianExpTails(:both))
+        @test f0.law.σc ≈ 0.42 atol = 0.02
+        @test 0 ≤ f2.rel_ll - f0.rel_ll < 5 # χ²(4)/2 is below 5 with probability > 0.99
+        i2 = delay_law_inference(kc, f2)
+        @test abs(i2.estimate.off - tail_masses(GaussianExpTails(0.42)).off) < 3 * i2.se.off
+        # one-sided variants: the late fit and the early fit each gain nothing over the core (no tails in the truth)
+        fl, fe = fit_delay_law(kc, GaussianExpTails(:late)), fit_delay_law(kc, GaussianExpTails(:early))
+        @test fl.law.πE == 0 && fe.law.πL == 0 && fe.converged
+        @test 0 ≤ fe.rel_ll - f0.rel_ll < 5 && fe.rel_ll ≤ f2.rel_ll + 1.0e-6
+    end
+
+    @testset "CommitmentTiming: exact derivatives and joint fits of groups" begin
+        # the gradient of the summed terms (ForwardDiff through the density and the recursion) against central differences
+        smp = known_samples(GaussianExpTails(0.42; πL = 0.06, mL = 1.3, πE = 0.05, mE = 1.0), 20, 35, 3)
+        obj(v) = relative_loglik(smp, with_free_parameters(LAW, v))
+        v = [log(0.4), -2.0, 0.3, log(1.2), 0.1]
+        @test ForwardDiff.gradient(obj, v) ≈ fd_dir(obj, v, [1:5 .== i for i in 1:5]) rtol = 1.0e-5
+        # a law with -Inf outside its support: its derivative passes through the grid density
+        ke = known_samples(ExpDelay(0.8), 10, 20, 1)
+        oe(v) = relative_loglik(ke, with_free_parameters(ExpDelay(1.0), v))
+        @test ForwardDiff.derivative(x -> oe([x]), log(0.8)) ≈ only(fd_dir(oe, [log(0.8)], [[1.0]])) rtol = 1.0e-5
+        # two groups with the same core and different tails: the shared-core fit recovers the core and each group's
+        # off-time fraction, and the likelihood ratio does not reject the shared core
+        fA, fB = GaussianExpTails(0.42; πL = 0.04, mL = 1.2, πE = 0.04, mE = 1.0), GaussianExpTails(0.42; πL = 0.15, mL = 1.2, πE = 0.12, mE = 1.0)
+        groups = [known_samples(fA, 100, 35, 11), known_samples(fB, 100, 35, 12)]
+        t = shared_core_test(groups) # the default: GaussianExpTails(:both)
+        @test t.shared.converged && length(t.shared.laws) == 2 && t.shared.shared_core
+        @test t.shared.laws[1].σc == t.shared.laws[2].σc
+        @test t.shared.laws[1].σc ≈ 0.42 atol = 0.05
+        @test t.df == 1 && t.lr ≥ 0 && t.p > 0.001
+        @test t.shared.rel_ll ≈ sum(t.shared.rel_ll_groups)
+        @test sum(f.rel_ll for f in t.separate) ≥ t.shared.rel_ll - 1.0e-6 # separate laws nest the shared one
+        inf = delay_law_inference(groups, t.shared)
+        @test length(inf.estimate) == 2
+        for (g, f) in enumerate((fA, fB))
+            @test abs(inf.estimate[g].off - tail_masses(f).off) < 3 * inf.se[g].off + 0.01
+        end
+        @test inf.Δoff[1].estimate ≈ inf.estimate[2].off - inf.estimate[1].off
+        @test inf.Δprofile[1].diff ≈ inf.profile[2].q .- inf.profile[1].q
+        @test inf.Δprofile[1].p < 0.01 # the heavier tails overtake more
+        @test abs(inf.Δoff[1].estimate - (tail_masses(fB).off - tail_masses(fA).off)) < 3 * inf.Δoff[1].se + 0.01
+    end
+
+    @testset "CommitmentTiming: delay laws defined by the user" begin
+        # a Gaussian written as a Student t of huge ν: nothing but a density, scored like the default core
+        g = GaussianExpTails(0.42)
+        @test delay_logdensity(StudentDelay(0.42, 1.0e12)) ≈ delay_logdensity(g) rtol = 1.0e-6
+        kg = known_samples(g, 40, 30, 51)
+        @test relative_loglik(kg, StudentDelay(0.42, 1.0e12)) ≈ relative_loglik(kg, g) rtol = 1.0e-6
+        # the Student t: fitted, its parameters reported, its profile consistent
+        kt = known_samples(LAW, 40, 30, 53)
+        st = fit_delay_law(kt, StudentDelay(0.5, 5.0))
+        @test st.converged && st.law isa StudentDelay && st.init == StudentDelay(0.5, 5.0)
+        it = delay_law_inference(kt, st)
+        @test it.names == (:s, :ν, :late, :early, :off, :q1, :q2, :q3, :q4)
+        @test it.estimate.s ≈ st.law.s && it.se.s > 0
+        @test it.profile.q ≈ overtaking(st.law)
+        @test it.estimate.late ≈ it.estimate.early # a symmetric law
+        # one parameter, none reported; the Gumbel fit is close to the default core (the truth has light tails)
+        gu = fit_delay_law(kg, GumbelDelay(0.5))
+        @test gu.converged && delay_law_inference(kg, gu).names == (:β, :late, :early, :off, :q1, :q2, :q3, :q4)
+        @test PhyllotaxisFold.CommitmentTiming._names(ExpDelay(1.0)) == (:late, :early, :off, :q1, :q2, :q3, :q4)
+        # joint fits need shared parameters: the Student t shares its scale, the Gumbel law shares nothing
+        @test_throws ArgumentError fit_delay_law([kg, kt], GumbelDelay(0.5))
+        sj = fit_delay_law([kg, kt], StudentDelay(0.5, 5.0))
+        @test sj.converged && sj.laws[1].s == sj.laws[2].s
+        @test sj.laws[1].ν > sj.laws[2].ν # the light-tailed group is the more Gaussian
+        # simulation: a law's own sampler, or the fallback that draws from the density on the grid
+        t = StudentDelay(0.4, 3.0)
+        rng = Xoshiro(52)
+        e = [rand(rng, t) for _ in 1:5_000]
+        @test mean(e .> 1) ≈ tail_masses(t).late atol = 0.015
+        @test mean(e .< -1) ≈ tail_masses(t).early atol = 0.015
+        @test length(simulate_stems(t; plants = 2, organs = 10, rng).orders) == 2
+        # a density that has not decayed at the edge of the grid is flagged
+        @test_logs (:warn, r"edge of the grid") match_mode = :any PhyllotaxisFold.CommitmentTiming._check_grid(StudentDelay(0.4, 0.3), DELAY_GRID)
+    end
+
+    @testset "CommitmentTiming: the whole pipeline on simulated stems (angles → orders → delay law)" begin
+        # angles from a known delay law; fit the propensity model; exact posterior order samples; delay law fitted through
+        # the re-weighting: the tail masses must come back
+        truth = GaussianExpTails(0.42; πL = 0.08, mL = 1.2, πE = 0.08, mE = 1.0)
+        sim = simulate_stems(truth; plants = 40, organs = 35, logμκ = 1.9, σκ = 0.15, rng = Xoshiro(41))
+        m = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 8, ngrid_κ = 4, outlier = false)
+        r = fit_map(m)
+        post = order_posterior(m, r.u; nsamples = 60, rng = Xoshiro(42))
+        smp = order_samples(post, constrained_parameters(m, r.u).η)
+        fit = fit_delay_law(smp, GaussianExpTails(:both))
+        inf = delay_law_inference(smp, fit)
+        tt = tail_masses(truth)
+        @test abs(inf.estimate.off - tt.off) < 3 * inf.se.off + 0.01
+        @test abs(inf.estimate.σc - truth.σc) < 3 * inf.se.σc + 0.03
+        # the true law scores close to the fitted one (no large optimism)
+        @test 0 ≤ fit.rel_ll - relative_loglik(smp, truth) < 10
+    end
+
+    #############################################################################################################
+    # Plastochron: delays in hours
+    #############################################################################################################
 
     @testset "Plastochron: piecewise-linear rate with per-plant arrest" begin
         p = [0.1, log(2.5), log(0.6), log(14.0), log(0.2)] # rise 2.5 → ≈ 4 flowers / day, decline from day ≈ 14 to arrest
@@ -178,6 +624,7 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         fit = fit_flowering([pl.c for pl in plants])
         @test fit.converged
         @test all(abs.((fit.p[1:4] .- p[1:4]) ./ fit.se[1:4]) .< 3)
+        @test fit.se ≈ sqrt.(diag(fit.V))
         τhat = [(post = tau_posterior(fit, pl.c); sum(post.w .* post.τ)) for pl in plants]
         @test cor(τhat, [pl.τ for pl in plants]) > 0.85
         # per-plant plastochron over the first 80 % of each plant's flowers
@@ -197,343 +644,10 @@ const LAW = DelayLaw(0.45; πL = 0.05, mL = 1.2, πE = 0.05, mE = 1.0)
         T = mean_plastochron(fit, ranks)
         Th(q) = 24 * mean(plastochron_by_rank(q, 25)[reduce(vcat, collect.(ranks))])
         @test T.T ≈ Th(fit.p)
-        J = [(Th(fit.p .+ 1.0e-6 .* (1:5 .== i)) - Th(fit.p .- 1.0e-6 .* (1:5 .== i))) / 2.0e-6 for i in 1:5]
+        J = fd_dir(Th, fit.p, [1:5 .== i for i in 1:5]; h = 1.0e-6)
         @test T.se ≈ sqrt(J' * fit.V * J) rtol = 1.0e-4
-        @test fit.se ≈ sqrt.(diag(fit.V))
         h = in_hours(0.4, 0.05, T)
         @test h.estimate ≈ 0.4 * T.T && h.se ≈ hypot(T.T * 0.05, 0.4 * T.se)
-    end
-
-    @testset "PropensityModel" begin
-        data = [rand(Xoshiro(s), VonMises(0.0, 1.0), 20) for s in 1:3]
-        model = PhyllotaxisModelAD(data, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, logspace = true, outlier = false)
-        θ = prior_mean(model)
-        @test isfinite(LogDensityProblems.logdensity(model, θ))
-        lin = PhyllotaxisModelAD(data, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, logspace = false, outlier = false)
-        @test LogDensityProblems.logdensity(lin, θ) ≈ LogDensityProblems.logdensity(model, θ)
-        prob = TransformedLogDensityProblem(model)
-        u = Bijectors.bijector(model)(θ)
-        @test all(isfinite, ForwardDiff.hessian(v -> LogDensityProblems.logdensity(prob, v), u))
-        s = sample_prior(model; n = 60, Nsample = 2, rng = Xoshiro(5)) # n larger than the data
-        @test length(s[1].data) == 60 && isperm(s[1].permutation)
-        @test_throws ArgumentError PhyllotaxisModelAD([data[1][1:3]]) # band k = 4 longer than the stem
-        # realised frequencies: with steep costs nearly every organ is a fixed point; the cycle fractions sum to one
-        steep = unconstrained_parameters(model; η = [-12.0, -24.0, -36.0, -48.0], logμκ = 1.5, σκ = 0.2, α = 0.95)
-        θs = model.binv(steep)
-        fd, _ = estimate_displacement_frequencies(model, [θs]; N = 3, n = 30, rng = Xoshiro(1))
-        @test fd[1] > 0.999
-        @test sum(fd) ≈ 1 atol = 1.0e-6
-        fp, _ = estimate_permutation_frequencies(model, nothing; N = 200, n = 30, rng = Xoshiro(2))
-        @test sum(fp) ≈ 1
-        @test all(sum(displacement_probability(model, θ); dims = 1) .≈ 1)
-        @test sum(displacement_probability(model, θ)[2:end]) ≈ 2 * sum(exp, θ[1:4]) / (1 + 2 * sum(exp, θ[1:4]))
-        # symmetric costs: k of them, mirrored in the full vector
-        @test LogDensityProblems.dimension(model) == 4 + 3
-        ηf = full_eta(model, θ)
-        @test ηf ≈ reverse(ηf) && ηf[5] == 0
-        # prior mean of σκ: the half-t mean, 0.25 for ν = 4, τ = 0.25; the prior covers its own mean
-        @test θ[6] ≈ 0.25
-        @test all(prior_CIs(model)[:, 1] .< θ .< prior_CIs(model)[:, 2])
-    end
-
-    @testset "simulate_stems(η): η_1..η_k of any length, or the full vector" begin
-        maxdisp(r) = maximum(maximum(abs.(σ .- eachindex(σ))) for σ in r.orders)
-        for η in ([-1.0, -2.5, -4.0], [-1.0, -2.5, -4.0, -6.0]) # k odd (was read as a full vector with k = 1) and even
-            r = simulate_stems(η; plants = 300, organs = 40, rng = Xoshiro(1))
-            @test 1 < maxdisp(r) ≤ length(η)
-            full = simulate_stems(vcat(reverse(η), 0.0, η); plants = 300, organs = 40, rng = Xoshiro(1))
-            @test full.orders == r.orders
-        end
-    end
-
-
-    @testset "Torsion: helpers and per-stem rates" begin
-        @test torsion_coordinate(4) == [0.0, 1.0, 2.0, 3.0]
-        @test torsion_coordinate([2.0, 3.0, 5.0]) == [0.0, 2.0, 5.0, 10.0]
-        @test torsion_step([0.0, 2.0, 5.0, 10.0]) ≈ 10 / 3
-        @test scan_rate(τ -> -(τ - 0.37)^2, 5.0) ≈ 0.37 atol = 0.005 # scan in degrees per mean step of 5 units
-        x, fx = golden_section_max(t -> (; v = -(t - 1.234)^2), 0.0, 3.0; tol = 1.0e-8, score = r -> r.v)
-        @test x ≈ 1.234 atol = 1.0e-6
-        @test fx.v ≈ -(x - 1.234)^2
-        # the twist coordinate of the simulators: explicit positions give the default stems, mm give another twist
-        η = [-0.8, -1.9, -2.4, -3.0]
-        pos = [collect(0.0:29.0) for _ in 1:3]
-        @test simulate_stems(η; plants = 3, organs = 30, torsion_mean = 2.0, rng = Xoshiro(4)).angles ==
-            simulate_stems(η; plants = 3, organs = 30, x = pos, torsion_mean = 2.0, rng = Xoshiro(4)).angles
-        @test simulate_stems(LAW; plants = 3, organs = 30, torsion_mean = 2.0, rng = Xoshiro(4)).angles ==
-            simulate_stems(LAW; plants = 3, organs = 30, x = pos, torsion_mean = 2.0, rng = Xoshiro(4)).angles
-        @test_throws ArgumentError simulate_stems(η; plants = 3, organs = 30, x = pos[1:2])
-        sim = simulate_stems(LAW; plants = 8, organs = 40, logμκ = 1.8, torsion_mean = 4.0, torsion_sd = 3.0, rng = Xoshiro(21))
-        mA = PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6, outlier = false)
-        u = prior_mean_parameters(mA)
-        l0 = angle_loglikelihood(mA, u)
-        τA = copy(update_torsion!(mA, u))
-        @test cor(τA, sim.torsion) > 0.95
-        @test maximum(abs, τA .- sim.torsion) < 1.5 # degrees per position
-        @test angle_loglikelihood(mA, u) > l0 # correcting the twist raises the likelihood
-    end
-
-    @testset "Angle likelihood: analytic gradient and Hessian" begin
-        sim = simulate_stems(LAW; plants = 3, organs = 30, logμκ = 1.8, rng = Xoshiro(3))
-        prob = TransformedLogDensityProblem(PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6, outlier = false))
-        v = Bijectors.bijector(prob.prob)(prior_mean(prob.prob)) .+ 0.1
-        l, g, H = angle_vgh(prob, v, 2)
-        @test l ≈ LogDensityProblems.logdensity(prob, v)
-        @test g ≈ ForwardDiff.gradient(w -> LogDensityProblems.logdensity(prob, w), v) rtol = 1.0e-6
-        @test H ≈ ForwardDiff.hessian(w -> LogDensityProblems.logdensity(prob, w), v) rtol = 1.0e-5
-    end
-
-    @testset "Torsion: rates integrated out (adaptive quadrature); decoding and order posterior" begin
-        # quadrature on a bimodal, sharp log-likelihood against a fine grid, for a few population laws
-        f(ω) = logaddexp(-0.5 * ((ω - 1.3) / 0.08)^2, -2.0 - 0.5 * ((ω - 0.4) / 0.1)^2)
-        ω, logw, modes = stem_nodes(f, 5.0) # coordinate step 5: scan ±5 per unit
-        @test length(modes) == 2
-        grid = range(-3, 5; length = 200_001)
-        for (m, s) in ((1.0, 0.8), (0.0, 2.0), (2.0, 0.5))
-            exact = log(sum(exp(f(x) - 0.5 * ((x - m) / s)^2) / (s * sqrt(2π)) for x in grid) * step(grid))
-            @test logsumexp(node_logterms(ω, logw, f.(ω), m, s)) ≈ exact atol = 1.0e-3
-        end
-        sim = simulate_stems(LAW; plants = 8, organs = 40, logμκ = 1.8, torsion_mean = 4.0, torsion_sd = 3.0, rng = Xoshiro(21))
-        m = PhyllotaxisModelAD(sim.angles, PhyllotaxisPrior(); ngrid_ϕ = 16, ngrid_κ = 6, outlier = false)
-        tp = TorsionPrior(mt = 0.0, st = 10.0, νt = 4.0, τt = 5.0) # per position
-        u = prior_mean_parameters(m)
-        nodes = torsion_nodes(m, u)
-        v = [u; 3.5; log(2.5)]
-        P = length(v)
-        l0, g, H = torsion_vgh(m, tp, nodes, v, 2)
-        fv(w) = torsion_vgh(m, tp, nodes, w, 0)[1]
-        @test g ≈ [(fv(v .+ 1.0e-5 .* (1:P .== i)) - fv(v .- 1.0e-5 .* (1:P .== i))) / 2.0e-5 for i in 1:P] rtol = 1.0e-4
-        @test issymmetric(round.(H; digits = 6)) && l0 ≈ fv(v)
-        # fit: population law and rates recovered
-        r = fit_map_torsion!(m; prior = tp, recenter = 0)
-        @test PhyllotaxisFold.PropensityModel.Optim.converged(r.fit.result)
-        @test abs(r.m_ω - mean(sim.torsion)) < 1.0 && 0.4 < r.s_ω / std(sim.torsion) < 2.5
-        @test cor(r.ω, sim.torsion) > 0.95 && all(r.ω_sd .> 0)
-        # decoding with the twist: the joint MAP recovers the orders and the rates, the posterior agrees with the fit
-        dec = decode_orders(m, r; full = true)
-        @test mean(mean(d.σ .== σ) for (d, σ) in zip(dec, sim.orders)) > 0.9
-        @test cor([d.ω for d in dec], sim.torsion) > 0.95
-        post = order_posterior(m, r; nsamples = 400, rng = Xoshiro(4))
-        @test [p.ω_mean for p in post] ≈ r.ω_mean rtol = 1.0e-6 # same nodes, same population law, same parameters
-        @test all(p -> all(sum(p.ρ; dims = 2) .≈ 1), post)
-        k = m.k
-        emp = [mean(σ[i] - i == d for σ in post[1].samples) for i in 1:40, d in -k:k]
-        @test maximum(abs, emp .- post[1].ρ) < 0.1 # exact samples reproduce the marginals
-    end
-
-    @testset "Outlier angles: gradient, Hessian, limit and recovery" begin
-        sim = simulate_stems(LAW; plants = 3, organs = 25, logμκ = 1.8, outlier = 0.05, rng = Xoshiro(3))
-        fd(f, u) = [(f(u .+ 1.0e-5 .* (1:length(u) .== i)) - f(u .- 1.0e-5 .* (1:length(u) .== i))) / 2.0e-5 for i in eachindex(u)]
-        m = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 8, ngrid_κ = 4, outlier = true)
-        u = prior_mean_parameters(m) .+ 0.1
-        l, g, H = angle_vgh(m, u, 2)
-        f(w) = angle_vgh(m, w, 0)[1]
-        @test g ≈ fd(f, u) rtol = 1.0e-5
-        @test H ≈ ForwardDiff.hessian(f, u) rtol = 1.0e-4
-        # π_o → 0 gives back the model without outliers
-        m0 = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 8, ngrid_κ = 4, outlier = false)
-        m1 = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 8, ngrid_κ = 4, outlier = true)
-        u0 = prior_mean_parameters(m0)
-        @test angle_loglikelihood(m1, [u0; -40.0]) ≈ angle_loglikelihood(m0, u0) atol = 1.0e-8
-        # recovery of π_o on simulated stems (orders from the banded permanent, the law of the model)
-        η = [-3.5, -2.5, -1.2, 0.0, -1.2, -2.5, -3.5]
-        sA = simulate_stems(η; plants = 40, organs = 40, logμκ = 2.0, σκ = 0.2, outlier = 0.06, rng = Xoshiro(9))
-        μΔ, σΔ = η_prior((0.5, 1.25, 2.0), (0.1, 0.75, 2.0))
-        mA = PhyllotaxisModelAD(sA.angles, PhyllotaxisPrior(; μΔ, σΔ); ngrid_ϕ = 16, ngrid_κ = 6, outlier = true)
-        fA = fit_map(mA)
-        se = sqrt(-inv(fA.H)[end, end]) * fA.θ.outlier * (1 - fA.θ.outlier) # delta method on logit π_o
-        @test abs(fA.θ.outlier - 0.06) < 3 * se + 0.01
-    end
-
-    @testset "Propensity model API: parameters, likelihood, spiral of each stem" begin
-        sim = simulate_stems(LAW; plants = 3, organs = 30, logμκ = 1.8, rng = Xoshiro(3))
-        mA = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 16, ngrid_κ = 6, outlier = false)
-        η = [-3.0, -2.4, -1.9, -0.8, 0.0, -0.8, -1.9, -2.4, -3.0]
-        uA = unconstrained_parameters(mA; η, logμκ = 1.8, σκ = 0.1, α = 0.95)
-        θA = constrained_parameters(mA, uA)
-        @test θA.η ≈ η && θA.σκ ≈ 0.1
-        @test unconstrained_parameters(mA; η = η[6:end], logμκ = 1.8, σκ = 0.1, α = 0.95) ≈ uA
-        @test_throws ArgumentError unconstrained_parameters(
-            mA; η = [-3.0, -2.4, -1.9, -0.8, 0.0, -0.9, -1.8, -2.6, -3.1],
-            logμκ = 1.8, σκ = 0.1, α = 0.95
-        ) # an asymmetric full vector
-        @test_throws ArgumentError unconstrained_parameters(mA; η = η[6:8], logμκ = 1.8, σκ = 0.1, α = 0.95)
-        @test sum(stem_loglik(mA, uA, s) for s in 1:3) ≈ angle_loglikelihood(mA, uA)
-        prob = TransformedLogDensityProblem(mA)
-        @test angle_loglikelihood(prob, uA) ≈ angle_loglikelihood(mA, uA)
-        @test LogDensityProblems.dimension(prob) == LogDensityProblems.dimension(mA) == length(uA)
-        @test decode_orders(prob, uA) == decode_orders(mA, uA)
-        # spiral of each stem: golden vs Lucas and the orientation, recovered from the angles
-        sp = simulate_stems(LAW; plants = 30, organs = 30, logμκ = 1.8, α = 0.6, rng = Xoshiro(12))
-        m = PhyllotaxisModelAD(sp.angles; ngrid_ϕ = 16, ngrid_κ = 6, outlier = false)
-        post = spiral_posterior(m, unconstrained_parameters(m; η = [-0.8, -1.9, -2.4, -3.0], logμκ = 1.8, σκ = 0.1, α = 0.6))
-        @test mean((p.p_lucas > 0.5) == (ψ == PhyllotaxisFold.Lucas_angle) for (p, ψ) in zip(post, sp.ψ)) ≥ 0.9
-        @test mean((p.p_ccw > 0.5) == (o == 1) for (p, o) in zip(post, sp.o)) ≥ 0.9
-    end
-
-    @testset "CommitmentTiming: delay laws" begin
-        rng = Xoshiro(31)
-        zg = DELAY_GRID
-        @test rand(DelayLaw(0.4)) isa Float64 # default RNG
-        for f in (DelayLaw(0.4), LAW, DelayLaw(0.3; πL = 0.2, mL = 0.8, πE = 0.3, mE = 1.5))
-            g = exp.(delay_logdensity(f)) .* step(zg)
-            @test sum(g) ≈ 1
-            e = [rand(rng, f) for _ in 1:400_000]
-            @test sum(g .* zg) ≈ mean(e) atol = 0.01 # the density on the grid is the law of the sampler
-            @test sqrt(sum(g .* zg .^ 2) - sum(g .* zg)^2) ≈ std(e) rtol = 0.01
-            t = tail_masses(f)
-            @test t.late ≈ mean(e .> 1) atol = 0.003
-            @test t.early ≈ mean(e .< -1) atol = 0.003
-            @test t.off ≈ t.late + t.early
-            @test tail_masses(f; a = 2).late ≈ mean(e .> 2) atol = 0.003
-        end
-        # 231: the organ of the lowest site sits two positions late; 312: the highest site's organ two positions early
-        @test order_diagnostics([[1, 2, 3, 4], [2, 3, 1, 4], [3, 1, 2, 4]]) == (; displaced = 0.5, n231 = 1, n312 = 1)
-    end
-
-    @testset "CommitmentTiming: exact order likelihood" begin
-        s, zg = 0.43, DELAY_GRID
-        lg = [-(z / s)^2 / 2 - log(s * sqrt(2π)) for z in zg]
-        # two sites: P(in order) = Φ(1 / (s √2))
-        @test exp(loglik_order_exact([1, 2], lg, zg, 1.0)) ≈ cdf(Normal(), 1 / (s * sqrt(2))) atol = 5.0e-4
-        # the probabilities of all orders of 4 sites sum to 1 (ties counted as ordered made them sum above 1), with tails too
-        perms = [[a, b, c, d] for a in 1:4 for b in 1:4 for c in 1:4 for d in 1:4 if allunique((a, b, c, d))]
-        @test sum(exp(loglik_order_exact(σ, lg, zg, 1.0)) for σ in perms) ≈ 1 atol = 2.0e-3
-        f = DelayLaw(0.3; πL = 0.2, mL = 0.8, πE = 0.3, mE = 1.5)
-        @test sum(exp(loglik_order_exact(σ, f)) for σ in perms) ≈ 1 atol = 2.0e-3
-        # against the frequencies of the orders drawn by the sampler (6 sites)
-        rng = Xoshiro(8)
-        N = 400_000
-        cnt = Dict{Vector{Int}, Int}()
-        for _ in 1:N
-            σ = sortperm((1:6) .+ [rand(rng, f) for _ in 1:6])
-            cnt[σ] = get(cnt, σ, 0) + 1
-        end
-        top = sort(collect(cnt); by = last, rev = true)[1:12]
-        for (σ, c) in top
-            p = c / N
-            @test exp(loglik_order_exact(σ, f)) ≈ p atol = 4 * sqrt(p * (1 - p) / N) + 1.0e-3
-        end
-    end
-
-    @testset "CommitmentTiming: re-weighting identity and recovery from known orders" begin
-        k = 4
-        η = [-3.1, -2.5, -1.9, -0.8, 0.0, -0.8, -1.9, -2.5, -3.1]
-        # if the law scored is the propensity model's own order law, every stem term is exactly 0
-        sim = simulate_stems(η; plants = 5, organs = 30, rng = Xoshiro(2))
-        post = [(; samples = [simulate_stems(η; plants = 1, organs = 30, rng = Xoshiro(100 * s + j)).orders[1] for j in 1:20]) for s in 1:5]
-        smp = order_samples(post, η)
-        @test all(sum(s.w) ≈ 1 for s in smp)
-        # one workspace per call: stem_terms is threaded over stems
-        @test all(abs.(stem_terms(smp, σ -> logprob_permutation(PermanentWorkspace(k, 30), η, σ))) .< 1.0e-10)
-        @test_throws ArgumentError order_samples([(; samples = [[6, 1, 2, 3, 4, 5, 7]])], η) # beyond the band
-        # stems whose order is known (a posterior concentrated on the true order): the scorer reduces to the exact
-        # likelihood, so fit_delay_law is a maximum-likelihood fit of the law; tail masses and core sd recovered. The costs
-        # only shift every term by a constant: a wide band (k = 8) so that every simulated order is inside it
-        η = [-1.0 * abs(d) for d in -8:8]
-        truth = DelayLaw(0.42; πL = 0.06, mL = 1.3, πE = 0.05, mE = 1.0)
-        orders = simulate_stems(truth; plants = 150, organs = 40, rng = Xoshiro(5)).orders
-        known = order_samples([(; samples = [σ]) for σ in orders], η)
-        @test relative_loglik(known, truth) ≈ sum(loglik_order_exact(σ, truth) for σ in orders) - sum(s.logA[1] for s in known)
-        fit = fit_delay_law(known, :both; init = DelayLaw(0.5; πL = 0.1, mL = 1.0, πE = 0.1, mE = 1.0))
-        @test fit.converged
-        inf = delay_law_inference(known, fit)
-        tt = tail_masses(truth)
-        @test abs(inf.estimate.σc - truth.σc) < 3 * inf.se.σc + 0.01
-        @test abs(inf.estimate.late - tt.late) < 3 * inf.se.late + 0.005
-        @test abs(inf.estimate.early - tt.early) < 3 * inf.se.early + 0.005
-        @test all(x -> x > 0, values(inf.se))
-        # no false tails: from a core-only truth, the two-tail fit gains almost nothing over the core-only fit
-        core_orders = simulate_stems(DelayLaw(0.42); plants = 150, organs = 40, rng = Xoshiro(6)).orders
-        kc = order_samples([(; samples = [σ]) for σ in core_orders], η)
-        f0, f2 = fit_delay_law(kc, :core; init = DelayLaw(0.5)), fit_delay_law(kc, :both)
-        @test f0.law.σc ≈ 0.42 atol = 0.02
-        @test f2.rel_ll - f0.rel_ll < 5 # χ²(4)/2 is below 5 with probability > 0.99
-        # without tails, a short tail holding most sites only reshapes the core: the off-time fraction of the two-tail law
-        # is then loosely determined, and checked against its own standard error
-        i2 = delay_law_inference(kc, f2)
-        @test abs(i2.estimate.off - tail_masses(DelayLaw(0.42)).off) < 3 * i2.se.off
-    end
-
-    @testset "CommitmentTiming: the overtaking profile" begin
-        # Gaussian delays: q_d = Φ(−d / (s√2)); a tailed law against simulated pairs
-        @test overtaking(DelayLaw(0.42)) ≈ [cdf(Normal(), -d / (0.42 * sqrt(2))) for d in 1:4] rtol = 0.01
-        f = DelayLaw(0.42; πL = 0.06, mL = 1.5, πE = 0.06, mE = 1.0)
-        rng = Xoshiro(17)
-        e = [rand(rng, f) - rand(rng, f) for _ in 1:400_000]
-        @test overtaking(f) ≈ [mean(e .> d) for d in 1:4] atol = 0.001
-        @test_throws ArgumentError overtaking(f; d = [0.33]) # not a multiple of the grid step
-        # model-free from known orders: the fraction of inverted pairs, with clustered standard errors
-        η = [-1.0 * abs(d) for d in -8:8]
-        orders = simulate_stems(f; plants = 150, organs = 40, rng = Xoshiro(23)).orders
-        known = order_samples([(; samples = [σ]) for σ in orders], η)
-        pf = overtaking_profile(known)
-        @test pf.d == 1:4 && size(pf.V) == (4, 4)
-        @test pf.q[1] ≈ mean(count(invperm(σ)[i + 1] < invperm(σ)[i] for i in 1:39) / 39 for σ in orders)
-        @test all(abs.(pf.q .- overtaking(f)) .< 3 .* pf.se .+ 1.0e-4)
-        # the fitted law's profile, with its covariance, agrees with the model-free one
-        fit = fit_delay_law(known, :both)
-        inf = delay_law_inference(known, fit)
-        @test inf.profile.q ≈ overtaking(fit.law)
-        @test [inf.estimate.q1, inf.estimate.q2] ≈ inf.profile.q[1:2]
-        @test all(abs.(inf.profile.q[1:3] .- pf.q[1:3]) .< 3 .* pf.se[1:3])
-        # comparison: a group against itself (no difference) and against a law with more overtaking
-        t0 = compare_profiles(pf, pf)
-        @test t0.diff == zeros(3) && t0.df == 3
-        g = DelayLaw(0.42; πL = 0.2, mL = 1.5, πE = 0.2, mE = 1.0)
-        # (the profile needs only the orders and their weights, not the propensity costs)
-        pg = overtaking_profile([(; orders = [σ], w = [1.0]) for σ in simulate_stems(g; plants = 150, organs = 40, rng = Xoshiro(24)).orders])
-        t1 = compare_profiles(pf, pg)
-        @test all(t1.diff .> 0) && t1.p < 1.0e-6
-    end
-
-    @testset "CommitmentTiming: exact derivatives and the shared core" begin
-        CT = PhyllotaxisFold.CommitmentTiming
-        η = [-1.0 * abs(d) for d in -8:8]
-        known(f, S, seed) = order_samples([(; samples = [σ]) for σ in simulate_stems(f; plants = S, organs = 35, rng = Xoshiro(seed)).orders], η)
-        # the gradient of the summed terms (ForwardDiff through the recursion) against central differences
-        smp = known(DelayLaw(0.42; πL = 0.06, mL = 1.3, πE = 0.05, mE = 1.0), 20, 3)
-        obj(v) = sum(CT._stem_terms(smp, CT._law(v, :both), DELAY_GRID))
-        v = [log(0.4), -2.0, 0.3, log(1.2), 0.1]
-        h = 1.0e-5
-        @test CT.ForwardDiff.gradient(obj, v) ≈ [(obj(v .+ h .* (1:5 .== i)) - obj(v .- h .* (1:5 .== i))) / 2h for i in 1:5] rtol = 1.0e-5
-        # two groups with the same core and different tails: the shared-core fit recovers the core and each group's
-        # off-time fraction, and the likelihood ratio does not reject the shared core
-        fA, fB = DelayLaw(0.42; πL = 0.04, mL = 1.2, πE = 0.04, mE = 1.0), DelayLaw(0.42; πL = 0.15, mL = 1.2, πE = 0.12, mE = 1.0)
-        groups = [known(fA, 120, 11), known(fB, 120, 12)]
-        t = shared_core_test(groups, :both)
-        @test t.shared.converged && length(t.shared.laws) == 2
-        @test t.shared.laws[1].σc == t.shared.laws[2].σc
-        @test t.shared.laws[1].σc ≈ 0.42 atol = 0.05
-        @test t.df == 1 && t.lr ≥ 0 && t.p > 0.001
-        @test t.shared.rel_ll ≈ sum(t.shared.rel_ll_groups)
-        inf = delay_law_inference(groups, t.shared)
-        @test length(inf.estimate) == 2
-        for (g, f) in enumerate((fA, fB))
-            @test abs(inf.estimate[g].off - tail_masses(f).off) < 3 * inf.se[g].off + 0.01
-        end
-        @test inf.Δoff[1].estimate ≈ inf.estimate[2].off - inf.estimate[1].off
-        @test inf.Δprofile[1].diff ≈ inf.profile[2].q .- inf.profile[1].q
-        @test inf.Δprofile[1].p < 0.01 # the heavier tails overtake more
-        @test abs(inf.Δoff[1].estimate - (tail_masses(fB).off - tail_masses(fA).off)) < 3 * inf.Δoff[1].se + 0.01
-    end
-
-    @testset "CommitmentTiming: the whole pipeline on simulated stems (angles → orders → delay law)" begin
-        # angles from a known delay law; fit the propensity model; exact posterior order samples; delay law fitted through
-        # the re-weighting: the tail masses must come back
-        truth = DelayLaw(0.42; πL = 0.08, mL = 1.2, πE = 0.08, mE = 1.0)
-        sim = simulate_stems(truth; plants = 40, organs = 35, logμκ = 1.9, σκ = 0.15, rng = Xoshiro(41))
-        m = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 16, ngrid_κ = 6, outlier = false)
-        r = fit_map(m)
-        post = order_posterior(m, r.u; nsamples = 60, rng = Xoshiro(42))
-        smp = order_samples(post, constrained_parameters(m, r.u).η)
-        fit = fit_delay_law(smp, :both)
-        inf = delay_law_inference(smp, fit)
-        tt = tail_masses(truth)
-        @test abs(inf.estimate.off - tt.off) < 3 * inf.se.off + 0.01
-        @test abs(inf.estimate.σc - truth.σc) < 3 * inf.se.σc + 0.03
-        # the true law scores close to the fitted one (no large optimism)
-        @test 0 ≤ fit.rel_ll - relative_loglik(smp, truth) < 10
     end
 
     @testset "Code quality: Aqua and explicit imports" begin

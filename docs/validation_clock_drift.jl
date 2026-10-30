@@ -30,10 +30,10 @@ end
 function fit_clock(orders, σ0, σξ)
     smp = true_samples(orders)
     σm = sqrt(σ0^2 + σξ^2 / 2)
-    core = fit_delay_law(smp, :core; init = DelayLaw(σm))
-    both = fit_delay_law(smp, :both; init = DelayLaw(σm; πL = 0.02, mL = 1.0, πE = 0.02, mE = 1.0))
+    core = fit_delay_law(smp, GaussianExpTails(:core; σc = σm))
+    both = fit_delay_law(smp, GaussianExpTails(:both; σc = σm, πL = 0.02, πE = 0.02))
     inf = delay_law_inference(smp, both)
-    matched = relative_loglik(smp, DelayLaw(σm)) # i.i.d. law with the lag-1-matched sd
+    matched = relative_loglik(smp, GaussianExpTails(σm)) # i.i.d. law with the lag-1-matched sd
     return (; core, both, inf, matched, disp = displacement_counts(orders), tails = tail_masses(both.law))
 end
 

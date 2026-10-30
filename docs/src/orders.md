@@ -78,7 +78,7 @@ choice. Every banded order of 8 organs is one path from start to end; the orange
 ## 3.4 Merging the paths
 
 Two partial orders reaching the same state have the same possible futures, so their weights can be added before going
-on. This is the whole trick.
+on. This is the key step.
 
 !!! note "result — the forward recursion"
     Let ``F_i(s)`` be the total weight of all the ways of assigning heights ``1, \dots, i - 1`` that end in state

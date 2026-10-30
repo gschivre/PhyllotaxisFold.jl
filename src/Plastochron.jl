@@ -11,22 +11,22 @@ The plastochron along the stem, from daily counts of open flowers (to express co
              = 0                       after the arrest Aᵢ = τᵢ + ρᵢ / d
 
 a piecewise-linear rate whose meristem arrests at a finite time. The change point τᵢ ("failure time": the plastochron
-stops shortening and starts to lengthen) is specific to each plant, log τᵢ ~ N(μ_τ, σ_τ²), and integrated out. If the
-rise phase reaches 0 before τᵢ (a < 0), the plant arrests there. Parameters p = (a, log b, log d, μ_τ, log σ_τ).
+stops shortening and starts to lengthen) is specific to each plant, `log τᵢ ~ N(μ_τ, σ_τ²)`, and integrated out. If the
+rise phase reaches 0 before τᵢ (a < 0), the plant arrests there. Parameters `p = (a, log b, log d, μ_τ, log σ_τ)`.
 
 **Counts.** The new flowers of a day are Poisson with mean ∫λ over that day (over the whole gap when days were not
 recorded), computed exactly from the cumulative F(t) = ∫₀ᵗ λ. All recorded days are used, including the days without new
 flowers at the end: they date the arrest.
 
-**Plastochron by rank.** Flower k opens when F(t_k) = k − ½, and its plastochron is T_P(k) = 1 / λ(t_k). Because λ is
-linear in t on each phase, λ² is linear in F (λ² = b² + 2aF while rising, ρ² − 2d(F − F(τ)) while declining), so T_P(k)
+**Plastochron by rank.** Flower k opens when `F(t_k) = k − ½`, and its plastochron is `T_P(k) = 1 / λ(t_k)`. Because λ is
+linear in t on each phase, λ² is linear in F (λ² = b² + 2aF while rising, ρ² − 2d(F − F(τ)) while declining), so `T_P(k)`
 is in closed form. Ranks beyond the expected total keep the last plastochron.
 
 `fit_flowering` (maximum likelihood, Newton trust region with ForwardDiff gradient and Hessian), `plastochron_by_rank`
 (a plant with a given τ, by default the median plant), `plant_plastochron` (one plant, from the posterior of its own τ
-given its counts), and `relative_plastochron` (r = T_P / T̄_P for every organ of every stem).
+given its counts), and `relative_plastochron` (`r = T_P / T̄_P` for every organ of every stem).
 
-**Delays in hours.** `mean_plastochron` is the mean T_P of the measured organs, in hours, with its standard error (delta
+**Delays in hours.** `mean_plastochron` is the mean `T_P` of the measured organs, in hours, with its standard error (delta
 method through the covariance of the fit), and `in_hours` converts a delay in plastochrons (e.g. the core sd of a
 delay law) with its standard error.
 """
@@ -49,7 +49,7 @@ function _phases(p, τ)
     return a, b, d, τe, ρ, τe + ρ / d
 end
 
-"λ(t) of a plant with change point τ, p = (a, log b, log d, μ_τ, log σ_τ)"
+"λ(t) of a plant with change point τ, `p = (a, log b, log d, μ_τ, log σ_τ)`"
 function flowering_rate(t, p, τ)
     a, b, d, τe, ρ, A = _phases(p, τ)
     t ≤ τe && return b + a * t
@@ -95,7 +95,7 @@ _nll(p, counts) = -sum(logsumexp(_plant_terms(p, c)) for c in counts)
 Maximum-likelihood rate of a group of plants. `counts`: one vector per plant of the cumulative number of open flowers at
 the end of each day (day 1 = first day of observation; `NaN` for a day without record), up to the last recorded day.
 Newton trust region with the ForwardDiff gradient and Hessian, best of the starting points `starts` (vectors
-p = (a, log b, log d, μ_τ, log σ_τ)). Returns (; p, nll, se, V, converged): `V` the covariance of p (inverse Hessian),
+`p = (a, log b, log d, μ_τ, log σ_τ)`). Returns (; p, nll, se, V, converged): `V` the covariance of p (inverse Hessian),
 `se` its standard errors.
 """
 function fit_flowering(
@@ -120,7 +120,7 @@ end
 """
     plastochron_by_rank(fit_or_p, K; τ = nothing)
 
-T_P(k) (days) for flower ranks k = 1..K of a plant with change point τ (default: the median plant, τ = exp(μ_τ)).
+`T_P(k)` (days) for flower ranks k = 1..K of a plant with change point τ (default: the median plant, `τ = exp(μ_τ)`).
 """
 plastochron_by_rank(fit::NamedTuple, K::Integer; kw...) = plastochron_by_rank(fit.p, K; kw...)
 function plastochron_by_rank(p::AbstractVector, K::Integer; τ = nothing)
@@ -146,7 +146,7 @@ end
 """
     plant_plastochron(fit, c, K)
 
-T_P(k) of one plant, k = 1..K, from the posterior of its own change point given its counts `c` (geometric posterior
+`T_P(k)` of one plant, k = 1..K, from the posterior of its own change point given its counts `c` (geometric posterior
 mean over τ).
 """
 plant_plastochron(fit::NamedTuple, c::AbstractVector, K::Integer) = plant_plastochron(fit.p, c, K)
@@ -160,9 +160,9 @@ end
 """
     relative_plastochron(TP, ranks; Tref = nothing)
 
-r = T_P(rank) / T̄_P for every organ of every stem. `TP`: one plastochron-by-rank vector for all stems
+`r = T_P(rank) / T̄_P` for every organ of every stem. `TP`: one plastochron-by-rank vector for all stems
 (`plastochron_by_rank`) or one per stem (`plant_plastochron`); `ranks`: one vector of flower ranks per stem (rank of
-the organ at stem position p; ranks beyond `length(TP)` use the last value). T̄_P is the mean over all the organs given
+the organ at stem position p; ranks beyond `length(TP)` use the last value). `T̄_P` is the mean over all the organs given
 (or `Tref`), so that r averages to 1. Returns (; r, T̄).
 """
 function relative_plastochron(TP::AbstractVector, ranks::AbstractVector{<:AbstractVector{<:Integer}}; Tref = nothing)
@@ -175,7 +175,7 @@ end
 """
     mean_plastochron(fit, ranks)
 
-Mean plastochron of the measured organs, in hours: T_P(k) of the median plant (`plastochron_by_rank`), averaged over
+Mean plastochron of the measured organs, in hours: `T_P(k)` of the median plant (`plastochron_by_rank`), averaged over
 the flower rank k of every organ of every stem (`ranks`: one vector of ranks per stem; ranks beyond the expected total
 keep the last plastochron). Its standard error is the delta method through the covariance `V` of `fit_flowering`.
 Returns (; T, se).
@@ -195,7 +195,7 @@ end
     in_hours(x, se, T)
 
 A delay `x ± se` in plastochrons (e.g. the core sd `σc` of `delay_law_inference`), in hours, given the mean plastochron
-`T = mean_plastochron(fit, ranks)`: the estimate x T̄, and the standard error √((T̄ se)² + (x se_T̄)²). The two
+`T = mean_plastochron(fit, ranks)`: the estimate x T̄, and the standard error `√((T̄ se)² + (x se_T̄)²)`. The two
 uncertainties are taken as independent, since they come from different data (the angles and the flower counts).
 Returns (; estimate, se).
 """

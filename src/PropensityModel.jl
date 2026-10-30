@@ -6,12 +6,12 @@ softplus prior on η). Parameters (constrained space)
 
     [η_1..η_k, log μκ, σκ, α (, π_o)]
 
-with symmetric costs η_{−d} = η_d (π_o: probability of an outlier angle, fitted unless `outlier = false`). With free early and
-late costs, the overall balance between them would be set by the prior alone: a tilt η_d → η_d + a d leaves every order
+with symmetric costs `η_{−d} = η_d` (`π_o`: probability of an outlier angle, fitted unless `outlier = false`). With free early and
+late costs, the overall balance between them would be set by the prior alone: a tilt `η_d → η_d + a d` leaves every order
 probability unchanged. Early and late organs are told apart by the timing law (`CommitmentTiming`) instead.
 
 The per-stem likelihood is `AngleLikelihood.stem_loglik!` with η free: the gradient in η is
-analytic (∂ℓ/∂η_d = E_post[N_d] − E_η[N_d]), as are those in log μκ, σκ and α. `TransformedLogDensityProblem` maps to
+analytic (`∂ℓ/∂η_d = E_post[N_d] − E_η[N_d]`), as are those in log μκ, σκ and α. `TransformedLogDensityProblem` maps to
 ℝ^dim with the Stacked bijector (softplus gaps for η, identity, log, logit); `fit_map` is Newton trust region with the
 analytic gradient (chain rule through the bijector Jacobian) and the Hessian from one dual pass over it. The log density
 stays generic in the number type (ForwardDiff works on it).
@@ -52,11 +52,11 @@ const _DEFAULT_GAPS = η_prior((0.5, 1.25, 2.0, 3.75), (0.1, 0.75, 2.0, 4.0))
 
 Prior of the propensity model; its band k is the length N of the gap tuples (k = 4 by default):
 
-- η_1..η_k: `LogNormalSoftPlus(μΔ, σΔ)`, gaps with means (0.5, 1.25, 2, 3.75) and variances (0.1, 0.75, 2, 4) by
+- `η_1..η_k`: `LogNormalSoftPlus(μΔ, σΔ)`, gaps with means (0.5, 1.25, 2, 3.75) and variances (0.1, 0.75, 2, 4) by
   default (`η_prior`);
 - log μκ ~ N(mκ, sκ²) and σκ ~ half-t(νκ, τκ): the log-normal population of the per-stem κ;
 - α ~ Beta(aα, bα): the probability of the golden spiral (else the Lucas one);
-- π_o ~ Beta(aπ, bπ): the outlier probability (the default Beta(1, 49) has mean 2 %, median 1.4 %), unused with
+- `π_o ~ Beta(aπ, bπ)`: the outlier probability (the default Beta(1, 49) has mean 2 %, median 1.4 %), unused with
   `outlier = false`.
 """
 Base.@kwdef struct PhyllotaxisPrior{N}
@@ -103,7 +103,7 @@ end
 k is the length of the prior tuples. Fit coarse grids first, then refine from that solution. `torsion_x`: the torsion
 coordinate of each stem (`torsion_coordinate(ℓ)` from its internodes, in mm, or `torsion_coordinate(n)`, per position,
 the default). The rates start at 0; `fit_map_torsion!(model)` fits them. `outlier` (on by default): each angle is an
-outlier (uniform on the circle) with probability π_o, fitted (prior Beta(aπ, bπ)); `outlier = false` drops π_o.
+outlier (uniform on the circle) with probability `π_o`, fitted (prior Beta(aπ, bπ)); `outlier = false` drops `π_o`.
 """
 function PhyllotaxisModelAD(
         data::Vector{Vector{T}}, prior::PhyllotaxisPrior{N} = PhyllotaxisPrior(); ngrid_ϕ::Int = 32, ngrid_κ::Int = 16,
@@ -137,7 +137,7 @@ _nuisance(model::PhyllotaxisModelAD, θ::NamedTuple) = (θ.logμκ, θ.σκ, θ.
 """
     full_eta(model, θ)
 
-The 2k + 1 log-propensities η[d + k + 1] = η_d (η_0 = 0) from a parameter vector: η_{±d} = θ[d].
+The 2k + 1 log-propensities `η[d + k + 1] = η_d` (`η_0 = 0`) from a parameter vector: `η_{±d} = θ[d]`.
 """
 full_eta(model::PhyllotaxisModelAD, θ::NamedTuple) = θ.η
 function full_eta(model::PhyllotaxisModelAD, θ::AbstractVector{T}) where {T}
@@ -189,9 +189,9 @@ end
 """
     logdensity(model, θ)
 
-Log posterior in the constrained space. Per plant: log ∫ N(log κ) ½ Σ_o Σ_ψ p(ψ) (1/2π) ∫ dϕ perm(A) / (perm(W) (2π I₀(κ))ⁿ),
-A_{i, i+d} = exp(η_d + κ cos(y_i − ϕ − o (i + d − 1) ψ)); rectangle rule in ϕ, Gauss–Hermite in log κ. The weights are
-written as η_d + κ (cos − 1) and n κ is added back (no overflow in linear mode).
+Log posterior in the constrained space. Per plant: `log ∫ N(log κ) ½ Σ_o Σ_ψ p(ψ) (1/2π) ∫ dϕ perm(A) / (perm(W) (2π I₀(κ))ⁿ)`,
+`A_{i, i+d} = exp(η_d + κ cos(y_i − ϕ − o (i + d − 1) ψ))`; rectangle rule in ϕ, Gauss–Hermite in log κ. The weights are
+written as `η_d + κ (cos − 1)` and n κ is added back (no overflow in linear mode).
 """
 function LogDensityProblems.logdensity(model::PhyllotaxisModelAD, θ::AbstractVector{T}) where {T}
     data = model.data
@@ -269,7 +269,7 @@ fit_map(prob::TransformedLogDensityProblem; kw...) = fit_map(prob.prob; kw...)
 # parameters
 #################################################################################################################
 
-"(; η, logμκ, σκ, α, outlier) from the unconstrained u: η the full 2k + 1 log-propensities, outlier = π_o or 0"
+"(; η, logμκ, σκ, α, outlier) from the unconstrained u: η the full 2k + 1 log-propensities, outlier = `π_o` or 0"
 function constrained_parameters(model::PhyllotaxisModelAD, u::AbstractVector)
     θ = model.binv(u)
     logμκ, σκ, α, πo = _nuisance(model, θ)
@@ -279,7 +279,7 @@ end
 """
     unconstrained_parameters(model::PhyllotaxisModelAD; η, logμκ, σκ, α, outlier)
 
-u from named values; η: η_1..η_k, or the full 2k + 1 vector (symmetric, η_0 = 0).
+u from named values; η: `η_1..η_k`, or the full 2k + 1 vector (symmetric, `η_0 = 0`).
 """
 function unconstrained_parameters(model::PhyllotaxisModelAD; η, logμκ, σκ, α, outlier = mean(Beta(model.prior.aπ, model.prior.bπ)))
     k = model.k
@@ -347,8 +347,8 @@ torsion_nodes(model::PhyllotaxisModelAD, u::AbstractVector; kw...) = angle_torsi
 """
     fit_map_torsion!(model::PhyllotaxisModelAD; prior, u0, recenter, nodes_kw, options)
 
-MAP with the twist rates integrated out (ω_s ~ N(m_ω, s_ω²), hyperprior `prior`). Returns (; fit, m_ω, s_ω, ω, ω_mean,
-ω_sd, loglik, nodes); fit = (; θ, u, H, result), fit.u = [model parameters; m_ω; log s_ω].
+MAP with the twist rates integrated out (`ω_s ~ N(m_ω, s_ω²)`, hyperprior `prior`). Returns (; fit, `m_ω`, `s_ω`, ω, `ω_mean`,
+`ω_sd`, loglik, nodes); fit = (; θ, u, H, result), `fit.u = [model parameters; m_ω; log s_ω]`.
 """
 function fit_map_torsion!(
         model::PhyllotaxisModelAD; prior::TorsionPrior = TorsionPrior(), u0 = prior_mean_parameters(model), recenter::Int = 1,
@@ -365,13 +365,13 @@ fit_map_torsion!(prob::TransformedLogDensityProblem; kw...) = fit_map_torsion!(p
 # post-processing
 #################################################################################################################
 
-"the η block (η_1..η_k) of a parameter vector (or of each column of a matrix of draws)"
+"the η block (`η_1..η_k`) of a parameter vector (or of each column of a matrix of draws)"
 log_propensity(model::PhyllotaxisModelAD, θ::AbstractVecOrMat) = view(θ, 1:(model.k), :)
 
 """
     displacement_probability(model, θ)
 
-P(|d|), d = 0..k, from the local softmax of (η_{−k}, …, η_k), for a parameter vector or each column of a matrix of
+P(|d|), d = 0..k, from the local softmax of (`η_{−k}`, …, `η_k`), for a parameter vector or each column of a matrix of
 draws: the instantaneous propensities, not the realised displacement frequencies (`estimate_displacement_frequencies`,
 same rows).
 """
@@ -453,10 +453,10 @@ end
         torsion_mean = 0.0, torsion_sd = 0.0, rng)
 
 Simulate from the propensity model: the order of each stem is an exact draw from the banded permanent with
-log-propensities η (η_1..η_k, symmetric, or the full 2k + 1 vector, recognised by its middle entry η_0 = 0),
-κ_s ~ LogNormal(logμκ, σκ) per stem, and
-the angles are y_p ~ vM(ϕ + o (σ[p] − 1) ψ + ω_s x_p, κ_s), replaced with probability `outlier` by a uniform angle.
-`x`: the twist coordinate of each stem (default: the positions 0, 1, …); twist ω_s ~ Normal(torsion_mean, torsion_sd)
+log-propensities η (`η_1..η_k`, symmetric, or the full 2k + 1 vector, recognised by its middle entry `η_0 = 0`),
+`κ_s ~ LogNormal(logμκ, σκ)` per stem, and
+the angles are `y_p ~ vM(ϕ + o (σ[p] − 1) ψ + ω_s x_p, κ_s)`, replaced with probability `outlier` by a uniform angle.
+`x`: the twist coordinate of each stem (default: the positions 0, 1, …); twist `ω_s ~ Normal(torsion_mean, torsion_sd)`
 degrees per unit of x. Returns (; angles, orders, torsion, κ, outliers, ψ, o) (outliers: the positions whose angle is
 uniform; ψ, o: the spiral of each stem).
 """

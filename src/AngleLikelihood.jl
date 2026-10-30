@@ -3,18 +3,18 @@
 
 The angle likelihood of an order model: per stem, the banded permanent summed over the nuisance grid, with its analytic
 gradient in (η, log μκ, σκ, α) from forward–backward (expected displacement counts and expected cosines). Optionally the
-emission is a mixture with outlier angles (probability π_o, uniform on the circle). The propensity model
+emission is a mixture with outlier angles (probability `π_o`, uniform on the circle). The propensity model
 (`PhyllotaxisModelAD`) is the model that plugs in here.
 
 A model plugs in through these methods (all on the unconstrained parameters u):
 
 - `stem_value_grad(m, u, s; ω, with_grad, fws)`: the log-likelihood of stem s at u (twist rate ω) and its gradient in u
-  (the model's map u ↦ η, κ, α, π_o and its chain rule);
+  (the model's map u ↦ η, κ, α, `π_o` and its chain rule);
 - `global_logprior(m, u)`: the log prior of u, Jacobian included;
 - `stem_etas(m, u, s)`: the candidate log-propensity vectors η of stem s and their log prior weights (one candidate,
   or one per uncertain rank offset);
-- `angle_nuisance(m, u)`: (; logμκ, σκ, α, outlier), outlier = π_o or `nothing`;
-- `stem_grid(m)`: the nuisance grid (k, ngrid_ϕ, ngrid_κ, ϕ_grid, κ_nodes, κ_logweights).
+- `angle_nuisance(m, u)`: (; logμκ, σκ, α, outlier), outlier = `π_o` or `nothing`;
+- `stem_grid(m)`: the nuisance grid (k, `ngrid_ϕ`, `ngrid_κ`, `ϕ_grid`, `κ_nodes`, `κ_logweights`).
 
 Everything else is generic: the log density and gradient (threaded over stems), the Hessian by one dual pass over the
 analytic gradient (`angle_vgh`), the MAP (`angle_fit_map`), stem torsion as an integrated random effect (`torsion_vgh`,
@@ -113,13 +113,13 @@ end
     stem_loglik!(fws, grid, y, η, logμκ, σκ, α, with_grad; prune = 1e-14, outlier = nothing)
 
 Log-likelihood of one stem (angles y, already corrected for torsion) given the full log-propensity vector η (2k + 1,
-η[d + k + 1] = η_d), summed over the nuisance grid (o, ψ, ϕ) × κ nodes, and, with `with_grad`, its gradient accumulated
-into fws.grad: [∂ℓ/∂η_d (2k + 1, = E_post[N_d] − E_η[N_d]); ∂ℓ/∂log μκ; ∂ℓ/∂σκ; ∂ℓ/∂α; ∂ℓ/∂π_o]. `grid` has fields k,
-ngrid_ϕ, ngrid_κ, ϕ_grid, κ_nodes, κ_logweights (`stem_grid(model)`). Generic in the number type T of the workspace.
+`η[d + k + 1] = η_d`), summed over the nuisance grid (o, ψ, ϕ) × κ nodes, and, with `with_grad`, its gradient accumulated
+into `fws.grad`: `[∂ℓ/∂η_d (2k + 1, = E_post[N_d] − E_η[N_d]); ∂ℓ/∂log μκ; ∂ℓ/∂σκ; ∂ℓ/∂α; ∂ℓ/∂π_o]`. `grid` has fields k,
+`ngrid_ϕ`, `ngrid_κ`, `ϕ_grid`, `κ_nodes`, `κ_logweights` (`stem_grid(model)`). Generic in the number type T of the workspace.
 
-`outlier = π_o`: each angle is drawn from the von Mises of its site with probability 1 − π_o, and uniformly on the circle
+`outlier = π_o`: each angle is drawn from the von Mises of its site with probability `1 − π_o`, and uniformly on the circle
 otherwise (a gross measurement error, or an organ the site model does not describe). Without it (`nothing`), the
-emission is the von Mises alone and ∂ℓ/∂π_o is not written.
+emission is the von Mises alone and `∂ℓ/∂π_o` is not written.
 
 Pass 1 runs the forward pass on the whole (ϕ, o, ψ) × κ grid. Pass 2 runs forward–backward only on the grid points whose
 posterior weight exceeds `prune` (the posterior over the grid is concentrated on a few points), and accumulates the
@@ -228,7 +228,7 @@ function stem_value_grad end
 "log prior of the unconstrained parameters u, Jacobian included (generic in the number type)"
 function global_logprior end
 
-"the underlying angle model (its fields data, torsion, k, ngrid_ϕ, ngrid_κ, logspace)"
+"the underlying angle model (its fields data, torsion, k, `ngrid_ϕ`, `ngrid_κ`, logspace)"
 function angle_model end
 
 """
@@ -239,10 +239,10 @@ weight 0, or one per candidate rank offset.
 """
 function stem_etas end
 
-"(; logμκ, σκ, α, outlier) at u: the angle nuisance parameters (outlier = π_o, or `nothing` without outliers)"
+"(; logμκ, σκ, α, outlier) at u: the angle nuisance parameters (outlier = `π_o`, or `nothing` without outliers)"
 function angle_nuisance end
 
-"the nuisance grid (k, ngrid_ϕ, ngrid_κ, ϕ_grid, κ_nodes, κ_logweights) of a model"
+"the nuisance grid (k, `ngrid_ϕ`, `ngrid_κ`, `ϕ_grid`, `κ_nodes`, `κ_logweights`) of a model"
 function stem_grid end
 
 """
@@ -410,7 +410,7 @@ end
 """
     torsion_vgh(m, prior, nodes, v, order)
 
-Log posterior with the twist rates integrated out, v = [u; m_ω; log s_ω], up to the Hessian (one dual pass per stem over
+Log posterior with the twist rates integrated out, `v = [u; m_ω; log s_ω]`, up to the Hessian (one dual pass per stem over
 its analytic gradient; nodes below e^-30 of the best skipped in the derivative passes).
 """
 function torsion_vgh(m, prior::TorsionPrior, nodes::TorsionNodes, v::AbstractVector, order::Int)
@@ -449,8 +449,8 @@ end
     angle_fit_map_torsion!(m; u0, prior, recenter, nodes_kw, options)
 
 The fit behind `fit_map_torsion!`: fit without torsion; nodes; fit with each rate at its best mode; nodes; integrated fit
-(Newton on `torsion_vgh`); `recenter` times: nodes at the new fit and refit. Returns (; u, H, result, m_ω, s_ω, ω,
-ω_mean, ω_sd, loglik, nodes), u = [model u; m_ω; log s_ω].
+(Newton on `torsion_vgh`); `recenter` times: nodes at the new fit and refit. Returns (; u, H, result, `m_ω`, `s_ω`, ω,
+`ω_mean`, `ω_sd`, loglik, nodes), `u = [model u; m_ω; log s_ω]`.
 """
 function angle_fit_map_torsion!(
         m; u0, prior::TorsionPrior = TorsionPrior(), recenter::Int = 1, nodes_kw = (;),
@@ -533,7 +533,7 @@ _tfit(tfit::NamedTuple) = tfit
 
 Exact posterior of the organ order of each stem, summed over the nuisance grid (ϕ, o, ψ, κ node), the candidate rank
 offsets and, from a `fit_map_torsion!` result `tfit`, the twist rate (its quadrature nodes, weighted by the fitted
-population law); with plain parameters u, at each stem's current rate. Per stem: (; ρ, samples, ω_mean, ω_sd), with
+population law); with plain parameters u, at each stem's current rate. Per stem: (; ρ, samples, `ω_mean`, `ω_sd`), with
 ρ[i, d + k + 1] = P(σ[i] = i + d | angles) (the organ observed at position i is canonical organ i + d) and `nsamples`
 exact draws of σ (a nuisance state drawn from its posterior, then σ by forward filtering, backward sampling).
 States of posterior weight below `prune` are skipped (their mass is renormalised away).
@@ -616,7 +616,7 @@ end
     spiral_posterior(m, tfit)
 
 Posterior of the spiral of each stem, summed over the order, ϕ, κ, the rank offsets and (from a `fit_map_torsion!`
-result) the twist rate: one (; p_lucas, p_ccw) per stem, P(ψ = Lucas angle | angles) and P(o = +1 | angles) (o = +1:
+result) the twist rate: one (; `p_lucas`, `p_ccw`) per stem, P(ψ = Lucas angle | angles) and P(o = +1 | angles) (o = +1:
 the site angles increase, a counter-clockwise spiral). Only forward passes (cheaper than `order_posterior`).
 """
 function spiral_posterior(m, ut)
@@ -643,7 +643,7 @@ end
 
 Most likely organ order of each stem: the joint maximum a posteriori of (σ, ϕ, o, ψ, κ node, rank offset, twist rate).
 With plain parameters u, at each stem's current twist rate; from a `fit_map_torsion!` result `tfit`, the twist rate is
-decoded with the order (prior: the fitted population law N(m_ω, s_ω²)): the best quadrature node, refined by golden
+decoded with the order (prior: the fitted population law `N(m_ω, s_ω²)`): the best quadrature node, refined by golden
 section within the sd of its mode (`refine`), since a different twist can change the order. Returns the vector of
 orders σ (σ[i] = canonical index of the organ at position i), or with `full = true` one NamedTuple per stem
 (; σ, ω, ϕ, o, ψ, κ, candidate, score).
