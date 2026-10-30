@@ -24,7 +24,7 @@ orders is
 
 The sum on the right is the **permanent** of ``W``: the determinant without its signs (and ``Z`` is the permanent of
 ``h``). Bad news at first sight: a determinant costs ``n^3`` operations, but a general permanent is among the hardest
-problems to compute (Valiant 1979).
+problems to compute [valiant1979complexity](@cite).
 
 ## 3.2 The band
 

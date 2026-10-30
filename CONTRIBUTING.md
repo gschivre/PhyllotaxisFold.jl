@@ -20,6 +20,10 @@ at the top of `docs/make.jl`; the manual is written to `docs/build/index.html`. 
 manual is built locally; `docs/make.jl` holds the commented `deploydocs` call for later. The equations are rendered by
 MathJax, which needs an internet connection.
 
+The references are in `docs/src/refs.bib`, cited in the pages by key (`[ferrell2012bistability](@cite)`, or
+`(@citet)` for "Ferrell (2012)") with [DocumenterCitations.jl](https://github.com/JuliaDocs/DocumenterCitations.jl).
+The list on the notation page is generated from the cited entries, and an unknown key fails the build.
+
 CI (`.github/workflows/CI.yml`) runs the tests on Julia 1.10 and the latest release, and builds the manual headless
 on every push to `main`. The built manual is kept as the run's `manual` artifact.
 

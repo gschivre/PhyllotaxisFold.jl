@@ -41,7 +41,7 @@ could only explain its scattered angles by spurious permutations, which would bi
 
 ## 2.3 The twist
 
-Many stems twist as they elongate (Landrein et al. 2013). If the surface of a stem of radius ``r_s`` is inclined by a
+Many stems twist as they elongate [landrein2013impaired](@cite). If the surface of a stem of radius ``r_s`` is inclined by a
 small angle ``\alpha_s``, an internode of length ``\ell`` rotates everything above it by ``\ell \tan\alpha_s / r_s``.
 The rotations add up along the stem. The organ at height ``p`` is then rotated by
 

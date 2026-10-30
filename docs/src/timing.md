@@ -24,11 +24,11 @@ alike, which leaves the order unchanged ([§5.2](timing.md)), and its jitter sim
 
 **Why a fold.** The **assumption** is that the network has two stable states over a range of inputs, uncommitted and
 committed, and that the rising input makes the uncommitted state disappear. Positive feedback readily builds such a
-switch, as in the all-or-none maturation of *Xenopus* oocytes (Ferrell 2012). Nothing else is assumed: not the genes,
+switch, as in the all-or-none maturation of *Xenopus* oocytes [ferrell2012bistability](@cite). Nothing else is assumed: not the genes,
 nor their number, nor their kinetics. When a smoothly rising input makes a stable state disappear, the generic way is a
 *fold*: the state merges with the threshold that separates it from the committed state, and both vanish (figure 1). The
-other ways need special conditions, a symmetry or a finely tuned network (Sáez et al. 2022). The fold also explains why
-commitment lasts: the committed state is still there when the input falls back, so the cell stays in it (Ferrell 2012).
+other ways need special conditions, a symmetry or a finely tuned network [saez2022dynamical](@cite). The fold also explains why
+commitment lasts: the committed state is still there when the input falls back, so the cell stays in it [ferrell2012bistability](@cite).
 
 !!! details "Why a fold is generic"
     Write the network as ``d\mathbf y/dt = \mathbf F(\mathbf y; u, \boldsymbol\theta)``, with ``\mathbf y`` its
@@ -40,7 +40,7 @@ commitment lasts: the committed state is still there when the input falls back, 
     ``\mathbf F``. The fold also survives changes of the network: if a second parameter varies too (between cells, or
     in a mutant), the folds form whole lines in the plane of the two parameters, while the other bifurcations sit at
     single points. A path through that plane crosses fold lines without any tuning, but hits one of those points only
-    by chance (Sáez et al. 2022). The fold is assumed non-degenerate: its curvature is not zero, and raising the input
+    by chance [saez2022dynamical](@cite). The fold is assumed non-degenerate: its curvature is not zero, and raising the input
     moves the system through the fold rather than just touching it.
 
 **One slow variable.** This is a **result**: near a fold, the whole network behaves as a single slow variable. All
@@ -82,8 +82,8 @@ smaller the margin, the longer it lingers: the passage takes a time proportional
 network whose reactions are all fast can produce a slow commitment.
 
 The same slowness shows up just *before* a fold: a system knocked off its state returns ever more slowly as the
-threshold nears. This *critical slowing down* is used to anticipate tipping points (Scheffer et al. 2009), and it has
-been measured in a living system: a cyanobacterial population pushed towards a fold (Veraart et al. 2012).
+threshold nears. This *critical slowing down* is used to anticipate tipping points [wissel1984universal, scheffer2009early](@cite), and it has
+been measured in a living system: a cyanobacterial population pushed towards a fold [veraart2012recovery](@cite).
 
 !!! details "Derivation"
     Without noise and at a constant margin ``\Delta > 0``, the time from the uncommitted state ``x_0 < 0`` to the
@@ -114,12 +114,12 @@ The switch alone does not force this, so it is an **assumption**, but a natural 
 more slowly than the network in each cell responds, and a switch driven this slowly lags just behind its input: the cell
 commits shortly after the uncommitted state has disappeared, while the margin is still small (**result**, box below).
 Such slow passages through a bifurcation are known to shape cell fates in morphogen gradients, where *when* a cell
-crosses, not only how far the input goes, decides the outcome (Wedgwood & Ashwin 2022).
+crosses, not only how far the input goes, decides the outcome [wedgwood2022morphogen](@cite).
 
 The meristem points the same way. A new primordium inhibits the emergence of primordia around it, which keeps the input
 of the nearby sites from rising far above threshold. And cells of the meristem integrate auxin over time before changing
 fate: the transcriptional response is out of phase with the build-up of auxin, and longer auxin treatments give stronger
-responses (Galvan-Ampudia et al. 2020). A switch near its fold behaves this way: a brief rise above threshold is not
+responses [galvan2020temporal](@cite). A switch near its fold behaves this way: a brief rise above threshold is not
 enough, since the cell must cross the slow region before the input falls back. With noise, this becomes a matter of
 odds: the longer the input stays above threshold, the more likely the cell commits.
 
@@ -130,7 +130,7 @@ odds: the longer the input stays above threshold, the more likely the cell commi
     Airy function). The cell therefore commits a time of order ``T_0`` after the fold, at a margin of order
     ``(\dot\Delta/k_m)^{2/3}``, which is small whenever the input rises slowly compared with the switch: the classical
     delay of a slow passage through a fold. Noise spreads the passage around this time; strong enough noise can even
-    trigger the escape a little before the fold, but it never makes the margin larger (Berglund & Gentz 2002).
+    trigger the escape a little before the fold, but it never makes the margin larger [berglund2002effect](@cite).
 
 **Delays in the network.** Some steps take time by themselves (a transcript must be elongated and matured; the
 feedback that locks the switch may lag). A delay upstream of the switch shifts every commitment equally and leaves the
@@ -158,7 +158,7 @@ Recall the mechanism of [§1.4](problem.md): site ``i`` is ready at time ``i`` (
 ``\tau_i = i + e_i`` with independent delays ``e_i \sim f``, and the order on the stem is the ranking of the
 ``\tau_i``. Only differences of delays matter, so ``f`` is defined up to a shift, and its core is centred at 0.
 Ranking items by independent noisy times is a classical model: Thurstone's law of comparative judgment
-(Thurstone 1927), here with commitment times as the noisy values.
+[thurstone1927law](@cite), here with commitment times as the noisy values.
 
 **Two sites first.** Sites 1 and 2 are swapped when site 2 commits first: ``2 + e_2 < 1 + e_1``, that is
 ``e_1 - e_2 > 1``. If the delays are Gaussian with sd ``\sigma_c``, their difference is Gaussian with sd ``\sigma_c\sqrt 2``, and

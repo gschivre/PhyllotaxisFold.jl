@@ -3,8 +3,7 @@
 ## 1.1 Organs on a spiral
 
 At the tip of a growing shoot, the meristem makes new organs one after the other. Each new organ (a *primordium*)
-appears where the auxin field allows it, away from the youngest organs, which inhibit their surroundings (Reinhardt
-et al. 2003; Shi & Vernoux 2019). This rule is enough for a regular pattern. In *Arabidopsis* the flowers follow a
+appears where the auxin field allows it, away from the youngest organs, which inhibit their surroundings [reinhardt2003regulation, shi2019patterning](@cite). This rule is enough for a regular pattern. In *Arabidopsis* the flowers follow a
 spiral, two successive flowers being separated by the **divergence angle** ``\psi \approx 137.5^\circ``, the golden
 angle. Some plants follow a rarer spiral of ``\approx 99.5^\circ`` (the Lucas angle), and the spiral turns clockwise
 or counter-clockwise depending on the plant.
@@ -15,8 +14,7 @@ two initiations).
 
 ## 1.2 A swap and its signature
 
-The record is often disturbed: two organs initiated close in time can end up inverted along the stem (Besnard et al.
-2014; Refahi et al. 2016). Their *positions* on the spiral are correct, but the organ of the later site sits below
+The record is often disturbed: two organs initiated close in time can end up inverted along the stem [besnard2014cytokinin, refahi2016stochastic](@cite). Their *positions* on the spiral are correct, but the organ of the later site sits below
 that of the earlier one.
 
 Number the sites of the spiral ``j = 1, 2, \dots`` in spiral order (the *canonical* order); site ``j`` sits at the

@@ -25,11 +25,11 @@ per displacement ``d = -k, \dots, k``. With the angles, the weights of [§3](ord
 W_{p,j} = e^{\eta_{j-p}}\; e^{\kappa \cos(y_p - \phi - o\,(j-1)\,\psi - \omega_s x_p)} .
 ```
 
-It is close in spirit to the stochastic model of Refahi et al. (2016), where each candidate site fires at a rate set
+It is close in spirit to the stochastic model of [refahi2016stochastic](@citet), where each candidate site fires at a rate set
 by the inhibitory field, and keeps what the orders of a stem identify: how costly each displacement is. In the
-language of ranking models, it is a Mallows model (Mallows 1957), which weighs each order by how far it is from the
+language of ranking models, it is a Mallows model [mallows1957non](@cite), which weighs each order by how far it is from the
 canonical one; here that distance is a sum of displacement costs. A Mallows model of this kind has recently been
-fitted with the same banded recursion (Alimohammadi & Asgari 2025).
+fitted with the same banded recursion [alimohammadi2025mallows](@cite).
 
 ## 4.2 What ``\eta`` means
 
