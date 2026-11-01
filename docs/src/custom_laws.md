@@ -31,7 +31,7 @@ precise commitment.
 
 **Definition.**
 
-```julia
+```@example laws
 using PhyllotaxisFold, Random
 using Distributions: TDist
 import PhyllotaxisFold: delay_logpdf, free_parameters, with_free_parameters, reported_parameters, nshared_parameters
@@ -50,6 +50,7 @@ with_free_parameters(::StudentDelay, v) = StudentDelay(exp(v[1]), exp(v[2]))
 reported_parameters(f::StudentDelay) = (; s = f.s, ν = f.ν)                   # reported with standard errors
 nshared_parameters(::StudentDelay) = 1                                        # groups fitted jointly share the scale
 Base.rand(rng::AbstractRNG, f::StudentDelay) = f.s * rand(rng, TDist(f.ν))    # a fast sampler
+nothing # hide
 ```
 
 **Usage.** The law is used like the default one, with the samples of step 1 of the [worked analysis](workflow.md):
@@ -98,7 +99,7 @@ choosing between laws.
 earliest of many independent Gaussian times follows a **Gumbel** law for minima (extreme-value theory): a delay
 ``e = -\beta G``, with ``G`` a standard Gumbel variable. One parameter, and a long early tail.
 
-```julia
+```@example laws
 struct GumbelDelay{T <: Real} <: DelayLaw
     β::T
 end
@@ -107,6 +108,7 @@ free_parameters(f::GumbelDelay) = [log(f.β)]
 with_free_parameters(::GumbelDelay, v) = GumbelDelay(exp(v[1]))
 reported_parameters(f::GumbelDelay) = (; β = f.β)
 Base.rand(rng::AbstractRNG, f::GumbelDelay) = f.β * log(-log(rand(rng)))
+nothing # hide
 ```
 
 **Comparison.** On the same simulated stems it scores ``-44.1`` (wild type) and ``-132.9`` (mutant), far behind the

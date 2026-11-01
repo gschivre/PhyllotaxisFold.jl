@@ -93,6 +93,47 @@ delay_logpdf(f::ExpDelay, z) = z < 0 ? -Inf : -z / f.m
 free_parameters(f::ExpDelay) = [log(f.m)]
 with_free_parameters(::ExpDelay, v) = ExpDelay(exp(v[1]))
 
+# daily cumulative counts of open flowers of plants with flowering parameters p (`Plastochron`), each recorded until 3
+# days without a new flower; and each plant's change point τ
+function simulate_counts(rng, p, plants)
+    return map(1:plants) do _
+        τi = exp(p[4] + exp(p[5]) * randn(rng))
+        c, acc, z, k = Float64[], 0.0, 0, 0
+        while z < 3 && k < 80
+            k += 1
+            n = rand(rng, Poisson(max(flowering_cumulative(Float64(k), p, τi) - flowering_cumulative(k - 1.0, p, τi), 1.0e-12)))
+            acc += n; push!(c, acc)
+            z = (n == 0 && acc > 0 ? z + 1 : 0)
+        end
+        (; c, τ = τi)
+    end
+end
+
+# The code examples of the manual and the README, run as written: the Julia blocks of a page in order (indented ones
+# dedented), each run with `include_string` in a sandbox module that stands in for the reader's session. The sandbox
+# shrinks the work, not the code: coarse grids and quick twist fits through two wrappers, small simulated data in
+# place of the reader's, and a few textual substitutions of sizes.
+doc_path(page) = joinpath(@__DIR__, "..", page == "README.md" ? page : joinpath("docs", "src", page))
+doc_blocks(page) = [replace(m.captures[1], r"^    "m => "") for m in eachmatch(r"```(?:julia|@example \w+)\n(.*?)```"s, read(doc_path(page), String))]
+function doc_sandbox(; data...)
+    mod = Module(:ManualExample)
+    Core.eval(
+        mod, quote
+            import PhyllotaxisFold
+            using Random, Statistics
+            PhyllotaxisModelAD(args...; kw...) = PhyllotaxisFold.PhyllotaxisModelAD(args...; ngrid_ϕ = 8, ngrid_κ = 4, kw...)
+            fit_map(m; kw...) = PhyllotaxisFold.fit_map(m; recenter = 0, nodes_kw = (; nnodes = 3), kw...)
+            using PhyllotaxisFold
+        end
+    )
+    for (k, v) in data
+        Core.eval(mod, :($k = $v))
+    end
+    return mod
+end
+run_blocks!(mod, page, idxs; subs = ()) =
+    foreach(i -> include_string(mod, foldl(replace, subs; init = doc_blocks(page)[i]), "$(page) block $(i)"), idxs)
+
 # stems with a twist (degrees per position) for the angle-model and twist tests: one simulation, a coarse nuisance grid
 const TWIST = simulate_stems(LAW; plants = 8, organs = 40, logμκ = 1.8, torsion_mean = 4.0, torsion_sd = 3.0, rng = Xoshiro(21))
 twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, outlier = false, torsion)
@@ -409,7 +450,7 @@ twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisP
         @test divergence_angles([0.1 + 2.0 * (i - 1) for i in 1:5]; degrees = false) ≈ fill(2.0, 4)
         @test divergence_angles([1.0 - (i - 1) * PhyllotaxisFold.Golden_angle for i in 1:6]; o = -1) ≈ fill(rad2deg(PhyllotaxisFold.Golden_angle), 5)
         sx = simulate_stems([-1.0, -2.0]; plants = 3, organs = [20, 25, 30], logμκ = 12.0, rng = Xoshiro(3))
-        @test length.(sx.angles) == [20, 25, 30]
+        @test length.(sx.angles) == [20, 25, 30] && all(y -> all(0 .≤ y .< 2π), sx.angles) # azimuths, as measured
         @test all(maximum(abs, sin.((sx.angles[s] .- (sx.ϕ[s] .+ sx.o[s] .* (sx.orders[s] .- 1) .* sx.ψ[s])) ./ 2)) < 0.05 for s in 1:3)
         # spiral of each stem: golden vs Lucas and the orientation
         sp = simulate_stems(LAW; plants = 30, organs = 30, logμκ = 1.8, α = 0.6, rng = Xoshiro(12))
@@ -755,18 +796,8 @@ twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisP
         @test TP ≈ [1 / flowering_rate(opening_time(k - 0.5), p, τ) for k in 1:30] rtol = 1.0e-6
         # simulated plants recorded until 3 days without flowers: population parameters and per-plant change points
         rng = Xoshiro(17)
-        plants = map(1:30) do _
-            τi = exp(p[4] + exp(p[5]) * randn(rng))
-            c, acc, z, k = Float64[], 0.0, 0, 0
-            while z < 3 && k < 80
-                k += 1
-                n = rand(rng, Poisson(max(flowering_cumulative(Float64(k), p, τi) - flowering_cumulative(k - 1.0, p, τi), 1.0e-12)))
-                acc += n; push!(c, acc)
-                z = (n == 0 && acc > 0 ? z + 1 : 0)
-            end
-            c[5] = NaN # a day without record
-            (; c, τ = τi)
-        end
+        plants = simulate_counts(rng, p, 30)
+        foreach(pl -> pl.c[5] = NaN, plants) # a day without record
         fit = fit_flowering([pl.c for pl in plants])
         @test fit.converged
         @test all(abs.((fit.p[1:4] .- p[1:4]) ./ fit.se[1:4]) .< 3)
@@ -794,6 +825,59 @@ twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisP
         @test T.se ≈ sqrt(J' * fit.V * J) rtol = 1.0e-4
         h = in_hours(0.4, 0.05, T)
         @test h.estimate ≈ 0.4 * T.T && h.se ≈ hypot(T.T * 0.05, 0.4 * T.se)
+    end
+
+    @testset "Manual and README: the code examples run as written" begin
+        # every function a block calls exists (or is defined in the blocks of its page)
+        pages = ["README.md"; filter(endswith(".md"), readdir(joinpath(@__DIR__, "..", "docs", "src")))]
+        for page in pages
+            code = join(doc_blocks(page), "\n")
+            defined = Set([m.captures[1] for m in eachmatch(r"(?:function|struct)\s+([A-Za-z_][\w!]*)", code)])
+            union!(defined, [split(m.captures[1], '.')[end] for m in eachmatch(r"^\s*([A-Za-z_][\w!.]*)(?:\{[^}]*\})?\([^=\n]*\)\s*=[^=]"m, code)])
+            called = unique([m.captures[1] for m in eachmatch(r"(?<![\w.:])([A-Za-z_\p{Greek}][\w!]*)\(", code)])
+            unknown = filter(n -> !(n in defined) && !any(M -> isdefined(M, Symbol(n)), (PhyllotaxisFold, Base, Statistics, Random)), called)
+            @test isempty(unknown) || (page, unknown) == ()
+        end
+        # small stems of the running example, with the stem length (mm) below each organ
+        tiny(seed; S = 8, n = 25) = (
+            x = [collect(range(0.0, 120.0; length = n)) for _ in 1:S];
+            (; x, angles = simulate_stems(LAW; plants = S, organs = n, x, logμκ = 1.8, torsion_mean = 0.3, torsion_sd = 0.2, rng = Xoshiro(seed)).angles)
+        )
+        fewer = ["nsamples = 200" => "nsamples = 30"]
+        # README: the quick start (fit, decoding, posterior, delay law, profile), then the custom delay law
+        readme = doc_sandbox()
+        run_blocks!(readme, "README.md", 2:3; subs = [fewer; "plants = 60, organs = 45" => "plants = 8, organs = 25"; "length = 45)) for _ in 1:60]" => "length = 25)) for _ in 1:8]"])
+        @test readme.r isa PhyllotaxisFit && readme.fit.law isa GaussianExpTails && readme.st.law isa DelayLaw
+        # home page
+        t = tiny(2)
+        home = doc_sandbox(; t.angles, t.x)
+        run_blocks!(home, "index.md", 1:1; subs = fewer)
+        @test home.prof.d == 1:4 && home.fit.converged
+        # the worked analysis, both groups and the hours
+        t1, t2 = tiny(3), tiny(4)
+        counts = [pl.c for pl in simulate_counts(Xoshiro(5), [0.1, log(2.5), log(0.6), log(14.0), log(0.2)], 20)]
+        work = doc_sandbox(;
+            angles_wt = t1.angles, x_wt = t1.x, angles_mutant = t2.angles, x_mutant = t2.x,
+            smp_wt = known_samples(LAW, 30, 25, 6), smp_mutant = known_samples(LAW, 30, 25, 12), counts_wt = counts
+        )
+        run_blocks!(work, "workflow.md", 1:6; subs = fewer)
+        @test work.cmp.df == 3 && isfinite(work.inf2.Δoff[1].estimate)
+        # custom delay laws: the Student t and the Gumbel law, fitted and simulated
+        laws = doc_sandbox(; smp = known_samples(LAW, 30, 25, 8), smp_wt = known_samples(LAW, 30, 25, 9), smp_mutant = known_samples(LAW, 30, 25, 10))
+        run_blocks!(laws, "custom_laws.md", 1:3)
+        @test laws.st.converged && rand(Xoshiro(1), laws.GumbelDelay(0.4)) isa Float64
+        # simulating stems, and the posterior predictive check on a small fit
+        sim = doc_sandbox(; m = PhyllotaxisModelAD(tiny(11).angles; ngrid_ϕ = 8, ngrid_κ = 4))
+        run_blocks!(sim, "simulation.md", 1:4; subs = ["for _ in 1:200]" => "for _ in 1:3]"])
+        @test length(sim.sim.angles) == 70 && 0 ≤ sim.observed ≤ 1 && length(sim.replicated) == 3
+        # the numbers quoted on the timing page
+        tim = doc_sandbox()
+        run_blocks!(tim, "timing.md", 1:1)
+        @test tim.P([2, 1], tim.gauss) ≈ 0.046 atol = 5.0e-4
+        @test all(isapprox.(tim.odds(tim.gauss), (0.0508, 0.0487); atol = 5.0e-4))
+        @test all(isapprox.(tim.odds(tim.ex), (0.0913, 0.0941); atol = 5.0e-4))
+        @test tim.P([3, 1, 2], tim.gauss) + tim.P([2, 3, 1], tim.gauss) ≈ 0.0003 atol = 5.0e-5
+        @test tim.P([3, 1, 2], tim.ex) + tim.P([2, 3, 1], tim.ex) ≈ 0.024 atol = 5.0e-4
     end
 
     @testset "Code quality: Aqua and explicit imports" begin

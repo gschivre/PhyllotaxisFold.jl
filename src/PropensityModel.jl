@@ -604,7 +604,7 @@ function sample_prior(model::PhyllotaxisModelAD{T}; n::Int = round(Int, mean(map
         πo = (_has_outlier(model) ? rand(rng, dists[4]) : 0.0)
         ω = (_has_twist(model) ? rand(rng, Normal(rand(rng, dists[end - 1]), rand(rng, dists[end]))) : 0.0)
         bad = [rand(rng) < πo for _ in 1:n]
-        y = T[bad[i] ? 2π * rand(rng) : rand(rng, VonMises(mod2pi(ϕ + o * (σ[i] - 1) * ψ + deg2rad(ω) * x[i]), κ)) for i in 1:n]
+        y = T[bad[i] ? 2π * rand(rng) : mod2pi(rand(rng, VonMises(mod2pi(ϕ + o * (σ[i] - 1) * ψ + deg2rad(ω) * x[i]), κ))) for i in 1:n]
         (; data = y, permutation = σ, offset_angle = ϕ, orientation = o, canonical_angle = ψ, dispersion = κ, outliers = findall(bad), twist = ω)
     end
 end

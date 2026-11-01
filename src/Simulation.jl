@@ -27,7 +27,8 @@ function _simulate_angles(
     o = (rand(rng) < 0.5 ? 1 : -1)
     ω = torsion_mean + torsion_sd * randn(rng)
     bad = [rand(rng) < outlier for _ in 1:n]
-    y = [bad[p] ? 2π * rand(rng) : rand(rng, VonMises(mod2pi(ϕ + o * (σ[p] - 1) * ψ + deg2rad(ω) * x[p]), κ)) for p in 1:n]
+    # (the von Mises draw lies within π of its centre: wrapped to [0, 2π), like measured azimuths)
+    y = [bad[p] ? 2π * rand(rng) : mod2pi(rand(rng, VonMises(mod2pi(ϕ + o * (σ[p] - 1) * ψ + deg2rad(ω) * x[p]), κ))) for p in 1:n]
     return (; y, ω, κ, outliers = findall(bad), ψ, o, ϕ)
 end
 
@@ -42,7 +43,7 @@ the angles are `y_p ~ vM(ϕ + o (σ[p] − 1) ψ + ω_s x_p, κ_s)`, replaced wi
 `organs`: one count, or one per stem; `x`: the twist coordinate of each stem (default: the positions 0, 1, …, or
 `torsion_coordinate(internodes)` for the stem length in mm); twist `ω_s ~ Normal(torsion_mean, torsion_sd)` degrees per
 unit of x. The precision of the angles: a von Mises of concentration κ has a circular sd of about `1 / √κ` radians
-(κ = 6: 23°). Returns (; angles, orders, torsion, κ, outliers, ψ, o, ϕ) (outliers: the positions whose angle is
+(κ = 6: 23°). Returns (; angles, orders, torsion, κ, outliers, ψ, o, ϕ) (angles in [0, 2π), radians; outliers: the positions whose angle is
 uniform; ψ, o, ϕ: the spiral of each stem, its canonical angle, orientation and offset, so that site j sits at
 `ϕ + o (j − 1) ψ` before the twist).
 """

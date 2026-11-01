@@ -52,7 +52,7 @@ that does not belong to the spiral.
 **Simulation.** Seventy stems of 30 to 60 organs, whose internodes shorten from about 9 to 3 mm along the stem, with
 the parameters of the table above (typical of wild-type *Arabidopsis thaliana* stems measured from the base):
 
-```julia
+```@example simulation
 using PhyllotaxisFold, Random
 rng = Xoshiro(2026)
 
@@ -69,6 +69,7 @@ sim = simulate_stems(
     outlier = 0.005,                                    # outliers
     rng,
 )
+nothing # hide
 ```
 
 **What comes back.** One entry per stem in each field:
@@ -84,18 +85,21 @@ sim = simulate_stems(
 **Divergence angles.** `divergence_angles` turns absolute angles into the angles between consecutive organs, in
 degrees. Given the orientation of the stem's spiral, the canonical divergence reads 137.5° whichever way it turns:
 
-```julia
-s = 1                                                  # the first stem
-divergence_angles(sim.angles[s]; o = sim.o[s])         # as measured
+```@example simulation
+s = 1                                                  # the first stem (figure 1)
+measured = divergence_angles(sim.angles[s]; o = sim.o[s])
 untwisted = sim.angles[s] .- deg2rad(sim.torsion[s]) .* x[s]
-divergence_angles(untwisted; o = sim.o[s])             # with the stem's twist removed
+corrected = divergence_angles(untwisted; o = sim.o[s]) # with the stem's twist removed
+
+# the first organs of the stem, in degrees
+(; absolute = rad2deg.(sim.angles[s][1:4]), divergence = measured[1:3], divergence_untwisted = corrected[1:3])
 ```
 
-Figure 1 shows one stem, figure 2 the divergence angles of all seventy.
+Figure 1 shows this stem, figure 2 the divergence angles of all seventy.
 
 ![One simulated stem](figures/s1_simulated_stem.png)
 
-*Figure 1. One simulated stem. Top: the absolute angles as simulated (grey), with the twist removed (red), and the site
+*Figure 1. Stem 1 of the example, whose divergence angles are printed above. Top: the absolute angles as simulated (grey), with the twist removed (red), and the site
 of each organ in its true order (green); the red points scatter around the green ones by the angular imprecision. The
 labels mark the displaced organs with their displacement ``d = \sigma[p] - p`` (+1: the organ belongs to the site
 above its position, −1: to the site below).

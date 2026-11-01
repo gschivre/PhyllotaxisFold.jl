@@ -27,16 +27,14 @@ function simulation_page_stems()
 end
 
 # s1: one stem, absolute and divergence angles (as simulated, twist removed, and the sites of its true order)
-function fig_simulated_stem(sim, x; s = nothing)
-    # a golden stem with a few displaced organs
-    s = something(s, findfirst(i -> sim.ψ[i] == Golden_angle && 3 ≤ count(sim.orders[i] .!= eachindex(sim.orders[i])) ≤ 8, eachindex(sim.angles)))
+function fig_simulated_stem(sim, x; s = 1) # stem 1: the stem whose divergence angles the page prints
     y, σ, o, ψ, ϕ, ω = sim.angles[s], sim.orders[s], sim.o[s], sim.ψ[s], sim.ϕ[s], sim.torsion[s]
     n = length(y)
     yc = y .- deg2rad(ω) .* x[s] # twist removed
     site = ϕ .+ o .* (σ .- 1) .* ψ # the site each organ belongs to (its true order)
     deg(v) = mod.(rad2deg.(v), 360)
     fig = Figure(size = (1000, 640))
-    ttl = "simulated stem: twist $(round(ω; digits = 2)) °/mm, κ = $(round(sim.κ[s]; digits = 1)), ψ = 137.5°, " *
+    ttl = "stem $(s) of the example: twist $(round(ω; digits = 2)) °/mm, κ = $(round(sim.κ[s]; digits = 1)), ψ = 137.5°, " *
         "$(count(σ .!= 1:n)) displaced organs"
     ax1 = Axis(fig[1, 1]; ylabel = "absolute angle (°)", yticks = 0:100:300, title = ttl, titlesize = 14)
     scatterlines!(ax1, 1:n, deg(y); color = :gray55, linestyle = :dash, marker = :utriangle, markersize = 8, label = "as simulated (twisted)")
