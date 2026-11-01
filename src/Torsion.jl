@@ -1,85 +1,30 @@
-"""
-    Torsion
+# Torsion
+#
+# Stem torsion, shared by the models. The organ at stem position p is rotated by `ω_s x_p` in the absolute frame, with one
+# rate `ω_s` per stem (degrees per unit of x) and `x_p` the torsion coordinate of the stem:
+#
+# - the stem length below p in mm, `torsion_coordinate(ℓ)` from the n − 1 internodes (preferred: the twist accumulates
+#   along the length; Landrein et al. 2013: an internode of length I on a stem of radius r twisted by α rotates the organs
+#   above it by I tan α / r, so `ω_s = tan α / r` for a constant α / r);
+# - p − 1, `torsion_coordinate(n)`, when the length is not measured (degrees per stem position).
+#
+# The rates are random effects, like κ: `ω_s ~ N(m_ω, s_ω²)`, with (`m_ω`, `s_ω`) fitted (hyperprior `TorsionPrior`) and each
+# `ω_s` integrated out of its stem's likelihood. The per-stem likelihood is sharp compared with the population law, and can be multimodal in ω (a twist
+# per position is confounded with the divergence angle; alternative spirals with a few permutations give secondary modes),
+# so the integral uses *adaptive* quadrature: Gauss–Hermite nodes placed on each mode of the stem's own likelihood, found
+# by a scan at preliminary parameters (`stem_nodes`), and kept fixed during the fit (an importance-sampling rule with a
+# Gaussian-mixture proposal, `TorsionNodes`). The fitted objective is then a smooth function of the global parameters and
+# (`m_ω`, `log s_ω`), maximised by Newton (`newton_map` and the derivatives are in `AngleLikelihood.jl`).
 
-Stem torsion, shared by the models. The organ at stem position p is rotated by `ω_s x_p` in the absolute frame, with one
-rate `ω_s` per stem (degrees per unit of x) and `x_p` the torsion coordinate of the stem:
-
-- the stem length below p in mm, `torsion_coordinate(ℓ)` from the n − 1 internodes (preferred: the twist accumulates
-  along the length; Landrein et al. 2013: an internode of length I on a stem of radius r twisted by α rotates the organs
-  above it by I tan α / r, so `ω_s = tan α / r` for a constant α / r);
-- p − 1, `torsion_coordinate(n)`, when the length is not measured (degrees per stem position).
-
-The rates are random effects, like κ: `ω_s ~ N(m_ω, s_ω²)`, with (`m_ω`, `s_ω`) fitted (hyperprior `TorsionPrior`) and each
-`ω_s` integrated out of its stem's likelihood. The per-stem likelihood is sharp compared with the population law, and can be multimodal in ω (a twist
-per position is confounded with the divergence angle; alternative spirals with a few permutations give secondary modes),
-so the integral uses *adaptive* quadrature: Gauss–Hermite nodes placed on each mode of the stem's own likelihood, found
-by a scan at preliminary parameters (`stem_nodes`), and kept fixed during the fit (an importance-sampling rule with a
-Gaussian-mixture proposal, `TorsionNodes`). The fitted objective is then a smooth function of the global parameters and
-(`m_ω`, `log s_ω`), maximised by Newton (`newton_map`; the derivatives are in `AngleLikelihood`).
-"""
-module Torsion
-
-using Statistics
-using Distributions: Normal, logpdf
-using LogExpFunctions, FastGaussQuadrature
-using Optim, NLSolversBase
-using ..Common: _halft
-
-# default options of the Newton MAP fits
-const MAP_OPTIONS = Optim.Options(g_tol = 1.0e-5, iterations = 100)
-
-export StemTorsion, TorsionPrior, TorsionNodes, torsion_coordinate, torsion_corrected, torsion_step, torsion_hyperprior,
-    scan_rate, stem_nodes, node_logterms, node_posterior, newton_map, corrected_angles, update_torsion!,
-    torsion_nodes, fit_map_torsion!, golden_section_max
 
 """
-    corrected_angles(model, s; ω)
+    corrected_angles(model, s; ω = 0)
+    corrected_angles(fit, s)
 
-Angles of plant s with its twist removed (rate ω, the fitted one by default). Methods for
-`PhyllotaxisModelAD`.
+Angles of stem s with a twist of rate ω (degrees per unit of the twist coordinate) removed; from a `fit_map` result, the
+stem's most probable rate (no correction for a model without twist).
 """
 function corrected_angles end
-
-"""
-    update_torsion!(model, θ_or_u; scan = -25:0.5:25)
-
-Set each plant's twist rate to the value maximising its own log-likelihood at the global parameters (scan in degrees per
-mean step of the coordinate, then golden section). Methods: `PhyllotaxisModelAD`
-(unconstrained u).
-"""
-function update_torsion! end
-
-"""
-    torsion_nodes(model, θ_or_u; kwargs...)
-
-Quadrature nodes of every stem's twist rate (`stem_nodes` applied to each stem's log-likelihood at the given global
-parameters). Methods: `PhyllotaxisModelAD` (θ or u).
-"""
-function torsion_nodes end
-
-"""
-    fit_map_torsion!(model; prior = TorsionPrior(), u0, recenter = 1, nodes_kw = (;), options)
-
-MAP of the global parameters and of the twist population (`m_ω`, `log s_ω`), with each stem's rate integrated out:
-1. fit without torsion; 2. nodes at that fit, rates set to each stem's best mode; 3. fit with these rates fixed;
-4. nodes at that fit; 5. Newton on the integrated objective; then `recenter` times: nodes at the new fit and refit.
-Returns (; fit, `m_ω`, `s_ω`, ω, `ω_mean`, `ω_sd`, loglik, nodes) (loglik: Σ of the integrated stem log-likelihoods, priors
-excluded): fit = (; θ, u, H, result) with `u = [global u; m_ω; log s_ω]` and H the
-Hessian of the log posterior in u (−inv(H): Laplace covariance); per stem, ω the most probable mode (used by
-`corrected_angles`), `ω_mean` and `ω_sd` the posterior mean and sd of the rate (aliases included). Methods:
-`PhyllotaxisModelAD` (or its `TransformedLogDensityProblem`).
-
-The model's stored twist rates (`model.torsion.ω`, the default rate of `stem_loglik`, `corrected_angles` and of the
-decoding functions given plain parameters u) are overwritten: by each stem's most probable mode at the end.
-"""
-function fit_map_torsion! end
-
-"torsion coordinates (one vector per stem) and rates (degrees per unit of the coordinate, one per stem, start at 0)"
-struct StemTorsion
-    x::Vector{Vector{Float64}}
-    ω::Vector{Float64}
-end
-StemTorsion(x::AbstractVector{<:AbstractVector}) = StemTorsion([collect(Float64, xs) for xs in x], zeros(length(x)))
 
 """
     TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0)
@@ -205,37 +150,13 @@ end
 "log terms `a_j = logw_j + ℓ_j + log N(ω_j | m, s)` of one stem's integral; the stem's integrated log-likelihood is logsumexp(a)"
 node_logterms(ω, logw, ℓ, m, s) = [logw[j] + ℓ[j] + logpdf(Normal(m, s), ω[j]) for j in eachindex(ω)]
 
-"posterior of one stem's rate from its node terms a (Float64): (mean, sd, most probable mode centre)"
+"posterior of one stem's rate from its node terms a (Float64): (mean, sd, most probable mode centre, mass of that mode)"
 function node_posterior(ω, a, modes)
     pw = exp.(a .- logsumexp(a))
     μ = sum(pw .* ω)
     sd = sqrt(max(sum(pw .* (ω .- μ) .^ 2), 0.0))
     nn = length(ω) ÷ length(modes)
     mass = [sum(pw[((r - 1) * nn + 1):(r * nn)]) for r in eachindex(modes)]
-    return μ, sd, modes[argmax(mass)][1]
+    b = argmax(mass)
+    return μ, sd, modes[b][1], mass[b]
 end
-
-"""
-    newton_map(vgh, v0; options)
-
-Maximise f by Newton trust region, `vgh(v, order)` returning (f, ∇f or nothing, ∇²f or nothing) up to `order`. A
-non-finite evaluation is a rejected step. Returns (; v, H, result) with H the Hessian at the last Newton step.
-"""
-function newton_map(vgh, v0::AbstractVector; options = MAP_OPTIONS)
-    H_last = zeros(length(v0), length(v0))
-    fgh! = (F, G, H, v) -> begin
-        order = (H !== nothing ? 2 : G !== nothing ? 1 : 0)
-        l, g, h = vgh(v, order)
-        ok = isfinite(l) && (order < 1 || all(isfinite, g)) && (order < 2 || all(isfinite, h))
-        if order ≥ 2
-            H .= (ok ? .-(h .+ h') ./ 2 : 0.0)
-            ok && (H_last .= (h .+ h') ./ 2)
-        end
-        (G !== nothing) && (G .= (ok ? .-g : 0.0))
-        return ok ? -l : Inf
-    end
-    res = optimize(NLSolversBase.only_fgh!(fgh!), collect(Float64, v0), NewtonTrustRegion(), options)
-    return (; v = Optim.minimizer(res), H = H_last, result = res)
-end
-
-end # module Torsion

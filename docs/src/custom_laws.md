@@ -5,7 +5,7 @@ written as a law of the commitment delay can be fitted to the same stems and com
 on the same scale. This is the main use of the package beyond the default analysis, and it takes a few lines:
 
 - **The orders are reconstructed once.** Step 1 does not depend on the delay law, so every law is scored on the same
-  posterior orders ([§5.5](timing.md)), with nothing to refit.
+  posterior orders ([§5.5](timing.md#5.5-Re-weighting-the-reconstructed-orders)), with nothing to refit.
 - **Only the density is needed.** The exact probability of an order, the fit, the standard errors and the simulation
   of stems all follow from it, with exact derivatives.
 - **All laws share one scale.** Each fit returns its log-likelihood relative to the same reference, so any two laws
@@ -13,7 +13,7 @@ on the same scale. This is the main use of the package beyond the default analys
 
 ## Example: a Student t law
 
-**Hypothesis.** In the fold picture of [§5.1](timing.md), how precisely a site commits depends on its *margin*, how
+**Hypothesis.** In the fold picture of [§5.1](timing.md#5.1-Why-a-random-delay), how precisely a site commits depends on its *margin*, how
 far above the fold its input is when it switches. Nothing requires the margin to be the same at every site. Suppose
 that each site commits after a Gaussian delay, but with its own precision, and that the precision varies between sites
 as a Gamma law. The delay of a random site then follows a **Student t** law, with a scale ``s`` and ``\nu`` degrees of
@@ -116,7 +116,7 @@ many neighbour swaps (``q_1 = 0.111`` against 0.094 in the wild type, ``q_3 = 0.
 stems behave like this is a question for the data.
 
 **Closed form.** For this law, the probability of an order has a closed form (a Plackett–Luce law).
-[§6.8](validation.md) uses the same `GumbelDelay` to check the re-weighting against an exact answer.
+[§6.8](validation.md#6.8-An-exact-check-of-the-re-weighting) uses the same `GumbelDelay` to check the re-weighting against an exact answer.
 
 ## The interface
 
@@ -133,7 +133,7 @@ Notes:
 
 - **No normalising constant is needed.** The density is renormalised on a grid of delays, even when the constant
   depends on the parameters. Return `-Inf` outside the support, if the law has one.
-- **No location parameter.** Only differences between delays change the order ([§5.2](timing.md)), so a shift of the
+- **No location parameter.** Only differences between delays change the order ([§5.2](timing.md#5.2-The-law-of-the-order-of-a-paced-meristem)), so a shift of the
   whole law is not identified and its fit would drift. The scale is identified, because sites are ready one
   plastochron apart.
 - **Generic number types.** The fits pass dual numbers through these methods to get exact derivatives: use one type
@@ -146,22 +146,22 @@ The checks of the worked analysis apply to any law:
 - **The profile.** The fitted law's profile (`overtaking(fit.law)`) should agree with the one read from the orders
   (`overtaking_profile(smp)`). If it does not, the law's shape is distorting the data, whatever its score.
 - **The score.** Count about one unit of log-likelihood per extra parameter (Akaike), and do not interpret gains
-  below about 5 ([§6.4](validation.md)). To know how far a gain can be trusted, simulate stems from both laws and
+  below about 5 ([§6.4](validation.md#6.4-The-delay-law)). To know how far a gain can be trusted, simulate stems from both laws and
   refit.
 - **The grid.** Delays are evaluated on a grid from −30 to 30 plastochrons. If the density has not decayed at its
   edges, the fit warns: pass a wider `grid`, e.g. `range(-60.0, 60.0; step = 0.05)`. Keep a step that fits a whole
   number of times in one plastochron (0.05, 0.1, 0.25, …): sites are ready one plastochron apart, and the exact order
   probability and the overtaking profile shift the density by whole plastochrons on the grid.
-- **The parameters.** The orders identify the profile, not the parameters ([§5.6](timing.md)). A parameter that only
+- **The parameters.** The orders identify the profile, not the parameters ([§5.6](timing.md#5.6-The-delay-law)). A parameter that only
   shapes the far tails comes out with a large standard error; fewer parameters, or sharing one between groups, help.
 
 ## Choice of the default law
 
 `GaussianExpTails(σc; πL, mL, πE, mE)`: a Gaussian core of sd ``\sigma_c``, a fraction ``\pi_L`` of the sites late by
-an exponential delay of mean ``m_L``, and a fraction ``\pi_E`` early by ``m_E`` ([§5.6](timing.md)).
+an exponential delay of mean ``m_L``, and a fraction ``\pi_E`` early by ``m_E`` ([§5.6](timing.md#5.6-The-delay-law)).
 
 - **A Gaussian core** for the typical site, whose delay sums several small independent timing errors (readiness and
-  commitment, [§5.2](timing.md)). Its sd measures the precision of commitment, and it produces the neighbour swaps.
+  commitment, [§5.2](timing.md#5.2-The-law-of-the-order-of-a-paced-meristem)). Its sd measures the precision of commitment, and it produces the neighbour swaps.
 - **Tails** for the long displacements, which a Gaussian cannot produce without far too many neighbour swaps. The
   exponential is the simplest extra delay of a given mean, with no preferred duration; late and early are separate,
   since nothing requires the two sides to be alike.

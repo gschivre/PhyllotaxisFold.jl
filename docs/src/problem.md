@@ -85,13 +85,13 @@ given the order (spiral, noise and twist integrated out). Three questions follow
 2. How can one sum over ``10^{56}`` orders? Easily, *provided* ``P(\sigma)`` is a product of one term per organ, each
    depending only on the organ's height and site ([§3](orders.md)).
 3. Does ``P_f`` have that form? Not exactly: whether site ``i`` precedes site ``j`` depends on both of their delays,
-   which ties every position to all the others. A product can approach ``P_f``, not reproduce it ([§5.3](timing.md)).
+   which ties every position to all the others. A product can approach ``P_f``, not reproduce it ([§5.3](timing.md#5.3-Not-a-product,-but-close-to-one)).
 
 So ``p(y \mid f)`` cannot be computed by the easy sum. The way around is to fit an order law ``A`` that *does* have the
 product form and is flexible enough to follow the data. ``A`` tells exactly which orders are plausible for each stem,
 and gives samples of them; a good delay law should give these orders a high probability. This intuition is exact:
 since ``A`` and ``f`` describe the angles in the same way and differ only in the law of the order
-([§5.5](timing.md)),
+([§5.5](timing.md#5.5-Re-weighting-the-reconstructed-orders)),
 
 ```math
 \frac{p(y \mid f)}{p(y \mid A)} = \mathbb{E}_{\sigma \sim p(\sigma \mid y, A)}\left[\frac{P_f(\sigma)}{P_A(\sigma)}\right].
@@ -109,7 +109,7 @@ This is the two-step plan of the package:
 | measurement | symbol | used for |
 |---|---|---|
 | absolute azimuth of each organ (radians) | ``y_p`` | the likelihood |
-| internode lengths (mm), optional | ``\ell_p`` | the coordinate of the twist ([§2.3](angles.md)) |
+| internode lengths (mm), optional | ``\ell_p`` | the coordinate of the twist ([§2.3](angles.md#2.3-The-twist)) |
 | daily counts of open flowers, optional | ``c(\text{day})`` | the plastochron in hours (`Plastochron`) |
 
 The models use absolute azimuths rather than divergences ``y_{p+1} - y_p``: a misplaced organ then changes one

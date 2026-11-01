@@ -9,7 +9,9 @@
 # Results cached in docs/plackett_luce.jls.
 using LogExpFunctions
 const PF = PhyllotaxisFold
-const AL = PF.AngleLikelihood
+const AL = PF
+using PhyllotaxisFold.Permanents: PermanentWorkspace, PermutationGraph, toeplitz_weights!, forward!
+using PhyllotaxisFold: logbesseli
 
 const PL_FILE = joinpath(@__DIR__, "plackett_luce.jls")
 PLRES = isfile(PL_FILE) ? deserialize(PL_FILE) : Dict{Any, Any}()
@@ -97,24 +99,25 @@ end
 # per stem, the exact log p(y | f) with the twist integrated on the nodes of the propensity fit `r`, at its population
 # law, and the same for the propensity model itself (log p(y | A)); `law = nothing` gives the latter
 function exact_stem_logliks(m, r; β = nothing)
-    G = length(r.fit.u) - 2
-    u, mω, sω = r.fit.u[1:G], r.fit.u[G + 1], exp(r.fit.u[G + 2])
-    nu = angle_nuisance(m, u)
-    grid = stem_grid(m)
+    G = length(r.u) - 2
+    u, mω, sω = r.u[1:G], r.u[G + 1], exp(r.u[G + 2])
+    nu = AL.stem_params(m, u)
+    grid = m.grid
+    nodes = r.twist.nodes
     return fetch.(
         map(eachindex(m.data)) do s
             Threads.@spawn begin
                 n = length(m.data[s])
-                fws = StemWorkspace(Float64, m.k, n, m.ngrid_ϕ, m.ngrid_κ)
+                fws = AL.StemWorkspace(Float64, m.graph, n, m.ngrid_ϕ, m.ngrid_κ)
                 if β === nothing
-                    logsumexp(AL._node_terms(m, r.fit.u, s, r.nodes, fws))
+                    logsumexp(AL._node_terms(m, nu, r.u, s, nodes, fws))
                 else
                     sf = pl_state_factors(m.k, n, β)
                     ℓ = [
                         pl_stem_loglik!(fws, grid, corrected_angles(m, s; ω), β, sf, nu.logμκ, nu.σκ, nu.α; nu.outlier)
-                            for ω in r.nodes.ω[s]
+                            for ω in nodes.ω[s]
                     ]
-                    logsumexp(PF.Torsion.node_logterms(r.nodes.ω[s], r.nodes.logw[s], ℓ, mω, sω))
+                    logsumexp(PF.node_logterms(nodes.ω[s], nodes.logw[s], ℓ, mω, sω))
                 end
             end
         end
@@ -143,9 +146,9 @@ function pl_checks(; β = 0.4)
     y = mod2pi.(deg2rad(137.5) .* (0:29) .+ 0.3 .* randn(rng, 30))
     ngrid_ϕ, ngrid_κ = 8, 4
     mm = PhyllotaxisModelAD([y]; ngrid_ϕ, ngrid_κ, outlier = false)
-    k, grid = mm.k, stem_grid(mm)
+    k, grid = mm.k, mm.grid
     η = full_eta(mm, constrained_parameters(mm, prior_mean_parameters(mm)))
-    fws = StemWorkspace(Float64, k, 30, ngrid_ϕ, ngrid_κ; logspace = true)
+    fws = AL.StemWorkspace(Float64, PermutationGraph(k), 30, ngrid_ϕ, ngrid_κ; logspace = true)
     ref = AL.stem_loglik!(fws, grid, y, η, 1.5, 0.2, 0.9, false)
     # same pass with zero state factors and η in place of the tilt, minus the η normaliser
     AL._fill_cosines!(fws, grid, y, 0.9)
@@ -174,15 +177,14 @@ function run_plackett_luce(; β = 0.34, βs = 0.2:0.04:0.6, seed = 5001, nsample
     x = stem_coordinates(rng)
     orders = [pl_order(rng, NORGANS, GumbelDelay(β)) for _ in 1:NSTEMS]
     sims = [AL._simulate_angles(rng, σ, x[s]; KAPPA..., α = 0.95, outlier = 0.0, torsion_mean = TWIST.mean, torsion_sd = TWIST.sd) for (s, σ) in enumerate(orders)]
-    m = PhyllotaxisModelAD([z.y for z in sims]; torsion_x = x)
-    r = fit_map_torsion!(m; prior = TPRIOR)
-    G = length(r.fit.u) - 2
-    θ = constrained_parameters(m, r.fit.u[1:G])
+    m = PhyllotaxisModelAD([z.y for z in sims]; torsion = TPRIOR, torsion_x = x)
+    r = fit_map(m)
+    θ = r.θ
     stage("PL $(key): exact log p(y | A)")
     ℓA = exact_stem_logliks(m, r)
     smps = map(nsamples) do N
         stage("PL $(key): $(N) posterior orders")
-        order_samples(order_posterior(m, r; nsamples = N, rng = Xoshiro(seed + N)), θ.η)
+        order_samples(order_posterior(r; nsamples = N, rng = Xoshiro(seed + N)), θ.η)
     end
     rows = map(βs) do b
         stage("PL $(key): β = $(b)")

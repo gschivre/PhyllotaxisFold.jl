@@ -7,6 +7,13 @@ using SpecialFunctions: SpecialFunctions
 using Aqua: Aqua
 using ExplicitImports: check_no_stale_explicit_imports
 import PhyllotaxisFold: delay_logpdf, free_parameters, with_free_parameters, reported_parameters, nshared_parameters
+# internals, by their qualified names (one module; the permanents are the submodule `Permanents`)
+const AL = PhyllotaxisFold
+const TO = PhyllotaxisFold
+# internals tested directly: the banded permanents and the numerical tools
+using PhyllotaxisFold.Permanents: PermutationGraph, PermanentWorkspace, toeplitz_weights!, forward!, forward_linear!, backward!,
+    sample_permutation!, map_permutation, logprob_permutation, cycle_lengths
+using PhyllotaxisFold: logbesseli, besseliratio, marginal_quantiles
 
 #################################################################################################################
 # helpers and shared fixtures
@@ -33,6 +40,9 @@ function banded_perms(n, k)
     rec(1)
     return out
 end
+
+# bytes allocated by f(args...), after a first call
+allocs(f::F, args::Vararg{Any, N}) where {F, N} = (f(args...); @allocated f(args...)) # (specialised on f: Julia 1.10)
 
 # central differences of f at u along the directions in `dirs`
 fd_dir(f, u, dirs; h = 1.0e-5) = [(f(u .+ h .* e) - f(u .- h .* e)) / 2h for e in dirs]
@@ -85,7 +95,7 @@ with_free_parameters(::ExpDelay, v) = ExpDelay(exp(v[1]))
 
 # stems with a twist (degrees per position) for the angle-model and twist tests: one simulation, a coarse nuisance grid
 const TWIST = simulate_stems(LAW; plants = 8, organs = 40, logμκ = 1.8, torsion_mean = 4.0, torsion_sd = 3.0, rng = Xoshiro(21))
-twist_model() = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, outlier = false)
+twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, outlier = false, torsion)
 
 @testset verbose = true "PhyllotaxisFold" begin
 
@@ -179,6 +189,29 @@ twist_model() = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisPrior(); ngrid_ϕ = 
         @test nf ≥ 1
         g(ls, κ) = ForwardDiff.derivative(x -> (w = PermanentWorkspace(typeof(x), k, n; logspace = ls); setw!(w, yout, x); forward!(w, n)), κ)
         @test g(false, 3.0e3) ≈ g(true, 3.0e3)
+        # linear weights (`forward_linear!`, the outlier mixture): the same value and marginals as the log-weights, also
+        # where the scaled passes fall back to log-space (the log-weights are then rebuilt from the linear ones)
+        function linw!(ws, y, κ; π = 0.02)
+            for d in -k:k, i in max(1, 1 - d):min(n, n - d)
+                c = cos(y[i] + (i + d - 1) * PhyllotaxisFold.Golden_angle) - 1
+                ws.ew[i, d + k + 1] = exp(η[d + k + 1]) * ((1 - π) * exp(κ * c) + π * exp(logbesseli(0, κ) - κ))
+            end
+        end
+        for κ in (30.0, 3.0e3, 3.0e5), logspace in (false, true)
+            wl, wr = PermanentWorkspace(k, n; logspace), PermanentWorkspace(k, n; logspace = true)
+            linw!(wl, yout, κ)
+            wr.w[1:n, :] .= log.(wl.ew[1:n, :])
+            @test forward_linear!(wl, n) ≈ forward!(wr, n)
+            @test backward!(wl, n) ≈ backward!(wr, n) atol = 1.0e-10
+        end
+        # a backward pass that underflows after a scaled linear forward pass rebuilds the log-weights
+        wl = PermanentWorkspace(k, n)
+        linw!(wl, yout, 30.0)
+        forward_linear!(wl, n)
+        wl.w .= NaN # what the linear pass leaves in w must never be read
+        wl.ew[12, :] .*= 1.0e-200 # the scaled backward normaliser of row 12 now underflows
+        ρl = backward!(wl, n)
+        @test wl.inlog[] && all(isfinite, ρl) && all(sum(ρl; dims = 2) .≈ 1)
     end
 
     #############################################################################################################
@@ -222,35 +255,55 @@ twist_model() = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisPrior(); ngrid_ϕ = 
         @test all(prior_CIs(model)[:, 1] .< θ .< prior_CIs(model)[:, 2])
         θr = rand_priorparameters(model; rng = Xoshiro(8))
         @test length(θr) == 7 && isfinite(LogDensityProblems.logdensity(model, θr))
-        # the transformed problem: log density = angle log-likelihood + log prior with its Jacobian
+        # the transformed problem: log density = angle log-likelihood + log prior with its Jacobian, and its analytic
+        # gradient
         prob = TransformedLogDensityProblem(model)
-        u = Bijectors.bijector(model)(θ)
-        @test LogDensityProblems.logdensity(prob, u) ≈ angle_loglikelihood(model, u) + global_logprior(model, u)
-        @test angle_loglikelihood(prob, u) ≈ angle_loglikelihood(model, u)
+        u = unconstrained_parameters(model, θ)
+        @test u ≈ prior_mean_parameters(model)
+        @test LogDensityProblems.logdensity(prob, u) ≈ angle_loglikelihood(model, u) + AL.model_logprior(model, u)
         @test LogDensityProblems.dimension(prob) == length(u)
+        @test LogDensityProblems.capabilities(typeof(prob)) == LogDensityProblems.LogDensityOrder{1}()
+        lg, gg = LogDensityProblems.logdensity_and_gradient(prob, u .+ 0.1)
+        @test lg ≈ LogDensityProblems.logdensity(prob, u .+ 0.1)
+        @test gg ≈ ForwardDiff.gradient(w -> LogDensityProblems.logdensity(prob, w), u .+ 0.1) rtol = 1.0e-6
         @test sum(stem_loglik(model, u, s) for s in 1:3) ≈ angle_loglikelihood(model, u)
         # parameters: round trip, a half or a full symmetric η, and the errors
         η = [-3.0, -2.4, -1.9, -0.8, 0.0, -0.8, -1.9, -2.4, -3.0]
         uA = unconstrained_parameters(model; η, logμκ = 1.8, σκ = 0.1, α = 0.95)
         θA = constrained_parameters(model, uA)
-        @test θA.η ≈ η && θA.σκ ≈ 0.1
-        nu = angle_nuisance(model, uA)
-        @test [nu.logμκ, nu.σκ, nu.α] ≈ [θA.logμκ, θA.σκ, θA.α] && nu.outlier === nothing
-        @test decode_orders(prob, uA) == decode_orders(model, uA)
+        @test θA.η ≈ η && θA.σκ ≈ 0.1 && θA.outlier == 0 && !haskey(θA, :m_ω)
+        p = AL.stem_params(model, uA)
+        @test [p.logμκ, p.σκ, p.α] ≈ [θA.logμκ, θA.σκ, θA.α] && p.outlier === nothing
         @test unconstrained_parameters(model; η = η[6:end], logμκ = 1.8, σκ = 0.1, α = 0.95) ≈ uA
         @test_throws ArgumentError unconstrained_parameters(model; η = [-3.0, -2.4, -1.9, -0.8, 0.0, -0.9, -1.8, -2.6, -3.1], logμκ = 1.8, σκ = 0.1, α = 0.95) # asymmetric
         @test_throws ArgumentError unconstrained_parameters(model; η = η[6:8], logμκ = 1.8, σκ = 0.1, α = 0.95)
+        # the dimension counts every parameter: π_o with outliers, (m_ω, s_ω) with the twist
+        mo = PhyllotaxisModelAD(data; ngrid_ϕ = 8, ngrid_κ = 4)
+        mt = PhyllotaxisModelAD(data; ngrid_ϕ = 8, ngrid_κ = 4, torsion = TorsionPrior())
+        @test LogDensityProblems.dimension(mo) == 8 && LogDensityProblems.dimension(mt) == 10
+        @test length(prior_mean(mt)) == length(prior_mean_parameters(mt)) == size(prior_CIs(mt), 1) == 10
+        @test all(prior_CIs(mt)[:, 1] .< prior_mean(mt) .< prior_CIs(mt)[:, 2])
+        ut = unconstrained_parameters(mt; η, logμκ = 1.8, σκ = 0.1, α = 0.95, outlier = 0.03, m_ω = 1.5, s_ω = 0.4)
+        θt = constrained_parameters(mt, ut)
+        @test θt.outlier ≈ 0.03 && θt.m_ω ≈ 1.5 && θt.s_ω ≈ 0.4
+        # the twist model's log density integrates each stem's rate over the nodes placed by fit_map
+        @test_throws ArgumentError LogDensityProblems.logdensity(mt, prior_mean(mt))
         # displacement probabilities and realised frequencies
         @test all(sum(displacement_probability(model, θ); dims = 1) .≈ 1)
         @test sum(displacement_probability(model, θ)[2:end]) ≈ 2 * sum(exp, θ[1:4]) / (1 + 2 * sum(exp, θ[1:4]))
-        steep = model.binv(unconstrained_parameters(model; η = [-12.0, -24.0, -36.0, -48.0], logμκ = 1.5, σκ = 0.2, α = 0.95))
+        steep = AL.stem_params(model, unconstrained_parameters(model; η = [-12.0, -24.0, -36.0, -48.0], logμκ = 1.5, σκ = 0.2, α = 0.95)).η[6:end]
         fd, _ = estimate_displacement_frequencies(model, [steep]; N = 3, n = 30, rng = Xoshiro(1))
         @test fd[1] > 0.999 # steep costs: nearly every organ in place
         @test sum(fd) ≈ 1 atol = 1.0e-6
         fp, _ = estimate_permutation_frequencies(model, nothing; N = 200, n = 30, rng = Xoshiro(2))
         @test sum(fp) ≈ 1
         s = sample_prior(model; n = 60, Nsample = 2, rng = Xoshiro(5)) # n larger than the data
-        @test length(s[1].data) == 60 && isperm(s[1].permutation)
+        @test length(s[1].data) == 60 && isperm(s[1].permutation) && isempty(s[1].outliers) && s[1].twist == 0
+        # the prior predictive draws the outliers and the twist of the model
+        so = sample_prior(mt; n = 60, Nsample = 200, rng = Xoshiro(6))
+        @test mean(length(x.outliers) for x in so) / 60 ≈ 0.02 atol = 0.01 # prior mean of π_o
+        # the twist: ω ~ N(m_ω, s_ω²), m_ω ~ N(0, 2²), s_ω ~ half-t(4, 1): sd² = 2² + E[s_ω²] = 4 + 4 / (4 − 2)
+        @test std([x.twist for x in so]) ≈ sqrt(6) rtol = 0.2
         # simulate_stems(η): η_1..η_k of any length (k odd or even), or the full vector
         maxdisp(r) = maximum(maximum(abs.(σ .- eachindex(σ))) for σ in r.orders)
         for η in ([-1.0, -2.5, -4.0], [-1.0, -2.5, -4.0, -6.0])
@@ -264,23 +317,52 @@ twist_model() = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisPrior(); ngrid_ϕ = 
         m = PhyllotaxisModelAD(TWIST.angles[1:3]; ngrid_ϕ = 8, ngrid_κ = 4, outlier = false)
         prob = TransformedLogDensityProblem(m)
         v = prior_mean_parameters(m) .+ 0.1
-        l, g, H = angle_vgh(prob, v, 2)
+        l, g, H = AL.angle_vgh(m, v, nothing, 2)
         @test l ≈ LogDensityProblems.logdensity(prob, v)
         @test g ≈ ForwardDiff.gradient(w -> LogDensityProblems.logdensity(prob, w), v) rtol = 1.0e-6
         @test H ≈ ForwardDiff.hessian(w -> LogDensityProblems.logdensity(prob, w), v) rtol = 1.0e-5
-        # one stem: the analytic gradient against duals through the same function
-        ℓ2, g2 = stem_value_grad(m, v, 2; with_grad = true)
-        @test ℓ2 ≈ stem_loglik(m, v, 2)
-        @test g2 ≈ ForwardDiff.gradient(w -> first(stem_value_grad(m, w, 2)), v) rtol = 1.0e-8
+        @test AL.angle_vgh(m, v, nothing, 1)[2] ≈ g && AL.angle_vgh(m, v, nothing, 0)[1] ≈ l
+        # fixed twist rates: the same derivatives, and the rate removes the twist from the angles
+        ωs = [1.0, -2.0, 3.0]
+        l2, g2, _ = AL.angle_vgh(m, v, ωs, 1)
+        @test g2 ≈ ForwardDiff.gradient(w -> AL.angle_vgh(m, w, ωs, 0)[1], v) rtol = 1.0e-6
+        @test stem_loglik(m, v, 2; ω = -2.0) ≈ stem_loglik(PhyllotaxisModelAD([corrected_angles(m, 2; ω = -2.0)]; ngrid_ϕ = 8, ngrid_κ = 4, outlier = false), v, 1)
         # outlier angles: gradient and Hessian, and π_o → 0 gives back the model without outliers
         mo = PhyllotaxisModelAD(TWIST.angles[1:3]; ngrid_ϕ = 8, ngrid_κ = 4, outlier = true)
         uo = prior_mean_parameters(mo) .+ 0.1
-        lo, go, Ho = angle_vgh(mo, uo, 2)
-        fo(w) = angle_vgh(mo, w, 0)[1]
+        lo, go, Ho = AL.angle_vgh(mo, uo, nothing, 2)
+        fo(w) = AL.angle_vgh(mo, w, nothing, 0)[1]
         @test go ≈ ForwardDiff.gradient(fo, uo) rtol = 1.0e-6
         @test Ho ≈ ForwardDiff.hessian(fo, uo) rtol = 1.0e-4
         u0 = prior_mean_parameters(m)
         @test angle_loglikelihood(mo, [u0; -40.0]) ≈ angle_loglikelihood(m, u0) atol = 1.0e-8
+    end
+
+    @testset "Angle likelihood: type stability and allocations (regression guards)" begin
+        for outlier in (false, true)
+            m = PhyllotaxisModelAD(TWIST.angles[1:2]; ngrid_ϕ = 4, ngrid_κ = 3, outlier)
+            u = prior_mean_parameters(m)
+            p = @inferred AL.stem_params(m, u)
+            @test (p.outlier === nothing) == !outlier
+            @inferred AL.model_logprior(m, u)
+            @inferred AL.params_jacobian(m, u)
+            # with_grad is a run-time flag: a small union of the two return types, resolved by union splitting
+            VG = Union{Tuple{Float64, Nothing}, Tuple{Float64, Vector{Float64}}}
+            @inferred VG AL._data_value_grad(m, u, nothing, true)
+            @inferred VG AL._data_value_grad(m, u, [0.5, 1.0], false)
+            fws = AL._workspace(m, Float64)
+            gθ = zeros(AL.nmodel(m))
+            @inferred AL._stem_ll!(m, p, 1, 0.5, fws, gθ)
+            @inferred AL._stem_ll!(m, p, 1, 0.5, fws)
+            # the stem kernel allocates only its few per-κ-node vectors, the permanent nothing (measured inside a
+            # function, after a first call)
+            @test allocs(AL._stem_ll!, m, p, 1, 0.5, fws, gθ) < 2_000
+            @test allocs(PhyllotaxisFold.Permanents.forward!, fws.perm, 40) == 0
+        end
+        # dual numbers through the kernel (the Hessian pass)
+        m = PhyllotaxisModelAD(TWIST.angles[1:2]; ngrid_ϕ = 4, ngrid_κ = 3)
+        ud = AL._seed(prior_mean_parameters(m))
+        @inferred Union{Tuple{eltype(ud), Nothing}, Tuple{eltype(ud), Vector{eltype(ud)}}} AL._data_value_grad(m, ud, nothing, true)
     end
 
     @testset "Angle model: recovery of the outlier rate and of the spiral of each stem" begin
@@ -290,8 +372,45 @@ twist_model() = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisPrior(); ngrid_ϕ = 
         μΔ, σΔ = η_prior((0.5, 1.25, 2.0), (0.1, 0.75, 2.0))
         mA = PhyllotaxisModelAD(sA.angles, PhyllotaxisPrior(; μΔ, σΔ); ngrid_ϕ = 8, ngrid_κ = 4, outlier = true)
         fA = fit_map(mA)
-        se = sqrt(-inv(fA.H)[end, end]) * fA.θ.outlier * (1 - fA.θ.outlier) # delta method on logit π_o
-        @test abs(fA.θ.outlier - 0.06) < 3 * se + 0.01
+        @test fA isa PhyllotaxisFit && fA.converged && fA.twist === nothing
+        # the convergence keywords reach the optimiser: one Newton step is not enough, and is reported as such
+        f1 = fit_map(mA; iterations = 1)
+        @test f1.iterations == 1 && !f1.converged && !fit_diagnostics(f1).converged
+        @test occursin("NOT CONVERGED", sprint(show, MIME"text/plain"(), f1))
+        @test abs(fA.θ.outlier - 0.06) < 3 * stderror(fA)[end] + 0.01
+        # the fit object: accessors, uncertainty and diagnostics
+        @test coefnames(fA) == ["η_1", "η_2", "η_3", "log μκ", "σκ", "α", "π_o"]
+        @test coef(fA) ≈ [fA.θ.η[5:end]; fA.θ.logμκ; fA.θ.σκ; fA.θ.α; fA.θ.outlier]
+        @test dof(fA) == 7 && nobs(fA) == 30 * 35
+        @test loglikelihood(fA) ≈ angle_loglikelihood(mA, fA.u)
+        @test sum(stem_loglik(fA)) ≈ loglikelihood(fA) && stem_loglik(fA)[2] ≈ stem_loglik(mA, fA.u, 2)
+        @test fA.logposterior ≈ LogDensityProblems.logdensity(TransformedLogDensityProblem(mA), fA.u)
+        V = vcov(fA)
+        @test issymmetric(round.(V; sigdigits = 8)) && all(stderror(fA) .> 0)
+        ct = coeftable(fA)
+        @test ct.rownms == coefnames(fA) && all(ct.cols[3] .< coef(fA) .< ct.cols[4])
+        d = fit_diagnostics(fA)
+        @test d.hessian_posdef && d.gradnorm < 1.0e-3 && isfinite(d.log_evidence) && d.log_evidence < d.logposterior
+        @test isempty(d.low_stems) # stems of the model's own law
+        # a stem of uniform angles among them is flagged
+        bad = [sA.angles[1:29]; [2π .* rand(Xoshiro(3), 35)]]
+        fbad = fit_map(PhyllotaxisModelAD(bad, PhyllotaxisPrior(; μΔ, σΔ); ngrid_ϕ = 8, ngrid_κ = 4, outlier = true); u0 = fA.u)
+        @test fit_diagnostics(fbad).low_stems == [30]
+        txt = sprint(show, MIME"text/plain"(), fA)
+        @test occursin("converged", txt) && occursin("π_o", txt) && occursin("Laplace log evidence", txt)
+        @test occursin("PhyllotaxisFit", sprint(show, fA))
+        # stems like the data, from the fit: same sizes, the fitted parameters, or a Laplace draw of them
+        rep = simulate_stems(fA; rng = Xoshiro(1))
+        @test length.(rep.angles) == length.(sA.angles) && rep.θ.η == fA.θ.η
+        repl = simulate_stems(fA; laplace = true, rng = Xoshiro(2))
+        @test repl.θ.η != fA.θ.η && length(repl.angles) == 30
+        # divergence angles: a perfect spiral of either orientation reads ψ; the simulated sites (ϕ, o, ψ) are where the
+        # angles fall without noise, twist or outliers
+        @test divergence_angles([0.1 + 2.0 * (i - 1) for i in 1:5]; degrees = false) ≈ fill(2.0, 4)
+        @test divergence_angles([1.0 - (i - 1) * PhyllotaxisFold.Golden_angle for i in 1:6]; o = -1) ≈ fill(rad2deg(PhyllotaxisFold.Golden_angle), 5)
+        sx = simulate_stems([-1.0, -2.0]; plants = 3, organs = [20, 25, 30], logμκ = 12.0, rng = Xoshiro(3))
+        @test length.(sx.angles) == [20, 25, 30]
+        @test all(maximum(abs, sin.((sx.angles[s] .- (sx.ϕ[s] .+ sx.o[s] .* (sx.orders[s] .- 1) .* sx.ψ[s])) ./ 2)) < 0.05 for s in 1:3)
         # spiral of each stem: golden vs Lucas and the orientation
         sp = simulate_stems(LAW; plants = 30, organs = 30, logμκ = 1.8, α = 0.6, rng = Xoshiro(12))
         m = PhyllotaxisModelAD(sp.angles; ngrid_ϕ = 8, ngrid_κ = 4, outlier = false)
@@ -303,9 +422,9 @@ twist_model() = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisPrior(); ngrid_ϕ = 
     @testset "Torsion: coordinates, corrected angles, quadrature, per-stem rates" begin
         @test torsion_coordinate(4) == [0.0, 1.0, 2.0, 3.0]
         @test torsion_coordinate([2.0, 3.0, 5.0]) == [0.0, 2.0, 5.0, 10.0]
-        @test torsion_step([0.0, 2.0, 5.0, 10.0]) ≈ 10 / 3
-        @test scan_rate(τ -> -(τ - 0.37)^2, 5.0) ≈ 0.37 atol = 0.005 # scan in degrees per mean step of 5 units
-        x, fx = golden_section_max(t -> (; v = -(t - 1.234)^2), 0.0, 3.0; tol = 1.0e-8, score = r -> r.v)
+        @test TO.torsion_step([0.0, 2.0, 5.0, 10.0]) ≈ 10 / 3
+        @test TO.scan_rate(τ -> -(τ - 0.37)^2, 5.0) ≈ 0.37 atol = 0.005 # scan in degrees per mean step of 5 units
+        x, fx = TO.golden_section_max(t -> (; v = -(t - 1.234)^2), 0.0, 3.0; tol = 1.0e-8, score = r -> r.v)
         @test x ≈ 1.234 atol = 1.0e-6
         @test fx.v ≈ -(x - 1.234)^2
         # the twist coordinate of the simulators: explicit positions give the default stems
@@ -319,57 +438,82 @@ twist_model() = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisPrior(); ngrid_ϕ = 
         # corrected angles: the twist removed, rate in degrees per unit of the coordinate
         m = twist_model()
         @test corrected_angles(m, 2; ω = 3.0) ≈ TWIST.angles[2] .- deg2rad(3.0) .* torsion_coordinate(40)
-        @test torsion_corrected(TWIST.angles[2], torsion_coordinate(40), 0.0) === TWIST.angles[2]
+        @test TO.torsion_corrected(TWIST.angles[2], torsion_coordinate(40), 0.0) === TWIST.angles[2]
         # adaptive quadrature on a bimodal, sharp log-likelihood against a fine grid, for a few population laws; and
         # the posterior of the rate from the same nodes
         f(ω) = logaddexp(-0.5 * ((ω - 1.3) / 0.08)^2, -2.0 - 0.5 * ((ω - 0.4) / 0.1)^2)
-        ω, logw, modes = stem_nodes(f, 5.0) # coordinate step 5: scan ±5 per unit
+        ω, logw, modes = TO.stem_nodes(f, 5.0) # coordinate step 5: scan ±5 per unit
         @test length(modes) == 2
         grid = range(-3, 5; length = 200_001)
         for (mω, sω) in ((1.0, 0.8), (0.0, 2.0), (2.0, 0.5))
             lg = [f(x) + logpdf(Normal(mω, sω), x) for x in grid]
             exact = logsumexp(lg) + log(step(grid))
-            a = node_logterms(ω, logw, f.(ω), mω, sω)
+            a = TO.node_logterms(ω, logw, f.(ω), mω, sω)
             @test logsumexp(a) ≈ exact atol = 1.0e-3
-            μ, sd, mode = node_posterior(ω, a, modes)
+            μ, sd, mode, mass = TO.node_posterior(ω, a, modes)
             p = exp.(lg .- logsumexp(lg))
             @test μ ≈ sum(p .* grid) atol = 1.0e-3
             @test sd ≈ sqrt(sum(p .* (grid .- μ) .^ 2)) atol = 1.0e-3
+            @test isapprox(mode, 1.3; atol = 0.01) && 0.5 < mass < 1 # the sharper, higher mode carries most of the mass
         end
-        # per-stem rates at fixed parameters: correcting the twist raises the likelihood
+        # per-stem rates at fixed parameters: the best mode of each stem's likelihood finds its twist, and removing it
+        # raises the likelihood
         u = prior_mean_parameters(m)
-        l0 = angle_loglikelihood(m, u)
-        τA = copy(update_torsion!(m, u))
+        nodes = AL._place_nodes(m, u)
+        τA = [first(md)[1] for md in nodes.modes]
         @test cor(τA, TWIST.torsion) > 0.95
         @test maximum(abs, τA .- TWIST.torsion) < 1.5 # degrees per position
-        @test angle_loglikelihood(m, u) > l0
+        @test all(stem_loglik(m, u, s; ω = τA[s]) > stem_loglik(m, u, s; ω = 0.0) for s in eachindex(τA))
     end
 
-    @testset "Torsion: rates integrated out; decoding and order posterior" begin
-        m = twist_model()
+    @testset "Torsion: rates integrated out; fit, log density, decoding and order posterior" begin
         tp = TorsionPrior(mt = 0.0, st = 10.0, νt = 4.0, τt = 5.0) # per position
-        u = prior_mean_parameters(m)
-        nodes = torsion_nodes(m, u)
+        m = twist_model(; torsion = tp)
+        u = prior_mean_parameters(m)[1:AL.nmodel(m)]
+        nodes = AL._place_nodes(m, u)
         v = [u; 3.5; log(2.5)]
-        l0, g, H = torsion_vgh(m, tp, nodes, v, 2)
-        fv(w) = torsion_vgh(m, tp, nodes, w, 0)[1]
+        l0, g, H = AL.twist_vgh(m, nodes, v, 2)
+        fv(w) = AL.twist_vgh(m, nodes, w, 0)[1]
         dirs = [normalize(randn(Xoshiro(j), length(v))) for j in 1:2] # two random directions: the gradient as a whole
         @test fd_dir(fv, v, dirs) ≈ [g' * e for e in dirs] rtol = 1.0e-4
         @test issymmetric(round.(H; digits = 6)) && l0 ≈ fv(v)
+        @test AL.twist_vgh(m, nodes, v, 1)[2] ≈ g
         # fit: population law and rates recovered
-        r = fit_map_torsion!(m; prior = tp, recenter = 0)
-        @test PhyllotaxisFold.PropensityModel.Optim.converged(r.fit.result)
-        @test abs(r.m_ω - mean(TWIST.torsion)) < 1.0 && 0.4 < r.s_ω / std(TWIST.torsion) < 2.5
-        @test cor(r.ω, TWIST.torsion) > 0.95 && all(r.ω_sd .> 0)
+        r = fit_map(m; recenter = 0)
+        @test r.converged && r.twist !== nothing && length(r.u) == 9
+        @test abs(r.θ.m_ω - mean(TWIST.torsion)) < 1.0 && 0.4 < r.θ.s_ω / std(TWIST.torsion) < 2.5
+        @test cor(r.twist.ω, TWIST.torsion) > 0.95 && all(r.twist.ω_sd .> 0) && all(0 .< r.twist.mode_mass .≤ 1)
+        @test coefnames(r)[(end - 1):end] == ["m_ω", "s_ω"] && coef(r)[end] ≈ r.θ.s_ω
+        @test corrected_angles(r, 3) ≈ corrected_angles(m, 3; ω = r.twist.ω[3])
+        # the log density of the model is now the objective of the fit: dimension, value and gradient agree
+        prob = TransformedLogDensityProblem(m)
+        @test LogDensityProblems.dimension(m) == length(r.u)
+        @test LogDensityProblems.logdensity(prob, r.u) ≈ r.logposterior
+        @test maximum(abs, LogDensityProblems.logdensity_and_gradient(prob, r.u)[2]) < 1.0e-3
+        @test loglikelihood(r) ≈ angle_loglikelihood(m, r.u) ≈ sum(stem_loglik(r))
+        @test stem_loglik(r)[3] ≈ stem_loglik(m, r.u, 3)
+        lc = LogDensityProblems.logdensity(m, coef(r)) # constrained space: the same posterior without the Jacobian
+        @test lc ≈ r.logposterior - Bijectors.logabsdetjac(m.binv, r.u[1:AL.nmodel(m)]) - r.u[end]
+        d = fit_diagnostics(r)
+        @test d.hessian_posdef && d.twist_multimodal isa Vector{Int} && isempty(d.twist_at_edge)
+        @test occursin("twist integrated out", sprint(show, MIME"text/plain"(), r))
         # decoding with the twist: the joint MAP recovers the orders and the rates, the posterior agrees with the fit
-        dec = decode_orders(m, r; full = true)
+        dec = decode_orders(r; full = true)
         @test mean(mean(d.σ .== σ) for (d, σ) in zip(dec, TWIST.orders)) > 0.9
         @test cor([d.ω for d in dec], TWIST.torsion) > 0.95
-        post = order_posterior(m, r; nsamples = 400, rng = Xoshiro(4))
-        @test [p.ω_mean for p in post] ≈ r.ω_mean rtol = 1.0e-6 # same nodes, same population law, same parameters
+        @test m.nodes[] === r.twist.nodes # the model's nodes are those of the fit (its log density above)
+        post = order_posterior(r; nsamples = 400, rng = Xoshiro(4))
+        @test [p.ω_mean for p in post] ≈ r.twist.ω_mean rtol = 1.0e-6 # same nodes, same population law, same parameters
         @test all(p -> all(sum(p.ρ; dims = 2) .≈ 1), post)
         emp = [mean(σ[i] - i == d for σ in post[1].samples) for i in 1:40, d in -(m.k):(m.k)]
         @test maximum(abs, emp .- post[1].ρ) < 0.1 # exact samples reproduce the marginals
+        @test length(spiral_posterior(r)) == length(TWIST.angles)
+        # fixed rates instead (one per stem): the stems decoded at their true twist
+        m0 = twist_model()
+        u0 = r.u[1:AL.nmodel(m)]
+        @test mean(mean(σ .== t) for (σ, t) in zip(decode_orders(m0, u0; ω = TWIST.torsion), TWIST.orders)) > 0.9
+        @test [p.ω_mean for p in order_posterior(m0, u0; ω = TWIST.torsion)] == TWIST.torsion
+        @test_throws DimensionMismatch decode_orders(m0, u0; ω = [1.0])
     end
 
     #############################################################################################################
@@ -552,7 +696,7 @@ twist_model() = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisPrior(); ngrid_ϕ = 
         # one parameter, none reported; the Gumbel fit is close to the default core (the truth has light tails)
         gu = fit_delay_law(kg, GumbelDelay(0.5))
         @test gu.converged && delay_law_inference(kg, gu).names == (:β, :late, :early, :off, :q1, :q2, :q3, :q4)
-        @test PhyllotaxisFold.CommitmentTiming._names(ExpDelay(1.0)) == (:late, :early, :off, :q1, :q2, :q3, :q4)
+        @test PhyllotaxisFold._names(ExpDelay(1.0)) == (:late, :early, :off, :q1, :q2, :q3, :q4)
         # joint fits need shared parameters: the Student t shares its scale, the Gumbel law shares nothing
         @test_throws ArgumentError fit_delay_law([kg, kt], GumbelDelay(0.5))
         sj = fit_delay_law([kg, kt], StudentDelay(0.5, 5.0))
@@ -566,7 +710,7 @@ twist_model() = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisPrior(); ngrid_ϕ = 
         @test mean(e .< -1) ≈ tail_masses(t).early atol = 0.015
         @test length(simulate_stems(t; plants = 2, organs = 10, rng).orders) == 2
         # a density that has not decayed at the edge of the grid is flagged
-        @test_logs (:warn, r"edge of the grid") match_mode = :any PhyllotaxisFold.CommitmentTiming._check_grid(StudentDelay(0.4, 0.3), DELAY_GRID)
+        @test_logs (:warn, r"edge of the grid") match_mode = :any PhyllotaxisFold._check_grid(StudentDelay(0.4, 0.3), DELAY_GRID)
     end
 
     @testset "CommitmentTiming: the whole pipeline on simulated stems (angles → orders → delay law)" begin
@@ -576,8 +720,8 @@ twist_model() = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisPrior(); ngrid_ϕ = 
         sim = simulate_stems(truth; plants = 40, organs = 35, logμκ = 1.9, σκ = 0.15, rng = Xoshiro(41))
         m = PhyllotaxisModelAD(sim.angles; ngrid_ϕ = 8, ngrid_κ = 4, outlier = false)
         r = fit_map(m)
-        post = order_posterior(m, r.u; nsamples = 60, rng = Xoshiro(42))
-        smp = order_samples(post, constrained_parameters(m, r.u).η)
+        post = order_posterior(r; nsamples = 60, rng = Xoshiro(42))
+        smp = order_samples(post, r.θ.η)
         fit = fit_delay_law(smp, GaussianExpTails(:both))
         inf = delay_law_inference(smp, fit)
         tt = tail_masses(truth)

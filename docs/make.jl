@@ -54,6 +54,7 @@ makedocs(;
         "Home" => "index.md",
         "A worked analysis" => "workflow.md",
         "Custom delay laws" => "custom_laws.md",
+        "Simulating stems" => "simulation.md",
         "Method" => [
             "The problem" => "problem.md",
             "Angles given an order" => "angles.md",

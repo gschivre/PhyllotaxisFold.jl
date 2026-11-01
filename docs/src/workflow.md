@@ -38,16 +38,19 @@ Each group is fitted on its own. The twist of each stem is integrated out, with 
 using PhyllotaxisFold
 
 prior = TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0)
-m = PhyllotaxisModelAD(angles_wt; torsion_x = x_wt)
-r = fit_map_torsion!(m; prior)                     # the longest step: use several threads
-post = order_posterior(m, r; nsamples = 200)       # the posterior of the order of each stem
-smp = order_samples(post, r.fit.θ.η)               # its samples, ready for step 2
-dec = decode_orders(m, r; full = true)             # the single most probable order, spiral and twist (for figures)
+m = PhyllotaxisModelAD(angles_wt; torsion = prior, torsion_x = x_wt)
+r = fit_map(m)                                     # the longest step: use several threads
+post = order_posterior(r; nsamples = 200)          # the posterior of the order of each stem
+smp = order_samples(post, r.θ.η)                   # its samples, ready for step 2
+dec = decode_orders(r; full = true)                # the single most probable order, spiral and twist (for figures)
 ```
 
 and the same for the mutant. Below, `smp_wt` and `smp_mutant` are the two groups' `smp`.
 
-**Check the fit before going on.** Three quick looks (figure 2):
+**Check the fit before going on.** Displaying `r` prints the checks of the optimiser (convergence, the gradient at the
+maximum, whether the Hessian is negative definite), the parameters with their Laplace intervals and the ratio of each
+posterior sd to its prior sd, and it names the stems worth a look (a low log-likelihood per organ, a twist with
+several modes); `fit_diagnostics(r)` returns the same checks as numbers. Then three quick looks (figure 2):
 
 - **The fitted parameters are plausible.** Both groups find a twist of about 1 °/mm across stems (mean 1.12 and 0.95,
   sd 0.75 and 0.62; truth 1.0 ± 0.7), an angular precision ``\log\mu_\kappa \approx 1.84`` (truth 1.85) and 95–97 %
@@ -56,7 +59,7 @@ and the same for the mutant. Below, `smp_wt` and `smp_mutant` are the two groups
   the band is too narrow. Here the median stem puts almost nothing there (figure 2b), but a few stems put 2–5 % of
   their organs at ``|d| = 4``: the stems with a very late organ, as expected under tails. In such a case, it is worth
   refitting with a wider band (a `PhyllotaxisPrior` with five gaps instead of four) and checking that the results
-  hold; [§3.2](orders.md) explains the band.
+  hold; [§3.2](orders.md#3.2-The-band) explains the band.
 - **Look at a few stems.** Most heights are certain; where they are not, the probability is shared between a few
   orders (figure 2c). This is why step 2 works on posterior samples, not on the single most probable order.
 
@@ -129,7 +132,7 @@ inf = delay_law_inference(smp, both)               # estimates and standard erro
 ```
 
 These are three variants of the package's default law, a Gaussian core with exponential tails
-([§5.6](timing.md)), each named by the tails it fits (`:early` also exists). It is one hypothesis among others: any
+([§5.6](timing.md#5.6-The-delay-law)), each named by the tails it fits (`:early` also exists). It is one hypothesis among others: any
 law of the delay can be defined in a few lines and fitted in the same way, and its `rel_ll` compared with the values
 below ([Custom delay laws](custom_laws.md) shows how, with two examples fitted to these same stems).
 
@@ -143,7 +146,7 @@ whether the orders call for tails:
 | `:both` | +15.6 | +56.3 |
 
 Both groups clearly need tails: adding late organs gains 40 (wild type) and 117 (mutant) units of log-likelihood,
-early organs another 24 and 10. Gains below about 5 would not be meaningful on their own ([§6.4](validation.md)).
+early organs another 24 and 10. Gains below about 5 would not be meaningful on their own ([§6.4](validation.md#6.4-The-delay-law)).
 Before reading the parameters, check that the fitted law reproduces the profile of step 2: in figure 3a, the dashed
 lines go through the dots, so the law's shape is not distorting the data.
 
@@ -159,7 +162,7 @@ The estimates of the `:both` law (± robust se), with the truth:
 **Reading it.** A typical commitment is precise, with an sd of about 0.4 plastochron, and in the wild type about 7 %
 of the organs commit more than one plastochron off their turn. The mutant has about 16 %, mostly late.
 
-Two caveats, both expected ([§5.6](timing.md)). The late/early split is the least identified part of the law (the
+Two caveats, both expected ([§5.6](timing.md#5.6-The-delay-law)). The late/early split is the least identified part of the law (the
 wild type's early fraction is a little high). And the mutant's core sd is low and uncertain: with many organs in the
 tails, a narrower core plus a little more tail mass predicts nearly the same orders. Its off-time fraction drifts up
 with it. The next step addresses this.
@@ -178,7 +181,7 @@ inf2.Δoff                                                              # mutant
 
 The likelihood ratio is 1.1 (``p = 0.30``): nothing against a shared core. The shared sd, 0.38 ± 0.05, stays close to
 the wild type's own 0.41, so the wild type does hold the core (if it collapsed far below, the separate fits should be
-reported instead; [§6.5](validation.md)). Under the shared core:
+reported instead; [§6.5](validation.md#6.5-A-shared-core)). Under the shared core:
 
 | | wild type | mutant | difference | truth |
 |---|---|---|---|---|
@@ -242,7 +245,7 @@ For this experiment, the summary would read:
 > points more organs committing over one plastochron off their turn, mostly late.
 
 And the checks behind it: the fitted parameters, the band edge, the effective sample size of the re-weighting
-(median 193 out of 200 posterior samples per stem in the wild type, 170 in the mutant; [§5.5](timing.md)), and the
+(median 193 out of 200 posterior samples per stem in the wild type, 170 in the mutant; [§5.5](timing.md#5.5-Re-weighting-the-reconstructed-orders)), and the
 agreement between the fitted law and the profile read from the orders. One wild-type stem has an effective sample
 size of only 17: it is also the stem with the most organs at the edge of the band, so its term is the least precise.
 With one stem in fifty this does not matter; with many, draw more posterior samples or widen the band.

@@ -17,11 +17,27 @@ Convention: σ[i] is the canonical index of the organ observed at position i, di
 """
 module Permanents
 
-using Random, LogExpFunctions
-using ..Common: _isneginf, _logaddexp, _fullvalue
+using Random: Random, AbstractRNG
+using LogExpFunctions: logaddexp, logsumexp
+using ForwardDiff: ForwardDiff
 
-export PermutationGraph, PermanentWorkspace, toeplitz_weights!, forward!, backward!, sample_permutation!, map_permutation,
-    logprob_permutation, cycle_lengths
+# logaddexp that returns the other argument exactly when one is -Inf (keeps ForwardDiff partials free of NaN)
+@inline _isneginf(x) = isinf(x) && x < 0 # (x == -Inf is false for a dual number with nonzero partials)
+@inline _logaddexp(a, b) = (_isneginf(a) ? b : (_isneginf(b) ? a : logaddexp(a, b)))
+
+# Float64 value of possibly nested dual numbers
+_fullvalue(x) = (x isa ForwardDiff.Dual ? _fullvalue(ForwardDiff.value(x)) : x)
+
+# nothing exported; the interface is public (Julia ≥ 1.11), used as `PhyllotaxisFold.Permanents.forward!` etc.
+@static if VERSION >= v"1.11"
+    eval(
+        Meta.parse(
+            "public PermutationGraph, PermanentWorkspace, toeplitz_weights!, forward!, forward_linear!, " *
+                "backward!, sample_permutation!, map_permutation, logprob_permutation, cycle_lengths"
+        )
+    )
+end
+
 
 struct PermutationGraph
     k::Int
@@ -31,6 +47,11 @@ struct PermutationGraph
     edge_ptr::Vector{Int} # CSR: edges of state s are edge_ptr[s]:(edge_ptr[s + 1] − 1)
     edge_next::Vector{Int}
     edge_d::Vector{Int}
+    edge_col::Vector{Int} # column of the weight tables, d + k + 1
+    # the same edges by destination (CSR): the edges into state t are in_ptr[t]:(in_ptr[t + 1] − 1)
+    in_ptr::Vector{Int}
+    in_src::Vector{Int}
+    in_col::Vector{Int}
 end
 
 """
@@ -69,7 +90,14 @@ function PermutationGraph(k::Int)
         end
     end
     edge_ptr[M + 1] = length(edge_next) + 1
-    return PermutationGraph(k, M, start_s, start_s, edge_ptr, edge_next, edge_d)
+    edge_col = edge_d .+ (k + 1)
+    ins = [Tuple{Int, Int}[] for _ in 1:M]
+    for s in 1:M, e in edge_ptr[s]:(edge_ptr[s + 1] - 1)
+        push!(ins[edge_next[e]], (s, edge_col[e]))
+    end
+    in_ptr = cumsum(vcat(1, length.(ins)))
+    in_src, in_col = [x[1] for v in ins for x in v], [x[2] for v in ins for x in v]
+    return PermutationGraph(k, M, start_s, start_s, edge_ptr, edge_next, edge_d, edge_col, in_ptr, in_src, in_col)
 end
 
 """
@@ -89,16 +117,20 @@ struct PermanentWorkspace{T}
     B::Matrix{T} # backward messages
     w::Matrix{T} # edge log-weights, n_max × (2k + 1)
     ew::Matrix{T} # linear weights, each row divided by its largest entry (scaled mode)
+    lrow::Vector{T} # log of the largest weight of each row (scaled mode)
     rho::Matrix{T} # edge marginals P(σ[i] = i + d), n_max × (2k + 1)
     inlog::Base.RefValue{Bool} # whether the last forward! ran in log-space (read by backward! and sampling)
+    wstale::Base.RefValue{Bool} # the last pass ran on linear weights only (`forward_linear!`): w does not hold them
     nfallback::Base.RefValue{Int} # number of scaled calls redone in log-space (diagnostic)
 end
-function PermanentWorkspace(::Type{T}, k::Int, n_max::Int; logspace::Bool = false) where {T}
-    g = PermutationGraph(k)
-    K = 2 * k + 1
+PermanentWorkspace(::Type{T}, k::Int, n_max::Int; logspace::Bool = false) where {T} =
+    PermanentWorkspace(T, PermutationGraph(k), n_max; logspace)
+# with a graph built once and shared (it is never written)
+function PermanentWorkspace(::Type{T}, g::PermutationGraph, n_max::Int; logspace::Bool = false) where {T}
+    K = 2 * g.k + 1
     return PermanentWorkspace{T}(
         g, n_max, logspace, zeros(T, g.M, n_max + 1), zeros(T, g.M, n_max + 1), zeros(T, n_max, K),
-        zeros(T, n_max, K), zeros(T, n_max, K), Ref(logspace), Ref(0)
+        zeros(T, n_max, K), zeros(T, n_max), zeros(T, n_max, K), Ref(logspace), Ref(false), Ref(0)
     )
 end
 PermanentWorkspace(k::Int, n_max::Int; kwargs...) = PermanentWorkspace(Float64, k, n_max; kwargs...)
@@ -136,13 +168,48 @@ Forward pass on the log-weights stored in ws.w, returns the log-permanent.
   never depends on underflow. `ws.inlog[]` records which pass produced F.
 """
 function forward!(ws::PermanentWorkspace{T}, n::Int) where {T}
+    ws.wstale[] = false
     ws.inlog[] = ws.logspace
     ws.logspace && return _forward_log!(ws, n)
-    l = _forward_scaled!(ws, n)
-    l === nothing || return l
+    ok, l = _forward_scaled!(ws, n)
+    ok && return l
     ws.inlog[] = true
     ws.nfallback[] += 1
     return _forward_log!(ws, n)
+end
+
+"""
+    forward_linear!(ws, n)
+
+`forward!` on linear weights: `ws.ew[i, d + k + 1]` holds the weight itself (not its log) of each admissible edge
+(entries outside the columns 1..n are ignored). For weights that cannot underflow, e.g. a mixture with a uniform
+component, it saves the log and exp of each entry that `forward!` needs. The scaled pass runs on them directly; in
+log-space, or when the scaled pass cannot be trusted, `ws.w` is filled with their logs and the log-space pass runs.
+`backward!` and sampling then work as after `forward!`.
+"""
+function forward_linear!(ws::PermanentWorkspace{T}, n::Int) where {T}
+    ws.wstale[] = true
+    logZ = _scale_rows_linear!(ws, n)
+    _isneginf(logZ) && (ws.inlog[] = ws.logspace; return logZ)
+    if !ws.logspace
+        ws.inlog[] = false
+        ok, l = _scaled_dp!(ws, n, logZ)
+        ok && return l
+        ws.nfallback[] += 1
+    end
+    _logweights_from_scaled!(ws, n)
+    ws.inlog[] = true
+    return _forward_log!(ws, n)
+end
+# w from the row-scaled weights ew and the row maxima (after `forward_linear!`)
+function _logweights_from_scaled!(ws::PermanentWorkspace, n::Int)
+    (; w, ew, lrow) = ws
+    k = ws.g.k
+    @inbounds for i in 1:n, j in (max(-k, 1 - i) + k + 1):(min(k, n - i) + k + 1)
+        w[i, j] = log(ew[i, j]) + lrow[i]
+    end
+    ws.wstale[] = false
+    return ws
 end
 
 function _forward_log!(ws::PermanentWorkspace{T}, n::Int) where {T}
@@ -167,46 +234,97 @@ function _forward_log!(ws::PermanentWorkspace{T}, n::Int) where {T}
     end
 end
 
-# scaled pass; returns nothing when it cannot be trusted (the caller then runs the log-space pass)
+# scaled pass: (true, log-permanent), or (false, 0) when it cannot be trusted (the caller then runs the log-space pass;
+# a tuple rather than `nothing`, which Julia 1.10 boxes). The weights of the columns outside 1..n are set to 0 in ew, so
+# the inner loops (here and in the scaled backward pass) need no bounds test: an edge to a column below 1 never leaves a
+# reachable state (those columns start used), and a path through a column beyond n carries weight 0.
 function _forward_scaled!(ws::PermanentWorkspace{T}, n::Int) where {T}
-    (; g, F, w, ew) = ws
-    (; k, M, edge_ptr, edge_next, edge_d) = g
-    @inbounds begin
-        logZ = zero(T)
-        for i in 1:n
-            # largest log-weight among the columns that exist in row i
-            lo, hi = max(-k, 1 - i), min(k, n - i)
-            mi = T(-Inf)
-            for d in lo:hi
-                mi = max(mi, w[i, d + k + 1])
-            end
-            _isneginf(mi) && return T(-Inf) # row i has no admissible column: perm = 0 exactly
-            for d in lo:hi
-                ew[i, d + k + 1] = exp(w[i, d + k + 1] - mi)
-            end
-            logZ += mi
+    logZ = _scale_rows_log!(ws, n)
+    _isneginf(logZ) && return (true, logZ) # a row has no admissible column: perm = 0 exactly
+    return _scaled_dp!(ws, n, logZ)
+end
+
+# ew[i, :] = exp(w[i, :] − m_i) with m_i the largest log-weight of row i among its admissible columns, 0 elsewhere;
+# returns Σ m_i (or −Inf for an empty row)
+function _scale_rows_log!(ws::PermanentWorkspace{T}, n::Int) where {T}
+    (; g, w, ew, lrow) = ws
+    k = g.k
+    K = 2 * k + 1
+    logZ = zero(T)
+    @inbounds for i in 1:n
+        lo, hi = max(-k, 1 - i) + k + 1, min(k, n - i) + k + 1
+        mi = T(-Inf)
+        for j in lo:hi
+            mi = max(mi, w[i, j])
         end
-        fill!(view(F, :, 1:(n + 1)), zero(T))
+        _isneginf(mi) && return T(-Inf)
+        for j in 1:(lo - 1)
+            ew[i, j] = zero(T)
+        end
+        for j in lo:hi
+            ew[i, j] = exp(w[i, j] - mi)
+        end
+        for j in (hi + 1):K
+            ew[i, j] = zero(T)
+        end
+        lrow[i] = mi
+        logZ += mi
+    end
+    return logZ
+end
+
+# the same from linear weights in ew: each row divided by its largest admissible entry
+function _scale_rows_linear!(ws::PermanentWorkspace{T}, n::Int) where {T}
+    (; g, ew, lrow) = ws
+    k = g.k
+    K = 2 * k + 1
+    logZ = zero(T)
+    @inbounds for i in 1:n
+        lo, hi = max(-k, 1 - i) + k + 1, min(k, n - i) + k + 1
+        mi = zero(T)
+        for j in lo:hi
+            mi = max(mi, ew[i, j])
+        end
+        mi > 0 || return T(-Inf)
+        im = inv(mi)
+        for j in 1:(lo - 1)
+            ew[i, j] = zero(T)
+        end
+        for j in lo:hi
+            ew[i, j] *= im
+        end
+        for j in (hi + 1):K
+            ew[i, j] = zero(T)
+        end
+        lrow[i] = log(mi)
+        logZ += lrow[i]
+    end
+    return logZ
+end
+
+# the scaled dynamic programme on the row-scaled weights ew, from logZ = Σ_i m_i: (ok, log-permanent)
+function _scaled_dp!(ws::PermanentWorkspace{T}, n::Int, logZ) where {T}
+    (; g, F, ew) = ws
+    (; M, in_ptr, in_src, in_col) = g
+    @inbounds begin
+        fill!(view(F, :, 1), zero(T))
         F[g.start_s, 1] = one(T)
         deficit = 0.0
         for i in 1:n
-            for s in 1:M
-                val = F[s, i]
-                val == 0 && continue
-                for e in edge_ptr[s]:(edge_ptr[s + 1] - 1)
-                    d = edge_d[e]
-                    (1 ≤ i + d ≤ n) || continue
-                    F[edge_next[e], i + 1] += val * ew[i, d + k + 1]
-                end
-            end
+            # pull: each state sums over its incoming edges (one store per state, no scattered writes)
             c = zero(T)
-            for s in 1:M
-                c += F[s, i + 1]
+            for t in 1:M
+                acc = zero(T)
+                for e in in_ptr[t]:(in_ptr[t + 1] - 1)
+                    acc += F[in_src[e], i] * ew[i, in_col[e]]
+                end
+                F[t, i + 1] = acc
+                c += acc
             end
-            (c > SCALED_STEP_MIN) || return nothing
+            (c > SCALED_STEP_MIN) || return (false, zero(T))
             lc = log(c)
             deficit -= min(0.0, _fullvalue_f(lc))
-            (deficit ≤ SCALED_DEFICIT_MAX) || return nothing
+            (deficit ≤ SCALED_DEFICIT_MAX) || return (false, zero(T))
             logZ += lc
             ic = inv(c)
             for s in 1:M
@@ -214,7 +332,7 @@ function _forward_scaled!(ws::PermanentWorkspace{T}, n::Int) where {T}
             end
         end
         # one state is reachable after the last step (all columns used): F_end = 1 up to rounding
-        return logZ + log(F[g.end_s, n + 1])
+        return (true, logZ + log(F[g.end_s, n + 1]))
     end
 end
 
@@ -231,9 +349,11 @@ marginals P(σ[i] = i + d) (probabilities in both modes, each row sums to one) a
 function backward!(ws::PermanentWorkspace{T}, n::Int) where {T}
     if !ws.inlog[]
         _backward_scaled!(ws, n) && return view(ws.rho, 1:n, :)
-        # a backward normaliser underflowed: redo both passes in log-space
+        # a backward normaliser underflowed: redo both passes in log-space (from the linear weights if that is all
+        # the forward pass had)
         ws.inlog[] = true
         ws.nfallback[] += 1
+        ws.wstale[] && _logweights_from_scaled!(ws, n)
         _forward_log!(ws, n)
     end
     _backward_log!(ws, n)
@@ -276,7 +396,7 @@ end
 # scaled backward pass on ws.ew; returns false when a normaliser underflows
 function _backward_scaled!(ws::PermanentWorkspace{T}, n::Int) where {T}
     (; g, F, B, ew, rho) = ws
-    (; k, M, edge_ptr, edge_next, edge_d) = g
+    (; k, M, edge_ptr, edge_next, edge_col) = g
     K = 2 * k + 1
     @inbounds begin
         fill!(view(B, :, n + 1), zero(T))
@@ -288,12 +408,11 @@ function _backward_scaled!(ws::PermanentWorkspace{T}, n::Int) where {T}
             for s in 1:M
                 val_F = F[s, i]
                 acc = zero(T)
-                for e in edge_ptr[s]:(edge_ptr[s + 1] - 1)
-                    d = edge_d[e]
-                    (1 ≤ i + d ≤ n) || continue
-                    val_B = B[edge_next[e], i + 1] * ew[i, d + k + 1]
+                for e in edge_ptr[s]:(edge_ptr[s + 1] - 1) # ew is 0 outside the columns 1..n (see the forward pass)
+                    j = edge_col[e]
+                    val_B = B[edge_next[e], i + 1] * ew[i, j]
                     acc += val_B
-                    rho[i, d + k + 1] += val_F * val_B
+                    rho[i, j] += val_F * val_B
                 end
                 B[s, i] = acc
             end

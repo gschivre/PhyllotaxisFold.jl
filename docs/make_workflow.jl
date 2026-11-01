@@ -34,12 +34,12 @@ function workflow_group(law, seed)
         law; plants = W_STEMS, organs = W_ORGANS, x, logμκ = 1.85, σκ = 0.15, torsion_mean = 1.0, torsion_sd = 0.7, rng
     )
     wstage("seed $(seed): fitting the propensity model")
-    m = PhyllotaxisModelAD(sim.angles; torsion_x = x)
-    r = fit_map_torsion!(m; prior = W_TPRIOR)
+    m = PhyllotaxisModelAD(sim.angles; torsion = W_TPRIOR, torsion_x = x)
+    r = fit_map(m)
     wstage("seed $(seed): decoding")
-    dec = decode_orders(m, r; full = true)
-    post = order_posterior(m, r; nsamples = 200, rng = Xoshiro(seed + 1))
-    smp = order_samples(post, r.fit.θ.η)
+    dec = decode_orders(r; full = true)
+    post = order_posterior(r; nsamples = 200, rng = Xoshiro(seed + 1))
+    smp = order_samples(post, r.θ.η)
     wstage("seed $(seed): delay laws")
     fits = (
         core = fit_delay_law(smp, GaussianExpTails(:core)),
@@ -55,7 +55,7 @@ function workflow_group(law, seed)
         sum(w)^2 / sum(w .^ 2 ./ s.w ./ 200)
     end
     return (;
-        law, x, sim = (; sim.angles, sim.orders, sim.torsion), θ = r.fit.θ, r.m_ω, r.s_ω, r.loglik,
+        law, x, sim = (; sim.angles, sim.orders, sim.torsion), r.θ, r.θ.m_ω, r.θ.s_ω, r.loglik,
         dec = [(; d.σ, d.o, d.ψ, d.ω) for d in dec], ρ = [p.ρ for p in post], ω_mean = [p.ω_mean for p in post],
         ω_sd = [p.ω_sd for p in post], smp, fits, inf, prof, ess, truth_ll = relative_loglik(smp, law), k = m.k,
     )

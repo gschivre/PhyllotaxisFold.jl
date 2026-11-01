@@ -1,6 +1,6 @@
 # 3. Summing over all orders
 
-The likelihood of a stem contains a sum over all its orders ([§2.5](angles.md)). When the law of the order has a
+The likelihood of a stem contains a sum over all its orders ([§2.5](angles.md#2.5-The-likelihood-of-one-stem)). When the law of the order has a
 product form, this sum is exact in a few thousand operations. The argument is elementary, and everything else rests on
 it: exact likelihoods, exact gradients, Newton's method and exact samples of the order.
 
@@ -159,7 +159,7 @@ spiral). The Hessian is one pass of forward-mode dual numbers through this analy
 
 ## 3.7 The order of a real stem
 
-The posterior of [§3.5](orders.md) holds for fixed nuisance quantities. A real stem has an unknown spiral, precision
+The posterior of [§3.5](orders.md#3.5-What-else-the-graph-gives) holds for fixed nuisance quantities. A real stem has an unknown spiral, precision
 and twist, and different values can favour different orders (the twist especially, whose likelihood is often
 multimodal). The package gives two decodings of the fitted model.
 
@@ -172,7 +172,7 @@ multimodal). The package gives two decodings of the fitted model.
   state of non-negligible weight, and the twist rate optimised as well. It returns one order per stem, with its twist,
   spiral and precision, for figures and for organ-by-organ inspection.
 
-**Code.** `Permanents`: `PermutationGraph(k)` (built once), `PermanentWorkspace`, `forward!`, `backward!` (marginals),
-`sample_permutation!`, `map_permutation` (Viterbi), `logprob_permutation`; `order_posterior`, `decode_orders`,
+**Code.** `PhyllotaxisFold.Permanents` (not exported): `PermutationGraph(k)` (built once), `PermanentWorkspace`,
+`forward!`, `backward!` (marginals), `sample_permutation!`, `map_permutation` (Viterbi), `logprob_permutation`; `order_posterior`, `decode_orders`,
 `spiral_posterior`. The tests check the permanent, the marginals and the sampling frequencies against brute-force
 enumeration.

@@ -1,55 +1,37 @@
-"""
-    CommitmentTiming
-
-Laws of commitment delays (independent delays, one law for every site) as laws of organ order, scored through the
-posterior orders of the propensity model.
-
-Site i becomes ready at time i (plastochron units) and commits after an i.i.d. delay eᵢ ~ f; the organ order is
-σ = sortperm(i + eᵢ). The propensity model fitted to the angles gives, per stem, exact posterior samples of σ
-(`order_posterior`). Both models share the angle likelihood p(y | σ), so for any delay law f
-
-    p(y | f) / p(y | A) = E_{σ ∼ p(σ | y, A)} [ P_f(σ) / P_A(σ) ]
-
-(A: the propensity model; `P_A`: its banded-permanent law with the fitted costs η; `P_f`: the exact order law of the
-delays f). Any delay law is thereby scored against the propensity model, and against any other law, without refitting
-the angle model.
-
-- `DelayLaw`: the abstract type of a delay law. A law is defined by its log density (`delay_logpdf`) and, to be
-  fitted, its free parameters (`free_parameters`, `with_free_parameters`); everything below works for any law
-- `GaussianExpTails`, the default law: `f = (1 − π_L − π_E) N(0, σc²) + π_L (N(0, σc²) + Exp(m_L)) + π_E (N(0, σc²) − Exp(m_E))`
-- `loglik_order_exact`: the exact `log P_f(σ)` (forward recursion on a delay grid, midpoint rule for ties)
-- `order_samples`, `stem_terms`, `relative_loglik`: the re-weighting estimate, per stem and summed
-- `fit_delay_law`: maximum of the summed terms over the free parameters of a law (Newton trust region, ForwardDiff),
-  started from a law of the family (for the default law, a named variant: `GaussianExpTails(:core)`, `:late`,
-  `:early` or `:both`); given several groups of stems, one law per group with shared leading parameters (the core sd
-  of the default law)
-- `overtaking`: the overtaking profile `q_d = P(site i + d commits before site i)` of a law, the quantity the orders
-  identify; `overtaking_profile`: the same read directly from the posterior orders, with no delay law;
-  `compare_profiles`: Wald test of two groups' profiles
-- `delay_law_inference`: robust (sandwich, clustered by stem) standard errors of the reported parameters (σc for the
-  default law), the tail masses and the profile
-- `shared_core_test`: likelihood ratio of shared parameters (one core sd) for all groups against one set per group
-- `simulate_stems(f::DelayLaw; ...)`: stems whose order comes from independent delays f (for validation)
-
-Everything between the parameters and the summed terms is generic in the number type, so the gradient and the Hessian
-are exact (ForwardDiff); the methods of a new law must be generic too.
-"""
-module CommitmentTiming
-
-using Random, Statistics, LinearAlgebra
-using Distributions, LogExpFunctions, Optim, ForwardDiff
-using SpecialFunctions: erfc, erfcx
-using StatsBase: countmap
-using ..Common: _fullvalue, _ad_objective
-using ..Permanents: PermanentWorkspace, logprob_permutation
-using ..Torsion: torsion_coordinate
-using ..AngleLikelihood: _simulate_angles
-import ..AngleLikelihood: simulate_stems
-
-export DelayLaw, GaussianExpTails, delay_logpdf, free_parameters, with_free_parameters, reported_parameters,
-    nshared_parameters, DELAY_GRID, delay_logdensity, tail_masses, overtaking, loglik_order_exact, order_diagnostics, order_samples,
-    stem_terms, relative_loglik, fit_delay_law, delay_law_inference, shared_core_test, overtaking_profile,
-    compare_profiles, simulate_stems
+# CommitmentTiming
+#
+# Laws of commitment delays (independent delays, one law for every site) as laws of organ order, scored through the
+# posterior orders of the propensity model.
+#
+# Site i becomes ready at time i (plastochron units) and commits after an i.i.d. delay eᵢ ~ f; the organ order is
+# σ = sortperm(i + eᵢ). The propensity model fitted to the angles gives, per stem, exact posterior samples of σ
+# (`order_posterior`). Both models share the angle likelihood p(y | σ), so for any delay law f
+#
+#     p(y | f) / p(y | A) = E_{σ ∼ p(σ | y, A)} [ P_f(σ) / P_A(σ) ]
+#
+# (A: the propensity model; `P_A`: its banded-permanent law with the fitted costs η; `P_f`: the exact order law of the
+# delays f). Any delay law is thereby scored against the propensity model, and against any other law, without refitting
+# the angle model.
+#
+# - `DelayLaw`: the abstract type of a delay law. A law is defined by its log density (`delay_logpdf`) and, to be
+#   fitted, its free parameters (`free_parameters`, `with_free_parameters`); everything below works for any law
+# - `GaussianExpTails`, the default law: `f = (1 − π_L − π_E) N(0, σc²) + π_L (N(0, σc²) + Exp(m_L)) + π_E (N(0, σc²) − Exp(m_E))`
+# - `loglik_order_exact`: the exact `log P_f(σ)` (forward recursion on a delay grid, midpoint rule for ties)
+# - `order_samples`, `stem_terms`, `relative_loglik`: the re-weighting estimate, per stem and summed
+# - `fit_delay_law`: maximum of the summed terms over the free parameters of a law (Newton trust region, ForwardDiff),
+#   started from a law of the family (for the default law, a named variant: `GaussianExpTails(:core)`, `:late`,
+#   `:early` or `:both`); given several groups of stems, one law per group with shared leading parameters (the core sd
+#   of the default law)
+# - `overtaking`: the overtaking profile `q_d = P(site i + d commits before site i)` of a law, the quantity the orders
+#   identify; `overtaking_profile`: the same read directly from the posterior orders, with no delay law;
+#   `compare_profiles`: Wald test of two groups' profiles
+# - `delay_law_inference`: robust (sandwich, clustered by stem) standard errors of the reported parameters (σc for the
+#   default law), the tail masses and the profile
+# - `shared_core_test`: likelihood ratio of shared parameters (one core sd) for all groups against one set per group
+# - `simulate_stems(f::DelayLaw; ...)`: stems whose order comes from independent delays f (for validation)
+#
+# Everything between the parameters and the summed terms is generic in the number type, so the gradient and the Hessian
+# are exact (ForwardDiff); the methods of a new law must be generic too.
 
 """
 default delay grid (plastochrons). The density is renormalised on the grid, so the mass it cuts off,
@@ -655,7 +637,7 @@ the angles `y_p ~ vM(ϕ + o (σ[p] − 1) ψ + ω_s x_p, κ_s)` as in the propen
 probability `outlier`). `organs` is one count or
 one per stem; `x` the twist coordinate of each stem (e.g. mm of stem below each organ; default: the positions
 0, 1, …), and the twist `ω_s ~ N(torsion_mean, torsion_sd²)` is in degrees per unit of x. Returns (; angles, orders,
-delays, torsion, κ, outliers, ψ, o).
+delays, torsion, κ, outliers, ψ, o, ϕ).
 """
 function simulate_stems(
         f::DelayLaw; plants::Int = 100, organs = 50, x = nothing, logμκ::Real = 1.5, σκ::Real = 0.0, α::Real = 0.95,
@@ -674,7 +656,6 @@ function simulate_stems(
     return (;
         angles = [z.y for z in out], orders = [z.σ for z in out], delays = [z.e for z in out], torsion = [z.ω for z in out],
         κ = [z.κ for z in out], outliers = [z.outliers for z in out], ψ = [z.ψ for z in out], o = [z.o for z in out],
+        ϕ = [z.ϕ for z in out],
     )
 end
-
-end # module CommitmentTiming

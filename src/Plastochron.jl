@@ -1,44 +1,33 @@
-"""
-    Plastochron
-
-The plastochron along the stem, from daily counts of open flowers (to express commitment delays in hours).
-
-**Rate of one plant.** With t in days from the start of the first day of observation, plant i opens flowers at the rate
-(flowers per day)
-
-    λ(t; τᵢ) = b + a t                 for t ≤ τᵢ               (rise phase; a can be negative)
-             = ρᵢ − d (t − τᵢ)          for τᵢ < t ≤ Aᵢ          (decline phase), ρᵢ = b + a τᵢ
-             = 0                       after the arrest Aᵢ = τᵢ + ρᵢ / d
-
-a piecewise-linear rate whose meristem arrests at a finite time. The change point τᵢ ("failure time": the plastochron
-stops shortening and starts to lengthen) is specific to each plant, `log τᵢ ~ N(μ_τ, σ_τ²)`, and integrated out. If the
-rise phase reaches 0 before τᵢ (a < 0), the plant arrests there. Parameters `p = (a, log b, log d, μ_τ, log σ_τ)`.
-
-**Counts.** The new flowers of a day are Poisson with mean ∫λ over that day (over the whole gap when days were not
-recorded), computed exactly from the cumulative F(t) = ∫₀ᵗ λ. All recorded days are used, including the days without new
-flowers at the end: they date the arrest.
-
-**Plastochron by rank.** Flower k opens when `F(t_k) = k − ½`, and its plastochron is `T_P(k) = 1 / λ(t_k)`. Because λ is
-linear in t on each phase, λ² is linear in F (λ² = b² + 2aF while rising, ρ² − 2d(F − F(τ)) while declining), so `T_P(k)`
-is in closed form. Ranks beyond the expected total keep the last plastochron.
-
-`fit_flowering` (maximum likelihood, Newton trust region with ForwardDiff gradient and Hessian), `plastochron_by_rank`
-(a plant with a given τ, by default the median plant), `plant_plastochron` (one plant, from the posterior of its own τ
-given its counts), and `relative_plastochron` (`r = T_P / T̄_P` for every organ of every stem).
-
-**Delays in hours.** `mean_plastochron` is the mean `T_P` of the measured organs, in hours, with its standard error (delta
-method through the covariance of the fit), and `in_hours` converts a delay in plastochrons (e.g. the core sd of a
-delay law) with its standard error.
-"""
-module Plastochron
-
-using Statistics
-using LinearAlgebra: diag
-using LogExpFunctions, ForwardDiff, Optim
-using ..Common: _ad_objective
-
-export flowering_rate, flowering_cumulative, fit_flowering, plastochron_by_rank, plant_plastochron, tau_posterior,
-    relative_plastochron, mean_plastochron, in_hours
+# Plastochron
+#
+# The plastochron along the stem, from daily counts of open flowers (to express commitment delays in hours).
+#
+# **Rate of one plant.** With t in days from the start of the first day of observation, plant i opens flowers at the rate
+# (flowers per day)
+#
+#     λ(t; τᵢ) = b + a t                 for t ≤ τᵢ               (rise phase; a can be negative)
+#              = ρᵢ − d (t − τᵢ)          for τᵢ < t ≤ Aᵢ          (decline phase), ρᵢ = b + a τᵢ
+#              = 0                       after the arrest Aᵢ = τᵢ + ρᵢ / d
+#
+# a piecewise-linear rate whose meristem arrests at a finite time. The change point τᵢ ("failure time": the plastochron
+# stops shortening and starts to lengthen) is specific to each plant, `log τᵢ ~ N(μ_τ, σ_τ²)`, and integrated out. If the
+# rise phase reaches 0 before τᵢ (a < 0), the plant arrests there. Parameters `p = (a, log b, log d, μ_τ, log σ_τ)`.
+#
+# **Counts.** The new flowers of a day are Poisson with mean ∫λ over that day (over the whole gap when days were not
+# recorded), computed exactly from the cumulative F(t) = ∫₀ᵗ λ. All recorded days are used, including the days without new
+# flowers at the end: they date the arrest.
+#
+# **Plastochron by rank.** Flower k opens when `F(t_k) = k − ½`, and its plastochron is `T_P(k) = 1 / λ(t_k)`. Because λ is
+# linear in t on each phase, λ² is linear in F (λ² = b² + 2aF while rising, ρ² − 2d(F − F(τ)) while declining), so `T_P(k)`
+# is in closed form. Ranks beyond the expected total keep the last plastochron.
+#
+# `fit_flowering` (maximum likelihood, Newton trust region with ForwardDiff gradient and Hessian), `plastochron_by_rank`
+# (a plant with a given τ, by default the median plant), `plant_plastochron` (one plant, from the posterior of its own τ
+# given its counts), and `relative_plastochron` (`r = T_P / T̄_P` for every organ of every stem).
+#
+# **Delays in hours.** `mean_plastochron` is the mean `T_P` of the measured organs, in hours, with its standard error (delta
+# method through the covariance of the fit), and `in_hours` converts a delay in plastochrons (e.g. the core sd of a
+# delay law) with its standard error.
 
 # (a, b, d) from p and the end of the rise phase for a change point τ
 _abd(p) = (p[1], exp(p[2]), exp(p[3]))
@@ -200,5 +189,3 @@ uncertainties are taken as independent, since they come from different data (the
 Returns (; estimate, se).
 """
 in_hours(x::Real, se::Real, T::NamedTuple) = (estimate = x * T.T, se = sqrt((T.T * se)^2 + (x * T.se)^2))
-
-end # module Plastochron

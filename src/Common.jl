@@ -1,17 +1,8 @@
-"""
-    Common
-
-Constants and small numerical tools shared by every block of the model: the two canonical divergence angles, log I₀ and
-the Bessel ratio (generic in the number type, so that they work with nested ForwardDiff duals), the half-t distribution,
-the -Inf-safe logaddexp and the twice-differentiable Optim objective with ForwardDiff derivatives.
-"""
-module Common
-
-using ForwardDiff, SpecialFunctions, Distributions, LogExpFunctions
-using ADTypes: AutoForwardDiff
-using NLSolversBase: TwiceDifferentiable
-
-export Golden_angle, Lucas_angle, logbesseli, besseliratio, fit_map
+# Common
+#
+# Constants and small numerical tools shared by every block of the model: the two canonical divergence angles, log I₀ and
+# the Bessel ratio (generic in the number type, so that they work with nested ForwardDiff duals), the half-t distribution,
+# the -Inf-safe logaddexp and the twice-differentiable Optim objective with ForwardDiff derivatives.
 
 "the golden divergence angle π (3 − √5) rad ≈ 137.5°, the canonical angle ψ of the main spiral"
 const Golden_angle = π * (3 - sqrt(5))
@@ -21,18 +12,11 @@ const Lucas_angle = π * (1 - inv(sqrt(5)))
 """
     fit_map(model; kwargs...)
 
-MAP estimate by Newton's method with trust region, analytic gradient and a Hessian from one dual pass over it.
-Methods: `fit_map(::PhyllotaxisModelAD)` and its `TransformedLogDensityProblem`; returns (; θ, u, H, result),
-θ = `constrained_parameters(model, u)`.
+MAP estimate of a model by Newton's method with trust region. Method: `fit_map(::PhyllotaxisModelAD)`, which returns a
+`PhyllotaxisFit`.
 """
 function fit_map end
 
-# logaddexp that returns the other argument exactly when one is -Inf (keeps ForwardDiff partials free of NaN)
-@inline _isneginf(x) = isinf(x) && x < 0 # (x == -Inf is false for a dual number with nonzero partials)
-@inline _logaddexp(a, b) = (_isneginf(a) ? b : (_isneginf(b) ? a : logaddexp(a, b)))
-
-# Float64 value of possibly nested dual numbers
-_fullvalue(x) = (x isa ForwardDiff.Dual ? _fullvalue(ForwardDiff.value(x)) : x)
 
 """
     logbesseli(n, x)
@@ -46,25 +30,27 @@ function logbesseli(n, x::T; tol = eps(), Kmax = 20) where {T}
     (x == Inf) && return T(Inf)
     (x > 100) && return _logbesseli_asymptotic(n, x; tol, Kmax)
     K = max(1, floor(Int, 0.5 * (sqrt(_fullvalue(x)^2 + n^2) - n))) # maximum of the series at ~x / 2
-    rec = zeros(T, K) # record the first K values
-    rec[1] = -loggamma(n + 1)
-    logx2 = 2 * log(x)
-    log4 = log(4)
-    for k in 2:K
-        rec[k] = rec[k - 1] + logx2 - log4 - log(k - 1) - log(n + k - 1)
+    # log of the series terms: t_1 = −log Γ(n + 1), t_j = t_{j−1} + log(x² / 4) − log(j − 1) − log(n + j − 1). Two
+    # passes without a buffer: up to the largest term t_K, then the terms below it summed downwards from it
+    lstep = 2 * log(x) - log(4)
+    tK = -loggamma(n + 1) + zero(T)
+    for j in 2:K
+        tK += lstep - log(j - 1) - log(n + j - 1)
     end
     res = one(T)
-    for i in (K - 1):-1:1
-        res += exp(rec[i] - rec[end])
+    t = tK
+    for j in K:-1:2 # t_{j−1} from t_j
+        t -= lstep - log(j - 1) - log(n + j - 1)
+        res += exp(t - tK)
     end
     k = K
-    loga = rec[end] + logx2 - log4 - log(k) - log(n + k)
-    while (loga - rec[end]) > log(tol)
-        res += exp(loga - rec[end])
+    loga = tK + lstep - log(k) - log(n + k)
+    while (loga - tK) > log(tol)
+        res += exp(loga - tK)
         k += 1
-        loga += logx2 - log4 - log(k) - log(n + k)
+        loga += lstep - log(k) - log(n + k)
     end
-    return log(res) + n * log(x / 2) + rec[end]
+    return log(res) + n * log(x / 2) + tK
 end
 function _logbesseli_asymptotic(n, x::T; tol = eps(), Kmax = 20) where {T}
     μ = 4 * (n^2)
@@ -110,5 +96,3 @@ function _ad_objective(obj, v0::AbstractVector{Float64})
     f(v) = (l = obj(v); isfinite(l) ? l : oftype(l, Inf))
     return TwiceDifferentiable(f, v0; autodiff = AutoForwardDiff())
 end
-
-end # module Common

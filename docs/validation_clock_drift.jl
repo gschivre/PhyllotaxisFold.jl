@@ -10,6 +10,31 @@ using PhyllotaxisFold, Random, Statistics, Serialization
 
 const CD_FILE = joinpath(@__DIR__, "clock_drift.jls")
 
+# the seed of each data set (σξ, rep): the values of hash((σξ, rep, 31)) that made the cached results, written out
+# because hash values may change between Julia versions (checked 2026-11-01: they regenerate the cached orders)
+const CD_SEEDS = Dict(
+    (0.0, 0) => 0x7441562a29687cf9,
+    (0.0, 1) => 0xa23f63c83e4c7130,
+    (0.0, 2) => 0xfa1a17bdac1f6826,
+    (0.0, 3) => 0x397532045f60fb00,
+    (0.1, 0) => 0x60438682f7482c0d,
+    (0.1, 1) => 0x8b774d23deae9f2c,
+    (0.1, 2) => 0x7b8c72b544f33812,
+    (0.1, 3) => 0xf72ebb0b2acbc793,
+    (0.2, 0) => 0xdea0bdcd8289b1aa,
+    (0.2, 1) => 0xc03a15d814b83351,
+    (0.2, 2) => 0x1d1a5e3db7882e56,
+    (0.2, 3) => 0x2bf183c03f145bf6,
+    (0.3, 0) => 0xf16518450690d9a6,
+    (0.3, 1) => 0x617c9e84e3c9bdee,
+    (0.3, 2) => 0x28b122257d6a80ea,
+    (0.3, 3) => 0x03278cf0bb511887,
+    (0.4, 0) => 0x5cfdf5193a3715c0,
+    (0.4, 1) => 0x683a0d98dca83f71,
+    (0.4, 2) => 0x51dd26f2ba7b9231,
+    (0.4, 3) => 0xf3e929a1e7c80ec6,
+)
+
 function clock_orders(rng, S, n, σξ, σ0)
     return map(1:S) do _
         r = [0.0; cumsum(1.0 .+ σξ .* randn(rng, n - 1))]
@@ -42,7 +67,7 @@ function run_clock_drift(; σ0 = 0.3, σξs = [0.0, 0.1, 0.2, 0.3, 0.4], reps = 
     for σξ in σξs, rep in 0:reps
         key = (σξ, rep) # rep 0: the large data set
         haskey(res, key) && continue
-        rng = Xoshiro(hash((σξ, rep, 31)))
+        rng = Xoshiro(get(() -> hash((σξ, rep, 31)), CD_SEEDS, (σξ, rep))) # (a new setting: a seed from its hash)
         orders = clock_orders(rng, rep == 0 ? Sbig : S, n, σξ, σ0)
         res[key] = fit_clock(orders, σ0, σξ)
         serialize(CD_FILE, res)

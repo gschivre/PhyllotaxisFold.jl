@@ -1,15 +1,15 @@
 # 5. Commitment timing
 
 Step 1 gives, for every stem, the exact posterior of its order and as many samples of it as we like
-([§3.7](orders.md)). Step 2 asks the question of [§1.4](problem.md): *which delay law ``f`` explains these orders?* In
+([§3.7](orders.md#3.7-The-order-of-a-real-stem)). Step 2 asks the question of [§1.4](problem.md#1.4-The-question-behind-the-order): *which delay law ``f`` explains these orders?* In
 four moves:
 
-1. the law of the order that a delay law predicts, ``P_f(\sigma)`` ([§5.2](timing.md));
-2. why the exact sum of [§3](orders.md) cannot use it, and why this is a small obstacle ([§5.3](timing.md));
-3. the exact score of a single order ([§5.4](timing.md));
-4. the likelihood of ``f``, by re-weighting the orders of step 1 ([§5.5](timing.md)).
+1. the law of the order that a delay law predicts, ``P_f(\sigma)`` ([§5.2](timing.md#5.2-The-law-of-the-order-of-a-paced-meristem));
+2. why the exact sum of [§3](orders.md) cannot use it, and why this is a small obstacle ([§5.3](timing.md#5.3-Not-a-product,-but-close-to-one));
+3. the exact score of a single order ([§5.4](timing.md#5.4-The-exact-probability-of-one-order));
+4. the likelihood of ``f``, by re-weighting the orders of step 1 ([§5.5](timing.md#5.5-Re-weighting-the-reconstructed-orders)).
 
-The delay law itself ([§5.6](timing.md)) and its fit ([§5.7](timing.md)) come last. But first, why should a delay be
+The delay law itself ([§5.6](timing.md#5.6-The-delay-law)) and its fit ([§5.7](timing.md#5.7-Fit,-uncertainty-and-comparisons)) come last. But first, why should a delay be
 random at all?
 
 ## 5.1 Why a random delay
@@ -20,7 +20,7 @@ the site, and it is lowered near young primordia, which inhibit the emergence of
 the switch of the network to the organ-founder state, a switch that is not undone when the input falls back. In
 practice, a site has committed once removing auxin no longer prevents the organ from forming. The visible signs of the
 organ (a marker turning on, a bulge) come later, but that extra lag does no harm: its common part shifts every site
-alike, which leaves the order unchanged ([§5.2](timing.md)), and its jitter simply adds to ``f``.
+alike, which leaves the order unchanged ([§5.2](timing.md#5.2-The-law-of-the-order-of-a-paced-meristem)), and its jitter simply adds to ``f``.
 
 **Why a fold.** The **assumption** is that the network has two stable states over a range of inputs, uncommitted and
 committed, and that the rising input makes the uncommitted state disappear. Positive feedback readily builds such a
@@ -146,15 +146,15 @@ mean, a little less variable. Either way, the picture of a slow and random delay
     and its sd by ``\sqrt{1 + c}``, so the coefficient of variation decreases. These are first-order results
     (``k_{\rm fb}\tau_d \ll 1``); long delays can change the switch itself.
 
-From this picture the package keeps only what [§1.4](problem.md) assumed: each site commits after a random delay,
+From this picture the package keeps only what [§1.4](problem.md#1.4-The-question-behind-the-order) assumed: each site commits after a random delay,
 with the same law for every site. A fold is not the only source of such a delay (a long cascade of steps, or a precise
 switch reading a jittery input, give one too), so the package does not impose the delay law of a fold: it fits a
-flexible law ([§5.6](timing.md)) and lets the orders decide its shape. Any other law, a fold's included, can be put in
+flexible law ([§5.6](timing.md#5.6-The-delay-law)) and lets the orders decide its shape. Any other law, a fold's included, can be put in
 its place ([Custom delay laws](custom_laws.md)).
 
 ## 5.2 The law of the order of a paced meristem
 
-Recall the mechanism of [§1.4](problem.md): site ``i`` is ready at time ``i`` (in plastochrons), it commits at
+Recall the mechanism of [§1.4](problem.md#1.4-The-question-behind-the-order): site ``i`` is ready at time ``i`` (in plastochrons), it commits at
 ``\tau_i = i + e_i`` with independent delays ``e_i \sim f``, and the order on the stem is the ranking of the
 ``\tau_i``. Only differences of delays matter, so ``f`` is defined up to a shift, and its core is centred at 0.
 Ranking items by independent noisy times is a classical model: Thurstone's law of comparative judgment
@@ -169,7 +169,7 @@ P(2\,1) = \Phi\!\left(-\frac{1}{\sigma_c\sqrt 2}\right).
 
 With ``\sigma_c = 0.42`` plastochron, this is 4.6 %: about one pair of neighbours in twenty. The same reasoning shows why a
 Gaussian alone is not the whole story: a displacement by two needs ``e_i - e_{i+2} > 2``, of probability
-``\Phi(-2/(\sigma_c\sqrt 2)) \approx 4 \times 10^{-4}``, one pair in 2600. Real stems have many more ([§5.6](timing.md)).
+``\Phi(-2/(\sigma_c\sqrt 2)) \approx 4 \times 10^{-4}``, one pair in 2600. Real stems have many more ([§5.6](timing.md#5.6-The-delay-law)).
 
 **Any number of sites.** The organ at height ``p`` comes from site ``\sigma(p)``. So ``\sigma`` is the order on the
 stem exactly when ``\tau_{\sigma(1)} < \tau_{\sigma(2)} < \dots < \tau_{\sigma(n)}``. Call
@@ -191,12 +191,12 @@ clock, and ``f`` the total timing noise around it; the orders cannot split it be
 
 What the model does not cover are timing errors that build on each other: a clock whose intervals vary, so that its
 errors add up like a random walk, or a late site that also delays the next ones. Both make the delays of neighbouring
-sites dependent ([§7](limits.md) lists the signs). [§6.7](validation.md) shows when a drifting clock starts to be read
+sites dependent ([§7](limits.md) lists the signs). [§6.7](validation.md#6.7-A-clock-that-drifts) shows when a drifting clock starts to be read
 as tails.
 
 ## 5.3 Not a product, but close to one
 
-The integral has one factor per organ, as in the product form of [§3.1](orders.md), but the chain
+The integral has one factor per organ, as in the product form of [§3.1](orders.md#3.1-The-sum-as-a-permanent), but the chain
 ``t_1 < \dots < t_n`` ties them together: where the organ of site ``j`` ends up depends on all the other delays at
 once. Can a product ``\prod_p h_{p,\sigma(p)}`` still reproduce ``P_f``? A simple test says no.
 
@@ -209,7 +209,7 @@ cancel in the ratio):
 ```
 
 Under ``P_f``, with Gaussian delays of sd 0.42, the four orders have exact probabilities (by the recursion of
-[§5.4](timing.md); code in the box below):
+[§5.4](timing.md#5.4-The-exact-probability-of-one-order); code in the box below):
 
 | order | 1 2 3 4 | 2 1 3 4 | 1 2 4 3 | 2 1 4 3 |
 |---|---|---|---|---|
@@ -287,7 +287,7 @@ the posterior samples of each stem. How do their scores become the likelihood of
 
 ## 5.5 Re-weighting the reconstructed orders
 
-The propensity model ``A`` and the delay law ``f`` describe the angles in the same way ([§2.5](angles.md)) and differ
+The propensity model ``A`` and the delay law ``f`` describe the angles in the same way ([§2.5](angles.md#2.5-The-likelihood-of-one-stem)) and differ
 only in the law of the order. So write the likelihood of ``f`` as a sum over orders, and let Bayes' rule under ``A``
 turn the angle term into the posterior of step 1.
 
@@ -304,7 +304,7 @@ turn the angle term into the posterior of step 1.
     The identity requires ``P_A(\sigma) > 0`` wherever ``P_f(\sigma)\,p(y \mid \sigma) > 0``. Orders outside the
     band of ``A`` violate this; they are discussed under the limits below.
 
-This is the intuition of [§1.5](problem.md), made exact: a good delay law gives a high probability to the orders the
+This is the intuition of [§1.5](problem.md#1.5-The-plan), made exact: a good delay law gives a high probability to the orders the
 angles support. Dividing by ``P_A(\sigma)`` (the product form of [§4](propensity.md) over its permanent) removes the
 part of that support that came from ``A``'s own law of the order, so that it is not counted twice.
 
@@ -335,15 +335,15 @@ propensity model does (log-weight +1.8), and most alternatives less probable (b)
 Order 4 is an instructive contrast. Its log-weight is as high as the true order's, yet ``f`` finds it 16 times *less*
 probable (``\log P_f`` = −18.0 against −15.2): ``A`` simply finds it even less probable. Where the true order displaces
 two neighbours by one (−1, +1), order 4 displaces them by two (+2, −2), a pattern the product form penalises a little
-more than a tailed law does ([§5.3](timing.md)); the weight corrects for this. With 0.5 % of the samples, order 4 adds
+more than a tailed law does ([§5.3](timing.md#5.3-Not-a-product,-but-close-to-one)); the weight corrects for this. With 0.5 % of the samples, order 4 adds
 only 0.03 to the sum, against 5.3 for the true order. Summed over the stems, ``\Delta\ell`` peaks close to the true core
 sd (c).
 
 **When can the average be trusted?** When the weights ``r_j = P_f(\sigma_j)/P_A(\sigma_j)`` are of similar size. The
 *effective sample size* over the ``N`` draws, ``(\sum r)^2 / \sum r^2``, measures this: ``N`` when all weights are
 equal, 1 when a single draw carries everything. The weights are even when ``P_A`` is close to ``P_f``, as
-[§5.3](timing.md) leads us to expect; in the validation the effective sample size is typically 175–200 out of 200
-([§6.6](validation.md)).
+[§5.3](timing.md#5.3-Not-a-product,-but-close-to-one) leads us to expect; in the validation the effective sample size is typically 175–200 out of 200
+([§6.6](validation.md#6.6-The-exact-order-likelihood-and-the-weights)).
 
 **Limits.** The angle nuisances (``\kappa``, spiral, twist) are those of the propensity model's fit. Orders outside its
 band (``|d| > k``) are never sampled, so a law that puts mass on them is slightly penalised. A stem whose effective
@@ -362,7 +362,7 @@ f = (1 - \pi_L - \pi_E)\, \mathcal N(0, \sigma_c^2)
 
 The core sd ``\sigma_c`` is the precision of a typical commitment. A fraction ``\pi_L`` of the sites is late by an extra
 exponential delay of mean ``m_L``, and a fraction ``\pi_E`` early by ``m_E``. Why tails? A Gaussian core of sd 0.42
-makes neighbour swaps common but displacements by two very rare ([§5.2](timing.md)). A tail gives exactly what a
+makes neighbour swaps common but displacements by two very rare ([§5.2](timing.md#5.2-The-law-of-the-order-of-a-paced-meristem)). A tail gives exactly what a
 Gaussian cannot: one organ displaced by two or three positions while its neighbours stay in order. For three sites,
 the orders 3 1 2 and 2 3 1 have a probability of 0.03 % under the Gaussian core alone, and 2.4 % under the law of the
 running example, whose tails hold 12 % of the sites.
@@ -406,7 +406,7 @@ q_d = P(\text{site } i + d \text{ commits before site } i) = P(e_i - e_{i+d} > d
 So the profile is the result to report and to compare between groups (`overtaking_profile` reads it from the
 posterior orders, with no delay law; `delay_law_inference` gives that of the fitted law). The fitted law interprets
 it, within its assumed shape: how precise a typical commitment is, and how many sites are off time.
-[§6.4](validation.md) measures each of these statements on simulated stems.
+[§6.4](validation.md#6.4-The-delay-law) measures each of these statements on simulated stems.
 
 ## 5.7 Fit, uncertainty and comparisons
 
@@ -418,7 +418,7 @@ it, within its assumed shape: how precise a typical commitment is, and how many 
   share ``\pi_L/(\pi_L + \pi_E)``, ``\log m_L`` and ``\log m_E``. The tail mass and the late share are separate
   coordinates because the first is better determined than the second. The grid is fixed, so ``\Delta\ell``
   is a smooth function of the parameters. Its gradient and Hessian are exact: forward-mode dual numbers pass through
-  the delay density and the recursion of [§5.4](timing.md).
+  the delay density and the recursion of [§5.4](timing.md#5.4-The-exact-probability-of-one-order).
 - **Robust standard errors.** The stem is the unit of replication: each stem contributes its own term
   ``\Delta\ell_s``, and stems may differ from each other more than one shared law says. `delay_law_inference`
   therefore measures the uncertainty from the spread of the per-stem slopes ``g_s`` of these terms, not from the
@@ -433,7 +433,7 @@ it, within its assumed shape: how precise a typical commitment is, and how many 
   come from `overtaking_profile` (no delay law) or from each group's fitted law. Separate laws can also be compared
   with one shared law by the difference of their summed ``\Delta\ell`` (a likelihood ratio). The terms of ``A``
   cancel in these differences, because each stem's term is relative to its own group's fit of ``A``.
-- **A shared core.** A group with heavy tails has no identified core sd of its own ([§5.6](timing.md)). To still read
+- **A shared core.** A group with heavy tails has no identified core sd of its own ([§5.6](timing.md#5.6-The-delay-law)). To still read
   its off-time fraction, fit the groups together with **one core sd and their own tails**:
   `fit_delay_law([smp_wt, smp_mutant], GaussianExpTails(:both))`. This states a biological hypothesis, *the mutant
   changes the off-time organs, not the precision of a typical commitment*, with the light-tailed group carrying the
@@ -442,7 +442,7 @@ it, within its assumed shape: how precise a typical commitment is, and how many 
   per extra group; with heavy tails, permuting the group labels among the stems calibrates it). `delay_law_inference`
   on the joint fit gives each group's off-time fraction and their difference, with standard errors that account for
   the shared core. Check that the shared core stays close to the light-tailed group's own; if it collapses, report the
-  separate fits instead ([§6.5](validation.md)).
+  separate fits instead ([§6.5](validation.md#6.5-A-shared-core)).
 - **Delays in hours.** The delays are in plastochrons. The `Plastochron` module estimates the plastochron at each
   flower rank from daily counts of open flowers (box below), and converts a delay to hours with the mean plastochron
   of the measured organs (`mean_plastochron`, `in_hours`; [worked analysis](workflow.md), step 5).
@@ -468,7 +468,7 @@ it, within its assumed shape: how precise a typical commitment is, and how many 
 
 **Code.** `GaussianExpTails(σc; πL, mL, πE, mE)`, `GaussianExpTails(variant)`, any `DelayLaw` (`delay_logpdf`, `free_parameters`,
 `with_free_parameters`, `reported_parameters`, `nshared_parameters`), `rand([rng,] f)`, `delay_logdensity(f)`, `tail_masses(f; a = 1)`;
-`loglik_order_exact(σ, f)` (or `(σ, logg, grid, γ)`); `order_samples(order_posterior(m, fit; nsamples), η)`,
+`loglik_order_exact(σ, f)` (or `(σ, logg, grid, γ)`); `order_samples(order_posterior(fit; nsamples), fit.θ.η)`,
 `stem_terms(samples, f)`, `relative_loglik(samples, f)` (`stem_terms(samples, logP)` scores any law of the order given
 as ``\sigma \mapsto \log P(\sigma)``); `fit_delay_law`, `delay_law_inference`, `shared_core_test`; the profile:
 `overtaking(f)`, `overtaking_profile(samples)`, `compare_profiles(a, b)`;

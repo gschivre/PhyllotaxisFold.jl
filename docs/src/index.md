@@ -15,7 +15,7 @@ ideal spiral. (b) The angles between consecutive organs: mostly the golden angle
 (c) What produced them, hidden from the observer: each site became ready at a regular pace (circles) and committed
 after a small random delay (stars). Where two stars cross, the organs are swapped on the stem. This stem is one of
 the 40 stems of 35 organs of the **running example**, whose delays have a Gaussian core of sd 0.42 plastochron, plus
-6 % of the sites late (mean 1.5 plastochron) and 6 % early (mean 1.0) ([§5.6](timing.md)).*
+6 % of the sites late (mean 1.5 plastochron) and 6 % early (mean 1.0) ([§5.6](timing.md#5.6-The-delay-law)).*
 
 ## Quick start
 
@@ -23,9 +23,9 @@ the 40 stems of 35 organs of the **running example**, whose delays have a Gaussi
 using PhyllotaxisFold
 
 # angles: one vector of azimuths per stem (radians, bottom to top); x: the stem length (mm) below each organ
-m = PhyllotaxisModelAD(angles; torsion_x = x)
-r = fit_map_torsion!(m; prior = TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0))
-smp = order_samples(order_posterior(m, r; nsamples = 200), r.fit.θ.η)
+m = PhyllotaxisModelAD(angles; torsion = TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0), torsion_x = x)
+r = fit_map(m)
+smp = order_samples(order_posterior(r; nsamples = 200), r.θ.η)
 
 prof = overtaking_profile(smp)                     # how often an organ is overtaken d places up: the result to report
 fit = fit_delay_law(smp, GaussianExpTails(:both))  # a delay law that interprets it

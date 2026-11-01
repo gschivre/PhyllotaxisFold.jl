@@ -6,6 +6,7 @@
 
 using PhyllotaxisFold, Random, Statistics, Distributions, LogExpFunctions, Serialization
 using SpecialFunctions: loggamma
+using PhyllotaxisFold.Permanents: PermanentWorkspace, toeplitz_weights!, forward!, backward!
 using CairoMakie
 
 const FIG = joinpath(@__DIR__, "src", "figures")
@@ -253,16 +254,16 @@ function example_data()
         [0.0; cumsum(ℓ)]
     end
     sim = simulate_stems(EX_LAW; plants = S, organs = n, x, logμκ = 1.85, σκ = 0.15, torsion_mean = 1.0, torsion_sd = 0.7, rng)
-    return x, sim, PhyllotaxisModelAD(sim.angles; torsion_x = x)
+    return x, sim, PhyllotaxisModelAD(sim.angles; torsion = EX_TPRIOR, torsion_x = x)
 end
 
 function example_fit()
     x, sim, m = example_data()
     isfile(EX_CACHE) && return (; deserialize(EX_CACHE)..., m)
-    r = fit_map_torsion!(m; prior = EX_TPRIOR)
-    dec = decode_orders(m, r; full = true)
-    post = order_posterior(m, r; nsamples = 200, rng = Xoshiro(7))
-    ex = (; x, sim, θ = r.fit.θ, r.m_ω, r.s_ω, r.ω, dec, post)
+    r = fit_map(m)
+    dec = decode_orders(r; full = true)
+    post = order_posterior(r; nsamples = 200, rng = Xoshiro(7))
+    ex = (; x, sim, r.θ, r.θ.m_ω, r.θ.s_ω, r.twist.ω, dec, post)
     serialize(EX_CACHE, ex)
     return (; ex..., m)
 end

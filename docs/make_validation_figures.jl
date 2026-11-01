@@ -7,7 +7,7 @@
 #   no tails     σc = 0.42
 #   light tails  σc = 0.42, 5 % late (m 1.5), 5.4 % early (m 1.04)
 #   heavy tails  σc = 0.39, 19.6 % late (m 1.09), 26.9 % early (m 1.01)
-# three replicates each. Per replicate: the propensity model with the twist integrated (fit_map_torsion!), the MAP
+# three replicates each. Per replicate: the propensity model with the twist integrated (fit_map), the MAP
 # decoding, 200 exact posterior order samples (cached), then the :core, :late, :both delay laws with robust standard
 # errors; per replicate pair, the light and heavy laws with a shared core sd.
 #
@@ -51,18 +51,17 @@ function run_replicate(law, seed)
         law; plants = NSTEMS, organs = NORGANS, x, KAPPA..., α = 0.95, torsion_mean = TWIST.mean,
         torsion_sd = TWIST.sd, rng
     )
-    m = PhyllotaxisModelAD(sim.angles; torsion_x = x)
-    r = fit_map_torsion!(m; prior = TPRIOR)
-    G = length(r.fit.u) - 2
-    θ = constrained_parameters(m, r.fit.u[1:G])
+    m = PhyllotaxisModelAD(sim.angles; torsion = TPRIOR, torsion_x = x)
+    r = fit_map(m)
+    θ = r.θ
     stage("seed $(seed): decoding")
-    dec = decode_orders(m, r; full = true)
+    dec = decode_orders(r; full = true)
     stage("seed $(seed): posterior orders")
-    post = order_posterior(m, r; nsamples = 200, rng = Xoshiro(seed + 1))
+    post = order_posterior(r; nsamples = 200, rng = Xoshiro(seed + 1))
     smp = order_samples(post, θ.η)
     return (;
         law, sim = (; sim.orders, sim.delays, sim.torsion, sim.κ, sim.ψ, sim.o), x,
-        fit = (; θ, r.m_ω, r.s_ω, r.ω_mean, r.ω_sd, r.loglik), dec = [(; d.σ, d.o, d.ψ) for d in dec],
+        fit = (; θ, θ.m_ω, θ.s_ω, r.twist.ω_mean, r.twist.ω_sd, r.loglik), dec = [(; d.σ, d.o, d.ψ) for d in dec],
         ρ = [p.ρ for p in post], k = m.k, smp,
     )
 end

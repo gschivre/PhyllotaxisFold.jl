@@ -13,6 +13,26 @@ They are grouped by module, step 1 then step 2. The delay laws of the manual pag
 (`StudentDelay`, `GumbelDelay`) are defined at the top of `test/runtests.jl` as on the page (the Student law without
 its sampler, to test the fallback): keep the two in sync.
 
+The test suite also guards the hot paths against regressions: `@inferred` on the per-stem likelihood and the
+summed log posterior (Float64 and the Hessian duals, with and without outliers), and `@allocated` on the stem kernel
+and the permanent.
+
+## Performance
+
+`benchmark/` is a separate environment with the tools (BenchmarkTools, JET, AllocCheck, Profile); it develops the
+package from `..`. Start Julia with several threads (`julia --project=benchmark -t auto`):
+
+- `benchmark/setup.jl`: the fixtures (40 simulated stems of 40 organs, default grids; a twisted set), included by the
+  others.
+- `benchmark/fits.jl`: timings and allocations of the log posterior, its gradient and Hessian, and of the two fits.
+- `benchmark/checks.jl`: JET (`@report_opt`) over the log posterior and its derivatives, with and without twist,
+  printing every runtime dispatch; AllocCheck (`check_allocs`) on the kernels of the permanent and of the weight
+  tables. The only expected dispatch is the function barrier in front of each Hessian pass (the dual width is the
+  number of parameters, known at run time).
+
+For a time profile, `Profile.@profile` on a call of `AngleLikelihood._stem_ll!` then
+`Profile.print(format = :flat, sortedby = :count, mincount = 30)`. `benchmark/README.md` records the reference timings.
+
 ## The manual
 
 The pages are in `docs/src`, and the `docs` environment points to this package (`[sources]`). The build commands are
@@ -38,6 +58,7 @@ simulated data only. Each script says at its top how to run it.
 - `docs/validation_clock_drift.jl`: the drifting-clock simulation of manual §6.7.
 - `docs/validation_plackett_luce.jl`: the exact check of the re-weighting of manual §6.8.
 - `docs/make_workflow.jl`: the figures of the worked analysis.
+- `docs/make_simulation_figures.jl`: the figures of the page "Simulating stems" (simulation only, seconds).
 - `docs/make_plate_diagram.jl`: the plate diagram of manual §2.5, from `docs/plate_diagram.tex` (TikZ, `bayesnet`).
   It installs its own TeX engine in a temporary environment; no LaTeX installation is needed.
 

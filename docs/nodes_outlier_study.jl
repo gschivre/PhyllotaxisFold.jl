@@ -26,24 +26,23 @@ function run_variant(key, rep; nnodes = 5, outlier_sim = 0.0, outlier_fit = fals
     stage("$(tag): fit")
     d = simulate_set(key, rep; outlier = outlier_sim)
     prior = flat_prior ? PhyllotaxisPrior(; aπ = 1.0, bπ = 1.0) : PhyllotaxisPrior() # π_o ~ Beta(1, 1) or the default
-    m = PhyllotaxisModelAD(d.sim.angles, prior; torsion_x = d.x, outlier = outlier_fit)
-    t_fit = @elapsed r = fit_map_torsion!(m; prior = TPRIOR, nodes_kw = (; nnodes))
-    G = length(r.fit.u) - 2
-    θ = constrained_parameters(m, r.fit.u[1:G])
+    m = PhyllotaxisModelAD(d.sim.angles, prior; torsion = TPRIOR, torsion_x = d.x, outlier = outlier_fit)
+    t_fit = @elapsed r = fit_map(m; nodes_kw = (; nnodes))
+    θ = r.θ
     stage("$(tag): decode")
-    t_dec = @elapsed dec = decode_orders(m, r; full = true)
+    t_dec = @elapsed dec = decode_orders(r; full = true)
     stage("$(tag): posterior")
-    t_post = @elapsed post = order_posterior(m, r; nsamples, rng = Xoshiro(d.seed + 1))
+    t_post = @elapsed post = order_posterior(r; nsamples, rng = Xoshiro(d.seed + 1))
     smp = order_samples(post, θ.η)
     stage("$(tag): delay law")
     t_law = @elapsed fb = fit_delay_law(smp, GaussianExpTails(:both))
     inf = delay_law_inference(smp, fb)
     out = (;
-        tag, t_fit, t_dec, t_post, t_law, θ, r.m_ω, r.s_ω, r.ω_mean, r.ω_sd, r.loglik,
+        tag, t_fit, t_dec, t_post, t_law, θ, θ.m_ω, θ.s_ω, r.twist.ω_mean, r.twist.ω_sd, r.loglik,
         truth = (; d.sim.torsion, d.sim.orders, d.sim.o, d.sim.ψ, d.sim.outliers),
         dec = [(; x.σ, x.o, x.ψ) for x in dec], ρ = [p.ρ for p in post], k = m.k,
         est = inf.estimate, se = inf.se, profile = overtaking_profile(smp),
-        nnodes_per_stem = length.(r.nodes.ω),
+        nnodes_per_stem = length.(r.twist.nodes.ω),
     )
     STUDY[tag] = out
     serialize(STUDY_FILE, STUDY)

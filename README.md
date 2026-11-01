@@ -49,19 +49,26 @@ angles = simulate_stems(law; plants = 60, organs = 45, x, logμκ = 1.8, torsion
     rng = Xoshiro(1)).angles
 
 # 1. reconstruct the orders (the twist of each stem is integrated out)
-m = PhyllotaxisModelAD(angles; torsion_x = x)
 prior = TorsionPrior(mt = 0.0, st = 2.0, νt = 4.0, τt = 1.0)  # twist prior, in °/mm
-r = fit_map_torsion!(m; prior)
-dec = decode_orders(m, r; full = true)             # the most probable order of each stem, with its twist and spiral
-post = order_posterior(m, r; nsamples = 200)       # the full posterior of the order: probabilities and samples
+m = PhyllotaxisModelAD(angles; torsion = prior, torsion_x = x)
+r = fit_map(m)                                     # prints its convergence checks and parameter table
+dec = decode_orders(r; full = true)                # the most probable order of each stem, with its twist and spiral
+post = order_posterior(r; nsamples = 200)          # the full posterior of the order: probabilities and samples
 
 # 2. the timing of initiation
-smp = order_samples(post, r.fit.θ.η)
+smp = order_samples(post, r.θ.η)
 fit = fit_delay_law(smp, GaussianExpTails(:both))  # a precise core, plus late and early organs
 inf = delay_law_inference(smp, fit)                # estimates with standard errors
 prof = overtaking_profile(smp)                     # how often an organ is overtaken by the one d places up, d = 1…4
 prof.q, prof.se                                    # the result to report; inf.profile is that of the fitted law
 ```
+
+## Simulating stems
+
+The model is also a simulator: stems with a known order, angular imprecision, twist and aberrant angles, e.g. to test
+a measurement pipeline or a statistic of divergence angles. `simulate_stems(η; organs, x, logμκ, σκ, α, outlier,
+torsion_mean, torsion_sd)`, `divergence_angles(y; o)`; `simulate_stems(fit)` draws stems like the data of a fit (posterior
+predictive checks). See the manual page "Simulating stems".
 
 ## Custom delay laws
 

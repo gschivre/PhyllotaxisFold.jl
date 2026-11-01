@@ -1,6 +1,6 @@
 # 4. The propensity model
 
-Step 1 of the plan ([§1.5](problem.md)) needs a law of the order with the product form of [§3.1](orders.md), so that
+Step 1 of the plan ([§1.5](problem.md#1.5-The-plan)) needs a law of the order with the product form of [§3.1](orders.md#3.1-The-sum-as-a-permanent), so that
 the sum over orders is exact, and flexible enough that the orders it reconstructs are those the angles support, not
 those a narrow model imposes.
 
@@ -18,7 +18,7 @@ P(\sigma \mid \eta) = \frac{1}{Z(\eta)} \exp\Big( \sum_{p=1}^{n} \eta_{\sigma(p)
 \qquad Z(\eta) = \operatorname{perm}\big[ e^{\eta_{j-p}} \big]_{p,j}.
 ```
 
-This is the **propensity model**, the law ``A`` of [§1.5](problem.md). There is one free *log-propensity* ``\eta_d``
+This is the **propensity model**, the law ``A`` of [§1.5](problem.md#1.5-The-plan). There is one free *log-propensity* ``\eta_d``
 per displacement ``d = -k, \dots, k``. With the angles, the weights of [§3](orders.md) are
 
 ```math
@@ -69,18 +69,18 @@ The parameters (``\eta``, ``\log\mu_\kappa``, ``\sigma_\kappa``, ``\alpha``, the
 s_\omega`` and the outlier probability ``\pi_o``) are fitted by maximum a posteriori.
 
 - **Parameters on the real line.** Positive parameters go through a log, probabilities through a logit, and the costs
-  ``\eta`` through the softplus map of their gaps ([§4.3](propensity.md)). The log-Jacobian of these maps is part of
+  ``\eta`` through the softplus map of their gaps ([§4.3](propensity.md#4.3-Prior)). The log-Jacobian of these maps is part of
   the log density.
 - **Newton's method with a trust region.** The value, the gradient and the Hessian are computed in one call, and the
-  Hessian only when the optimiser asks for it. The gradient is analytic ([§3.6](orders.md)). The Hessian is one pass
+  Hessian only when the optimiser asks for it. The gradient is analytic ([§3.6](orders.md#3.6-Derivatives)). The Hessian is one pass
   of forward-mode dual numbers through the analytic gradient. A non-finite evaluation counts as a rejected step.
 - **Uncertainty.** Laplace approximation: ``-H^{-1}`` at the maximum is the covariance of the unconstrained
-  parameters.
-- **Model comparison.** The integrated log-likelihood at the maximum (`loglik` of `fit_map_torsion!`, priors
+  parameters (`vcov` maps it to the natural parameters, `coeftable` adds intervals).
+- **Model comparison.** The integrated log-likelihood at the maximum (`loglikelihood(fit)`, priors
   excluded). Timing laws are compared with the propensity model and with each other by ``\Delta\ell``
-  ([§5.5](timing.md)).
+  ([§5.5](timing.md#5.5-Re-weighting-the-reconstructed-orders)).
 - **Cost.** The work grows in proportion to the number of stems and of nuisance nodes (`ngrid_ϕ` × `ngrid_κ` ×
-  twist nodes, [§2.6](angles.md)). The stems are shared out between threads, so start Julia with several
+  twist nodes, [§2.6](angles.md#2.6-Integrating-out-the-unknowns-of-each-stem)). The stems are shared out between threads, so start Julia with several
   (`julia -t auto`).
 
 Figure 1 shows the fitted costs of the running example, and the orders they reconstruct.
@@ -94,7 +94,7 @@ Figure 1 shows the fitted costs of the running example, and the orders they reco
 ## 4.5 Fitting with the twist integrated out
 
 The twist of each stem is integrated out by a quadrature whose nodes sit on the peaks of that stem's own likelihood
-([§2.6](angles.md)). The nodes depend on the parameters where they were placed, so `fit_map_torsion!` updates the fit
+([§2.6](angles.md#2.6-Integrating-out-the-unknowns-of-each-stem)). The nodes depend on the parameters where they were placed, so `fit_map` updates the fit
 and the nodes in turn; during each Newton fit the nodes stay fixed, and the objective is a smooth function of all the
 parameters, ``(m_\omega, \log s_\omega)`` included:
 
@@ -112,9 +112,12 @@ The propensity model reconstructs the orders well, but its parameters only descr
 says that displacements by two are rare, not why: whether they come from an organ initiated late or early, or how the
 displacements of neighbours go together. That needs a mechanism, the subject of [§5](timing.md).
 
-**Code.** `PhyllotaxisModelAD(angles, PhyllotaxisPrior(); outlier = true, torsion_x)`,
-`fit_map` (no twist), `fit_map_torsion!` (twist integrated out; overwrites the stored twist rates of the model),
-`constrained_parameters` (η is the full vector of ``2k + 1`` costs), `unconstrained_parameters`,
+**Code.** `PhyllotaxisModelAD(angles, PhyllotaxisPrior(); outlier = true, torsion = TorsionPrior(...), torsion_x)`
+(`torsion = nothing`: no twist), `fit_map` (the one fitting function: it follows the model's options and returns a
+`PhyllotaxisFit`, whose display shows its checks; `fit_diagnostics`, `coef`, `coeftable`, `vcov`, `stderror`,
+`loglikelihood`), `constrained_parameters` (η is the full vector of ``2k + 1`` costs), `unconstrained_parameters`,
 `prior_mean_parameters`, `full_eta`; post-processing: `estimate_displacement_frequencies`,
 `estimate_permutation_frequencies`, `displacement_probability`; simulation: `simulate_stems(η; ...)`,
-`sample_prior`. `TransformedLogDensityProblem(model)` gives the model to LogDensityProblems users.
+`sample_prior`. LogDensityProblems: `logdensity(model, θ)` (constrained) and `TransformedLogDensityProblem(model)`
+(unconstrained, with its gradient) are the log posterior that `fit_map` maximises, the twist hyperparameters included
+(with a twist, over the quadrature nodes of the last fit).

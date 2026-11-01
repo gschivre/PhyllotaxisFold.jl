@@ -2,7 +2,7 @@
 
 Suppose for a moment that we know the order ``\sigma`` of a stem: the organ at height ``p`` comes from site
 ``\sigma(p)``. How is its angle ``y_p`` distributed? This page builds the answer one term at a time, one per
-difficulty of [§1.3](problem.md).
+difficulty of [§1.3](problem.md#1.3-Why-the-order-cannot-simply-be-read-off).
 
 ## 2.1 The spiral
 
@@ -15,7 +15,7 @@ difficulty of [§1.3](problem.md).
 where ``\phi`` is the angle of the first site, ``o = \pm 1`` the orientation of the spiral and ``\psi`` the
 divergence. The divergence is the golden angle (``\approx 137.5^\circ``) with probability ``\alpha``, and the Lucas
 angle (``\approx 99.5^\circ``) otherwise. ``\phi`` is uniform on the circle, and each orientation has probability ½.
-These three quantities are specific to each stem, unknown, and integrated out ([§2.6](angles.md)).
+These three quantities are specific to each stem, unknown, and integrated out ([§2.6](angles.md#2.6-Integrating-out-the-unknowns-of-each-stem)).
 
 A permutation moves *organs* between sites, not the sites themselves: the organ at height ``p`` is expected at
 ``\phi + o\,(\sigma(p) - 1)\,\psi``. This separation, *where the sites are* versus *in which order their organs
@@ -34,7 +34,7 @@ The concentration ``\kappa`` plays the role of an inverse variance: for large ``
 ``1/\sqrt{\kappa}`` radians. ``I_0`` is the modified Bessel function of order 0.
 
 **assumption** — each stem has its own concentration, ``\log\kappa_s \sim \mathcal N(\log\mu_\kappa, \sigma_\kappa^2)``,
-integrated out of its likelihood ([§2.6](angles.md)).
+integrated out of its likelihood ([§2.6](angles.md#2.6-Integrating-out-the-unknowns-of-each-stem)).
 
 Why one ``\kappa`` per stem? A poorly measured stem must be allowed to be noisy. With a single ``\kappa``, the model
 could only explain its scattered angles by spurious permutations, which would bias everything downstream.
@@ -53,7 +53,7 @@ where ``x_p`` is the length of stem below the organ and ``\omega_s`` a rate (deg
 When the internodes are not measured, ``x_p = p - 1`` and the rate is per organ.
 
 **assumption** — the rates are a random effect, ``\omega_s \sim \mathcal N(m_\omega, s_\omega^2)``, integrated out of
-each stem's likelihood ([§2.6](angles.md)).
+each stem's likelihood ([§2.6](angles.md#2.6-Integrating-out-the-unknowns-of-each-stem)).
 
 Could a twist pass for a slightly different divergence? Both rotate the organs more and more going up the stem. But
 a divergence ``\psi + \delta`` moves the organ of site ``j`` by ``o\,(j - 1)\,\delta``, *with the sign of the
@@ -85,7 +85,7 @@ aside. This is why it is on by default (`outlier = false` turns it off).
 typical data set, so ``\pi_o`` is set by the data.
 
 !!! details "What the outlier term changes: a check on simulated stems"
-    60 stems of 45 organs (the light-tailed design of [§6.1](validation.md)), with 2.1 % of their angles replaced by
+    60 stems of 45 organs (the light-tailed design of [§6.1](validation.md#6.1-The-simulated-stems)), with 2.1 % of their angles replaced by
     uniform ones, fitted with and without the outlier term, and with a flat prior Beta(1, 1):
 
     | | without | with (default prior) | with (flat prior) | truth |
@@ -110,20 +110,20 @@ p(y) = \sum_{o,\,\psi} p(o)\,p(\psi) \int_0^{2\pi} \frac{d\phi}{2\pi} \int p(\ka
 \;\sum_{\sigma} P(\sigma) \prod_{p=1}^{n} \mathrm{vM}\big(y_p \mid \phi + o\,(\sigma(p) - 1)\,\psi + \omega\, x_p,\ \kappa\big).
 ```
 
-(With the outlier term of [§2.4](angles.md), each von Mises factor is replaced by the mixture written there.)
+(With the outlier term of [§2.4](angles.md#2.4-Outlier-angles), each von Mises factor is replaced by the mixture written there.)
 
 ![Plate diagram of the angle likelihood](figures/m3_plate_diagram.svg)
 
 *Figure 3. The model as a graph, with the law of the order of [§4](propensity.md). Circles are unknown, the shaded
 circle is observed and the square is given; arrows point to the quantities whose law they set, and the plates repeat
 their content per stem and per organ. Double circles are summed out exactly: the order ``\sigma_s`` ([§3](orders.md)),
-``o_s`` and ``\psi_s`` ([§2.6](angles.md)), and the outlier indicator ``z_{sp}`` ([§2.4](angles.md)). Single circles
-are integrated numerically ([§2.6](angles.md)). Dashed boxes are the fixed parameters of `PhyllotaxisPrior` and
+``o_s`` and ``\psi_s`` ([§2.6](angles.md#2.6-Integrating-out-the-unknowns-of-each-stem)), and the outlier indicator ``z_{sp}`` ([§2.4](angles.md#2.4-Outlier-angles)). Single circles
+are integrated numerically ([§2.6](angles.md#2.6-Integrating-out-the-unknowns-of-each-stem)). Dashed boxes are the fixed parameters of `PhyllotaxisPrior` and
 `TorsionPrior`.*
 
 Everything here is fixed by this page except ``P(\sigma)``, the law of the order. The models of the package differ
 *only* in ``P(\sigma)`` (the propensity model of [§4](propensity.md), the timing laws of [§5](timing.md)), which is
-what makes the comparison of [§1.5](problem.md) possible. Two parts remain hard: the sum over ``\sigma``
+what makes the comparison of [§1.5](problem.md#1.5-The-plan) possible. Two parts remain hard: the sum over ``\sigma``
 ([§3](orders.md)) and the integrals over the unknowns of each stem (next section).
 
 ## 2.6 Integrating out the unknowns of each stem
@@ -145,7 +145,7 @@ one-dimensional, each with a rule suited to its integrand:
 
 All terms are computed in log space, ``\log I_0`` by a routine (`logbesseli`) that also accepts dual numbers. The
 cost is proportional to `ngrid_ϕ` × `ngrid_κ` × `nnodes` (twist nodes per peak,
-`fit_map_torsion!(m; nodes_kw = (; nnodes))`). The boxes derive each rule and measure its accuracy on the 40 stems of
+`fit_map(m; nodes_kw = (; nnodes))`). The boxes derive each rule and measure its accuracy on the 40 stems of
 the running example.
 
 !!! details "Integrating out the spiral: derivation and accuracy"
@@ -213,7 +213,7 @@ the running example.
 
 !!! details "Integrating out the twist: derivation and accuracy"
     **The integral.** Write ``L_s(\omega)`` for the likelihood of stem ``s`` at twist rate ``\omega``: the formula of
-    [§2.5](angles.md) without its integral over ``\omega``. What is needed is
+    [§2.5](angles.md#2.5-The-likelihood-of-one-stem) without its integral over ``\omega``. What is needed is
     ``\int L_s(\omega)\, p(\omega)\, d\omega`` with ``p = \mathcal N(m_\omega, s_\omega^2)``.
 
     **Nodes.** Scan the rate, find the local maxima of ``\log L_s`` within 8 log-units of the best (at most four),
@@ -229,7 +229,7 @@ the running example.
     ```
     The node weights ``\pi_r \gamma_j / q_s(\omega_{rj})`` do not depend on the population law ``p``. So the same
     nodes integrate any ``(m_\omega, s_\omega)``, and the integrated likelihood is a smooth function of them, which the
-    fit needs ([§4.5](propensity.md)). This is multiple importance sampling with the balance heuristic. It is exact
+    fit needs ([§4.5](propensity.md#4.5-Fitting-with-the-twist-integrated-out)). This is multiple importance sampling with the balance heuristic. It is exact
     when ``L_s\, p / q_s`` is a polynomial of low degree on each component, that is, when each peak of ``L_s`` is close
     to Gaussian and ``p`` varies slowly across it.
 
@@ -254,7 +254,7 @@ the running example.
     they were: the twist population, the twist of each stem, the decoded orders and the overtaking profile. Only the
     integrated log-likelihood moved, by 1.4. The default is 9 so that this log-likelihood is accurate enough to
     compare fitted models (below). The work grows in proportion to the number of nodes; for a quicker fit, use
-    `fit_map_torsion!(m; nodes_kw = (; nnodes = 5))`.
+    `fit_map(m; nodes_kw = (; nnodes = 5))`.
 
 **How accurate is accurate enough?** The defaults are chosen for *estimation*. An integration error that barely
 changes as the parameters move shifts the log-likelihood without moving its maximum or its curvature, so it leaves the
@@ -271,5 +271,6 @@ different parameters, where the errors differ. Use finer settings for that: 64 `
 The timing laws of [§5](timing.md) are compared on the orders, not
 through these integrals, and do not need them.
 
-**Code.** `AngleLikelihood.stem_loglik!` (one stem, all grids, and its gradient), `stem_loglik`, `angle_loglikelihood`;
+**Code.** `AngleLikelihood.stem_loglik!` (one stem, all grids, and its gradient), `stem_loglik(fit)` (per stem),
+`angle_loglikelihood(model, u)`;
 the twist: `torsion_coordinate(ℓ)`, `corrected_angles`; simulation: `simulate_stems` (both laws of the order).

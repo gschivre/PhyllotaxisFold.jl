@@ -45,6 +45,7 @@ jobs:
           julia --project=docs -e '
             include("docs/make_figures.jl")
             include("docs/make_workflow.jl")
+            include("docs/make_simulation_figures.jl")
             include("docs/make_validation_figures.jl")'
       - name: Build the manual
         run: julia --project=docs docs/make.jl

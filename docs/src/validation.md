@@ -9,10 +9,10 @@ Each step of the method rests on assumptions and approximations, and could go wr
 - the plant's clock might not be as regular as the model assumes.
 
 The way to know is to run the whole pipeline on stems whose truth is known, and compare. This page does so step by
-step: the angle model and the twist ([§6.2](validation.md)), the orders ([§6.3](validation.md)), the delay law
-([§6.4](validation.md)) and a remedy for its weak point ([§6.5](validation.md)), the two computations behind the delay
-law ([§6.6](validation.md)), a clock that drifts ([§6.7](validation.md)), and an exact check of the re-weighting
-([§6.8](validation.md)). The figures are made by `docs/make_validation_figures.jl`.
+step: the angle model and the twist ([§6.2](validation.md#6.2-The-angle-model-and-the-twist)), the orders ([§6.3](validation.md#6.3-The-orders)), the delay law
+([§6.4](validation.md#6.4-The-delay-law)) and a remedy for its weak point ([§6.5](validation.md#6.5-A-shared-core)), the two computations behind the delay
+law ([§6.6](validation.md#6.6-The-exact-order-likelihood-and-the-weights)), a clock that drifts ([§6.7](validation.md#6.7-A-clock-that-drifts)), and an exact check of the re-weighting
+([§6.8](validation.md#6.8-An-exact-check-of-the-re-weighting)). The figures are made by `docs/make_validation_figures.jl`.
 
 ## 6.1 The simulated stems
 
@@ -25,7 +25,7 @@ The stems are made to resemble the *Arabidopsis* data:
 - 95 % golden spirals;
 - a stem twist of ``1.0 \pm 0.7`` °/mm.
 
-The orders come from independent commitment delays ([§5.2](timing.md)), with three delay laws (in plastochrons):
+The orders come from independent commitment delays ([§5.2](timing.md#5.2-The-law-of-the-order-of-a-paced-meristem)), with three delay laws (in plastochrons):
 
 | scenario | core sd ``\sigma_c`` | late tail | early tail | ``P(\lvert e\rvert > 1)`` |
 |---|---|---|---|---|
@@ -40,8 +40,8 @@ invents tails that are not there.
 Each scenario is simulated three times (three *replicates*, nine data sets in all). Each data set goes through the
 steps of the [worked analysis](workflow.md), exactly as real data would:
 
-1. `fit_map_torsion!` (propensity model, ``k = 4``, twist integrated out), with the default settings: outlier angles
-   allowed ([§2.4](angles.md)) and 9 twist nodes ([§2.6](angles.md)). The simulated angles have no outliers, so this
+1. `fit_map` (propensity model, ``k = 4``, twist integrated out), with the default settings: outlier angles
+   allowed ([§2.4](angles.md#2.4-Outlier-angles)) and 9 twist nodes ([§2.6](angles.md#2.6-Integrating-out-the-unknowns-of-each-stem)). The simulated angles have no outliers, so this
    also checks that allowing them costs nothing;
 2. `decode_orders` (joint MAP);
 3. `order_posterior` with 200 exact samples per stem;
@@ -49,7 +49,7 @@ steps of the [worked analysis](workflow.md), exactly as real data would:
 5. `delay_law_inference` (robust standard errors, *se* below).
 
 In each replicate, the light- and heavy-tailed data sets are also fitted together, with a shared core
-([§6.5](validation.md)).
+([§6.5](validation.md#6.5-A-shared-core)).
 
 ## 6.2 The angle model and the twist
 
@@ -68,7 +68,7 @@ against truth. (b) The twist population: mean and sd, truth in black. (c) The po
 
 One stem in 540 gets a twist at a secondary mode of its likelihood (figure 1a, the point far from the diagonal). It is
 a reminder that the twist likelihood of a stem can have several peaks. This is why the twist is integrated out rather
-than fixed at its best value ([§2.6](angles.md), [§4.5](propensity.md)).
+than fixed at its best value ([§2.6](angles.md#2.6-Integrating-out-the-unknowns-of-each-stem), [§4.5](propensity.md#4.5-Fitting-with-the-twist-integrated-out)).
 
 ## 6.3 The orders
 
@@ -99,7 +99,7 @@ against true.*
 ## 6.4 The delay law
 
 **What could go wrong.** The delay law is seen only through the orders it produces, and different laws can produce
-nearly the same orders ([§5.6](timing.md)). Is the overtaking profile, which the orders identify, recovered? And how
+nearly the same orders ([§5.6](timing.md#5.6-The-delay-law)). Is the overtaking profile, which the orders identify, recovered? And how
 far can the parameters of the fitted law be trusted?
 
 **The overtaking profile.** Truth (the law), then the three replicates: the profile read from the posterior orders
@@ -125,18 +125,18 @@ far can the parameters of the fitted law be trusted?
 - **The fitted law can miss the longest overtakings.** For heavy tails, the fitted law's ``q_3`` is below the rate in
   each replicate's own true orders by 0.006–0.008 (2 to 3 standard errors), while the profile read from the orders is
   not: the exponential tails do not quite fit the longest displacements. The two profiles differ by 0.002–0.003 there,
-  which is the check of [§5.7](timing.md).
+  which is the check of [§5.7](timing.md#5.7-Fit,-uncertainty-and-comparisons).
 
 **The parameters of the fitted law.**
 
 ![Timing recovery](figures/v3_timing_recovery.png)
 
-*Figure 3. The delay law fitted through the posterior orders ([§5.5](timing.md)). (a–d) The core sd and the three tail
+*Figure 3. The delay law fitted through the posterior orders ([§5.5](timing.md#5.5-Re-weighting-the-reconstructed-orders)). (a–d) The core sd and the three tail
 masses: estimate ± 2 robust se for each replicate, truth in black. (e) The fitted densities (colour) and the true ones
 (dashed). (f) Log-likelihood gains: what the two tails add to a core-only law (circles), and how much the fitted law
 beats the true one (triangles, the optimism of the fit).*
 
-Truth, then the `:both` fits of the three replicates (the readings of [§5.6](timing.md)):
+Truth, then the `:both` fits of the three replicates (the readings of [§5.6](timing.md#5.6-The-delay-law)):
 
 | scenario | ``\sigma_c`` | ``P(e > 1)`` | ``P(e < -1)`` | ``P(\lvert e\rvert > 1)`` | tails gain (``\Delta\ell``) |
 |---|---|---|---|---|---|
@@ -148,7 +148,7 @@ Truth, then the `:both` fits of the three replicates (the readings of [§5.6](ti
 
 1. **No false tails.** When the truth has none, the tails add 0.2 to 1.6 units of log-likelihood. The `:core` fit then
    recovers the law: ``\sigma_c`` = 0.40, 0.43, 0.42 and an off-time fraction of 0.013, 0.019, 0.018 for 0.017. The `:both`
-   fit is too flexible here ([§5.6](timing.md)). In two replicates it puts nearly every site in a short "tail" (mean
+   fit is too flexible here ([§5.6](timing.md#5.6-The-delay-law)). In two replicates it puts nearly every site in a short "tail" (mean
    0.2 plastochron) that only reshapes the core, and its off-time fraction drifts to 0.031–0.034, about one standard
    error (0.015) above the truth. When the tails gain little, read the `:core` fit.
 2. **Real tails are found without doubt.** For both tailed laws, the tails add 57 to 129 units.
@@ -159,7 +159,7 @@ Truth, then the `:both` fits of the three replicates (the readings of [§5.6](ti
    the heavy-tailed law (47 % of the sites in a tail), the fitted core collapses: ``\sigma_c`` falls to about 0.01, below the
    step of the delay grid (0.05), where a narrower core no longer changes anything. Its standard error is
    misleadingly small. A narrow core plus more tail mass predicts nearly the same orders. The overestimated off-time
-   fraction of point 3 comes with this collapse; a shared core ([§6.5](validation.md)) usually removes both.
+   fraction of point 3 comes with this collapse; a shared core ([§6.5](validation.md#6.5-A-shared-core)) usually removes both.
 5. **The split between late and early leans late.** For the light-tailed law, ``P(e > 1)`` is overestimated
    (0.043–0.045 for 0.035) and ``P(e < -1)`` underestimated (0.018–0.026 for 0.030). The reason is that some orders
    have two readings. In the order 2 3 1, the organ of site 1 sits two heights above its place. Either site 1
@@ -179,7 +179,7 @@ light tails, and should be read with the caveats of points 1, 3, 4 and 5.
 tails in terms of the law (how precise a typical commitment is, how many organs are off time), point 4 is a real
 limitation: its core cannot be estimated, and its off-time fraction is biased with it. The core can be borrowed. If the mutant
 changes *which* organs are off time, and not the precision of a typical commitment, the mutant and its wild type share
-one core sd. The wild type, whose tails are light, then carries it ([§5.7](timing.md)).
+one core sd. The wild type, whose tails are light, then carries it ([§5.7](timing.md#5.7-Fit,-uncertainty-and-comparisons)).
 
 To test this, each replicate's light- and heavy-tailed data sets are fitted together, with one core sd and their own
 tails (`fit_delay_law([light, heavy], GaussianExpTails(:both))`), and the shared core is tested against separate cores
@@ -195,7 +195,7 @@ Truth, then the shared-core fit of each replicate (estimate ± se):
 | 2 | 0.41 ± 0.02 | 0.066 ± 0.006 | 0.203 ± 0.011 | 0.137 ± 0.012 | 2.3 (0.13) |
 | 3 | 0.01 ± 0.001 | 0.093 ± 0.013 | 0.216 ± 0.010 | 0.123 ± 0.016 | 2.2 (0.14) |
 
-With separate fits ([§6.4](validation.md)), the heavy-tailed off-time fraction was 0.215–0.218 and the difference
+With separate fits ([§6.4](validation.md#6.4-The-delay-law)), the heavy-tailed off-time fraction was 0.215–0.218 and the difference
 0.148–0.154.
 
 For comparison, the difference between the two groups' profiles (heavy minus light, truth 0.096, 0.052, 0.021) read
@@ -218,17 +218,17 @@ from the orders, with no delay law: 0.100, 0.102, 0.102 for ``q_1`` (± 0.008), 
 
 **In practice.** Compare the groups by their profiles. To read them in terms of the law, fit each group alone, then
 together. If the shared ``\sigma_c`` stays close to the light-tailed group's own ``\sigma_c``, report the shared-core estimates. If it collapses far below it, the light-tailed group does not hold the core:
-report the separate fits, with the caveat of [§6.4](validation.md) point 4.
+report the separate fits, with the caveat of [§6.4](validation.md#6.4-The-delay-law) point 4.
 
 ## 6.6 The exact order likelihood and the weights
 
 **What could go wrong.** Two computations of [§5](timing.md) carry the delay law: the recursion that scores one order
-([§5.4](timing.md)), and the re-weighting average over the posterior samples ([§5.5](timing.md)). The first could be
+([§5.4](timing.md#5.4-The-exact-probability-of-one-order)), and the re-weighting average over the posterior samples ([§5.5](timing.md#5.5-Re-weighting-the-reconstructed-orders)). The first could be
 inaccurate on its grid; the second could rest on a few samples only.
 
 ![Exact likelihood and weights](figures/v4_exact_likelihood_and_weights.png)
 
-*Figure 4. (a) The exact probability of each order of 7 sites ([§5.4](timing.md)), against its frequency
+*Figure 4. (a) The exact probability of each order of 7 sites ([§5.4](timing.md#5.4-The-exact-probability-of-one-order)), against its frequency
 among a million orders drawn from the three delay laws. (b) The effective sample size of the re-weighting at the
 fitted law, per stem, out of 200 posterior samples.*
 
@@ -236,14 +236,14 @@ fitted law, per stem, out of 200 posterior samples.*
 
 - **The recursion is exact in practice.** Its probabilities match the frequencies of simulated orders over five
   orders of magnitude (figure 4a).
-- **The re-weighting rests on many samples.** The effective sample size ([§5.5](timing.md)) is close to 200 for most
+- **The re-weighting rests on many samples.** The effective sample size ([§5.5](timing.md#5.5-Re-weighting-the-reconstructed-orders)) is close to 200 for most
   stems (median 172–200), and above 100 for nearly all (figure 4b). The posterior of the propensity model covers the
-  orders that the delay laws favour, as [§5.3](timing.md) led us to expect.
+  orders that the delay laws favour, as [§5.3](timing.md#5.3-Not-a-product,-but-close-to-one) led us to expect.
 
 ## 6.7 A clock that drifts
 
 **What could go wrong.** The model asks the deviations of the sites from a regular clock to be independent
-([§5.2](timing.md)). Independent jitter of the readiness is absorbed into ``f``, but a clock whose *intervals* vary
+([§5.2](timing.md#5.2-The-law-of-the-order-of-a-paced-meristem)). Independent jitter of the readiness is absorbed into ``f``, but a clock whose *intervals* vary
 is not: its errors add up like a random walk, and neighbouring delays become dependent. A drifting clock then gives more
 displacements by two than an independent law with the same rate of neighbour swaps. Could the fit read them as tails?
 
@@ -272,14 +272,14 @@ swaps (``\sigma_c^2 = 0.3^2 + \sigma_\xi^2/2``).
   for a group in which a fifth of the organs are off time. Whether drift or true commitment tails, the orders cannot
   tell them apart.
 - **One false tail in twelve data sets without drift** (the gain of 6.1 at ``\sigma_\xi = 0``). With a narrow law
-  (sd 0.3) and 60 stems, a gain slightly above the threshold of about 5 of [§6.4](validation.md) can occur by chance.
+  (sd 0.3) and 60 stems, a gain slightly above the threshold of about 5 of [§6.4](validation.md#6.4-The-delay-law) can occur by chance.
 
 The simulation is `docs/validation_clock_drift.jl`.
 
 ## 6.8 An exact check of the re-weighting
 
-**What could go wrong.** The re-weighting of [§5.5](timing.md) replaces an exact sum over all orders by an average over
-posterior samples. [§6.6](validation.md) shows that the weights are even, but not that the average lands on the right
+**What could go wrong.** The re-weighting of [§5.5](timing.md#5.5-Re-weighting-the-reconstructed-orders) replaces an exact sum over all orders by an average over
+posterior samples. [§6.6](validation.md#6.6-The-exact-order-likelihood-and-the-weights) shows that the weights are even, but not that the average lands on the right
 value: for that, we need the exact answer.
 
 **An exact answer.** For one family of delay laws, we have it. If each delay is minus a Gumbel variable of scale
@@ -288,10 +288,10 @@ with a probability proportional to ``e^{-j/\beta}``, among the sites not yet use
 already knows which sites are used, so it can sum this law over all orders exactly, with the same angle model and the
 same twist. That gives ``\log p(y \mid f)`` exactly, to compare with the re-weighting. The law is the `GumbelDelay` of
 [Custom delay laws](custom_laws.md), where it is also fitted to the worked analysis. As a side check, the package's
-exact score of one order, the grid recursion of [§5.4](timing.md) that serves every delay law, matches the closed form
+exact score of one order, the grid recursion of [§5.4](timing.md#5.4-The-exact-probability-of-one-order) that serves every delay law, matches the closed form
 within 0.008 on orders of 45 sites.
 
-The test uses one data set of 60 stems of 45 organs ([§6.1](validation.md)), with Gumbel delays of scale 0.34 (about
+The test uses one data set of 60 stems of 45 organs ([§6.1](validation.md#6.1-The-simulated-stems)), with Gumbel delays of scale 0.34 (about
 one neighbour swap in twenty). The propensity model is fitted as usual, then each Gumbel law on a grid of ``\beta`` is
 scored both ways.
 
