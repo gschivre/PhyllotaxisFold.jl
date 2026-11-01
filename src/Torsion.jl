@@ -158,5 +158,5 @@ function node_posterior(ω, a, modes)
     nn = length(ω) ÷ length(modes)
     mass = [sum(pw[((r - 1) * nn + 1):(r * nn)]) for r in eachindex(modes)]
     b = argmax(mass)
-    return μ, sd, modes[b][1], mass[b]
+    return μ, sd, modes[b][1], min(mass[b], 1.0) # (a sum of normalised weights can exceed 1 by rounding)
 end

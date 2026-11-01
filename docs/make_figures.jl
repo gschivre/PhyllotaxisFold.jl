@@ -6,7 +6,7 @@
 
 using PhyllotaxisFold, Random, Statistics, Distributions, LogExpFunctions, Serialization
 using SpecialFunctions: loggamma
-using PhyllotaxisFold.Permanents: PermanentWorkspace, toeplitz_weights!, forward!, backward!
+using PhyllotaxisFold.Permanents: PermutationGraph, PermanentWorkspace, toeplitz_weights!, forward!, backward!
 using CairoMakie
 
 const FIG = joinpath(@__DIR__, "src", "figures")

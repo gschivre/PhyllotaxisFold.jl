@@ -482,7 +482,9 @@ twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisP
         r = fit_map(m; recenter = 0)
         @test r.converged && r.twist !== nothing && length(r.u) == 9
         @test abs(r.θ.m_ω - mean(TWIST.torsion)) < 1.0 && 0.4 < r.θ.s_ω / std(TWIST.torsion) < 2.5
-        @test cor(r.twist.ω, TWIST.torsion) > 0.95 && all(r.twist.ω_sd .> 0) && all(0 .< r.twist.mode_mass .≤ 1)
+        # (the posterior mean of each rate: the most probable mode can flip between two of nearly equal mass, as for stem 4)
+        @test cor(r.twist.ω_mean, TWIST.torsion) > 0.95
+        @test all(r.twist.ω_sd .> 0) && all(0 .< r.twist.mode_mass .≤ 1)
         @test coefnames(r)[(end - 1):end] == ["m_ω", "s_ω"] && coef(r)[end] ≈ r.θ.s_ω
         @test corrected_angles(r, 3) ≈ corrected_angles(m, 3; ω = r.twist.ω[3])
         # the log density of the model is now the objective of the fit: dimension, value and gradient agree
