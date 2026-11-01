@@ -1,7 +1,7 @@
 name = "PhyllotaxisFold"
 uuid = "d2830e13-74ad-46ce-b38c-a9ef4f62f74f"
 authors = ["Geoffrey Schivre <geoffrey.schivre@gmail.com>"]
-version = "0.3.0"
+version = "0.4.0"
 
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"

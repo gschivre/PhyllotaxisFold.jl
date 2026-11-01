@@ -140,7 +140,9 @@ the author's direction:
 - its implementation (`CommitmentTiming`: the delay-law fit with exact derivatives, the shared-core option, the
   overtaking profile, and the `DelayLaw` interface for user-defined laws, at the author's request), its tests and its
   validation on simulated stems;
-- the code review and cleanup of version 0.3, and the manual.
+- the code review and cleanup of version 0.3, and the manual;
+- in version 0.4, at the author's request: the single fitting interface (`fit_map`, `PhyllotaxisFit` and its
+  diagnostics), the performance work on the likelihood, and the stem-simulation interface and its manual page.
 
 The author chose the questions, reviewed the results and the code, made the modelling decisions, and is responsible
 for the package and for its use in publications.
