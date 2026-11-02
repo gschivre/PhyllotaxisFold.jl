@@ -34,9 +34,9 @@
 # are exact (ForwardDiff); the methods of a new law must be generic too.
 
 """
-default delay grid (plastochrons). The density is renormalised on the grid, so the mass it cuts off,
-π e^{−30/m} for a tail of mass π and mean m, must be negligible: below 10⁻⁵ for m ≤ 3. The grid is symmetric because
-late and early tails are treated alike.
+default delay grid (plastochrons), the default of `delay_grid`. The density is renormalised on the grid, so the mass
+it cuts off must be negligible (π e^{−30/m} for a tail of mass π and mean m). The grid is symmetric because late and
+early tails are treated alike.
 """
 const DELAY_GRID = range(-30.0, 30.0; step = 0.05)
 
@@ -52,11 +52,12 @@ by the functions of this module, through these methods:
 
 | method                         |                         | used by                                             |
 |--------------------------------|-------------------------|-----------------------------------------------------|
-| `delay_logpdf(f, z)`           | required                | everything (the law on `DELAY_GRID`)                |
+| `delay_logpdf(f, z)`           | required                | everything (the law on its grid)                    |
 | `free_parameters(f)`           | required to fit         | `fit_delay_law`, `delay_law_inference`              |
 | `with_free_parameters(f, v)`   | required to fit         | `fit_delay_law`, `delay_law_inference`              |
 | `reported_parameters(f)`       | optional (default none) | `delay_law_inference`                               |
 | `nshared_parameters(f)`        | optional (default 0)    | joint fits of groups, `shared_core_test`            |
+| `delay_grid(f)`                | optional (default `DELAY_GRID`) | the default `grid` of every function below  |
 | `rand(rng, f)`                 | optional (default: from the density on the grid) | `simulate_stems` |
 
 The fits pass ForwardDiff duals through the parameters, so the methods must be generic in their number type. The
@@ -110,12 +111,24 @@ core sd. Optional: 0 by default, which rules out joint fits.
 """
 nshared_parameters(::DelayLaw) = 0
 
-# fallback sampler: a grid cell drawn from the density on DELAY_GRID, then a uniform point in it. It evaluates the
+"""
+    delay_grid(f::DelayLaw) -> AbstractRange
+
+The grid of delays (plastochrons) on which `f` is evaluated and renormalised: the default `grid` of every function
+that takes one (fits, scores, profile, tail masses) and the grid of the fallback sampler. Optional: `DELAY_GRID`
+(−30 to 30, step 0.05) by default. A law with longer tails or a narrower core defines its own, e.g.
+`delay_grid(::MyLaw) = range(-60.0, 60.0; step = 0.05)`. The density must have decayed at both ends, and the step
+must fit a whole number of times in one plastochron (0.05, 0.1, 0.25, …).
+"""
+delay_grid(::DelayLaw) = DELAY_GRID
+
+# fallback sampler: a grid cell drawn from the density on delay_grid(f), then a uniform point in it. It evaluates the
 # density on the whole grid for each draw: a law simulated often should define its own rand
 function Base.rand(rng::AbstractRNG, f::DelayLaw)
-    c = cumsum(exp.(_logdensity(f, DELAY_GRID)))
+    grid = delay_grid(f)
+    c = cumsum(exp.(_logdensity(f, grid)))
     i = min(searchsortedfirst(c, rand(rng) * last(c)), length(c))
-    return DELAY_GRID[i] + (rand(rng) - 0.5) * step(DELAY_GRID)
+    return grid[i] + (rand(rng) - 0.5) * step(grid)
 end
 Base.rand(f::DelayLaw) = rand(Random.default_rng(), f)
 
@@ -241,7 +254,7 @@ end
 #################################################################################################################
 
 "log density of f on `grid`, normalised numerically there"
-delay_logdensity(f::DelayLaw; grid = DELAY_GRID) = _logdensity(f, grid)
+delay_logdensity(f::DelayLaw; grid = delay_grid(f)) = _logdensity(f, grid)
 
 function _tail_masses(f, a, grid)
     g = exp.(_logdensity(f, grid)) .* step(grid)
@@ -261,7 +274,7 @@ P(e > a), P(e < −a) and their sum: the fractions of sites committed more than 
 are properties of f itself, read from the orders only through the shape of the law: better determined than π and m
 one by one, but not identified like the overtaking profile (`overtaking`).
 """
-tail_masses(f::DelayLaw; a::Real = 1.0, grid = DELAY_GRID) = _tail_masses(f, a, grid)
+tail_masses(f::DelayLaw; a::Real = 1.0, grid = delay_grid(f)) = _tail_masses(f, a, grid)
 
 # q_d = P(e_i − e_{i+d} > d) = Σ_y g(y) P(e > y + d): each grid value stands for a cell, and the cell of y + d counts
 # for one half (ties). d must be a multiple of the grid step (an integer d with a step that divides 1).
@@ -284,7 +297,7 @@ stem, whatever the other sites do: unlike the parameters of f, it is identified 
 `q_2`, `q_3`: the longer displacements that tails produce). It depends on f only through the law of a difference of two
 delays, so it carries no late/early asymmetry.
 """
-overtaking(f::DelayLaw; d = 1:4, grid = DELAY_GRID) = _overtaking(f, d, grid)
+overtaking(f::DelayLaw; d = 1:4, grid = delay_grid(f)) = _overtaking(f, d, grid)
 
 """
     loglik_order_exact(σ, logg, z_grid, γ)
@@ -335,7 +348,7 @@ function loglik_order_exact(σ::AbstractVector{Int}, logg::AbstractVector{T}, z_
     return ll
 end
 const _LOGG_DROP = 18.0
-loglik_order_exact(σ::AbstractVector{Int}, f::DelayLaw; grid = DELAY_GRID) = loglik_order_exact(σ, _logdensity(f, grid), grid, 1.0)
+loglik_order_exact(σ::AbstractVector{Int}, f::DelayLaw; grid = delay_grid(f)) = loglik_order_exact(σ, _logdensity(f, grid), grid, 1.0)
 
 @inline function _interp(col::AbstractVector, z_grid, z)
     x = (z - first(z_grid)) / step(z_grid) + 1
@@ -400,7 +413,7 @@ function stem_terms(samples, logP)
     term(s) = logsumexp([log(s.w[j]) + logP(s.orders[j]) - s.logA[j] for j in eachindex(s.orders)])
     return fetch.([Threads.@spawn term(s) for s in samples]) # concrete element type (Float64 or a dual)
 end
-stem_terms(samples, f::DelayLaw; grid = DELAY_GRID) = _stem_terms(samples, f, grid)
+stem_terms(samples, f::DelayLaw; grid = delay_grid(f)) = _stem_terms(samples, f, grid)
 _stem_terms(samples, f, grid) = (lg = _logdensity(f, grid); stem_terms(samples, σ -> loglik_order_exact(σ, lg, grid, 1.0)))
 
 "log p(y | f) − log p(y | A) summed over stems (positive: f explains the orders better than the propensity model)"
@@ -415,7 +428,7 @@ const _NQ = 4 # the overtaking profile reported by delay_law_inference: q_1 … 
 _names(f) = (keys(reported_parameters(f))..., :late, :early, :off, (Symbol(:q, d) for d in 1:_NQ)...)
 _derived(f, grid) = (t = _tail_masses(f, 1.0, grid); [values(reported_parameters(f))..., t.late, t.early, t.off, _overtaking(f, 1:_NQ, grid)...])
 
-# a law with mass beyond the grid: the cut-off mass would bias the fit (DELAY_GRID). In general, the mass of the
+# a law with mass beyond the grid: the cut-off mass would bias the fit (delay_grid). In general, the mass of the
 # outermost cells shows a density that has not decayed; for exponential tails the cut-off mass is known exactly
 function _check_grid(f::DelayLaw, grid)
     g = exp.(_logdensity(f, grid)) .* step(grid)
@@ -451,7 +464,8 @@ end
 Delay law maximising `relative_loglik`, by Newton's method with a trust region (exact gradient and Hessian by
 ForwardDiff) on its free parameters (`free_parameters`), starting from the law `init`, which also sets the family
 and which parameters are free (any `DelayLaw` that defines `free_parameters` and `with_free_parameters`). Returns
-(; law, v, init, `rel_ll`, converged), with `v` the free parameters of the fitted law.
+(; law, v, init, grid, `rel_ll`, converged), with `v` the free parameters of the fitted law and `grid` the delay
+grid used (`delay_grid(init)` by default).
 
 For the default law, the variants name the tails to fit: `fit_delay_law(samples, GaussianExpTails(:late))`, or
 `GaussianExpTails(:both, f)` to start from the values of a law `f` (see `GaussianExpTails`).
@@ -462,15 +476,15 @@ this is a **shared core sd** with group-specific tails: the hypothesis that the 
 not in the precision of a typical commitment, and the way to estimate the tails of a group whose own core is not
 identified (heavy tails). For another law, the shared parameters are those its author declares with
 `nshared_parameters`: a parameter with the same meaning in every group (a scale, say). A law that declares none (the
-default) cannot be fitted jointly, and the call throws an `ArgumentError`. Returns (; laws, v, init, `rel_ll`,
+default) cannot be fitted jointly, and the call throws an `ArgumentError`. Returns (; laws, v, init, grid, `rel_ll`,
 `rel_ll_groups`, converged, `shared_core = true`).
 """
-function fit_delay_law(samples, init::DelayLaw = GaussianExpTails(:both); grid = DELAY_GRID, iterations::Int = 200)
+function fit_delay_law(samples, init::DelayLaw = GaussianExpTails(:both); grid = delay_grid(init), iterations::Int = 200)
     _is_groups(samples) && return _fit_shared(samples, init; grid, iterations)
     r = _newton(v -> -sum(_stem_terms(samples, with_free_parameters(init, v), grid)), free_parameters(init); iterations)
     v = Optim.minimizer(r)
     law = _check_grid(with_free_parameters(init, v), grid)
-    return (; law, v, init, rel_ll = -Optim.minimum(r), converged = Optim.converged(r))
+    return (; law, v, init, grid, rel_ll = -Optim.minimum(r), converged = Optim.converged(r))
 end
 
 _is_groups(x) = !isempty(x) && first(x) isa AbstractVector
@@ -484,7 +498,7 @@ function _fit_shared(groups, init; grid, iterations)
     v = Optim.minimizer(r)
     laws = [_check_grid(_group_law(init, v, g), grid) for g in 1:G]
     rel_ll_groups = [relative_loglik(groups[g], laws[g]; grid) for g in 1:G]
-    return (; laws, v, init, rel_ll = -Optim.minimum(r), rel_ll_groups, converged = Optim.converged(r), shared_core = true)
+    return (; laws, v, init, grid, rel_ll = -Optim.minimum(r), rel_ll_groups, converged = Optim.converged(r), shared_core = true)
 end
 
 # sandwich covariance of the unconstrained parameters, clustered by stem: H⁻¹ (Σ_s g_s g_sᵀ) H⁻¹, with the per-stem
@@ -503,6 +517,8 @@ end
     delay_law_inference(samples, fit; grid)
     delay_law_inference(groups, fit; grid)
 
+`grid` defaults to the grid of the fit (`fit.grid`).
+
 Robust standard errors at a `fit_delay_law` result: sandwich covariance `H⁻¹ (Σ_s g_s g_sᵀ) H⁻¹` of the unconstrained
 parameters (per-stem scores `g_s`, Hessian H of the summed terms, exact by ForwardDiff; clustered by stem, so
 heterogeneity between stems is allowed), then the delta method. `se_model` is the model-based (−H⁻¹) version. pinv: a
@@ -518,7 +534,7 @@ For a joint fit of several groups, `estimate`, `se` and `profile` are vectors (o
 `Δprofile` and `Δoff` give each group minus group 1, with standard errors from the joint covariance (the shared
 parameters correlate the groups); `Δprofile` also carries its Wald test.
 """
-function delay_law_inference(samples, fit; grid = DELAY_GRID)
+function delay_law_inference(samples, fit; grid = get(fit, :grid, delay_grid(fit.init)))
     init = fit.init
     names = _names(init)
     K = length(names)
@@ -615,7 +631,7 @@ other law, the shared parameters are those it declares with `nshared_parameters`
 Returns (; separate, shared, lr, df, p): `p` from χ² with (G − 1) × `nshared_parameters(init)` degrees of freedom,
 which can be optimistic when the tails are heavy (a permutation of the group labels among stems calibrates it).
 """
-function shared_core_test(groups, init::DelayLaw = GaussianExpTails(:both); grid = DELAY_GRID)
+function shared_core_test(groups, init::DelayLaw = GaussianExpTails(:both); grid = delay_grid(init))
     separate = [fit_delay_law(g, init; grid) for g in groups]
     shared = fit_delay_law(groups, init; grid)
     lr = max(2 * (sum(f.rel_ll for f in separate) - shared.rel_ll), 0.0)

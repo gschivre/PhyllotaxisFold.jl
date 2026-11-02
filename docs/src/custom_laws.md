@@ -34,7 +34,7 @@ precise commitment.
 ```@example laws
 using PhyllotaxisFold, Random
 using Distributions: TDist
-import PhyllotaxisFold: delay_logpdf, free_parameters, with_free_parameters, reported_parameters, nshared_parameters
+import PhyllotaxisFold: delay_logpdf, free_parameters, with_free_parameters, reported_parameters, nshared_parameters, delay_grid
 
 struct StudentDelay{T <: Real} <: DelayLaw
     s::T   # scale (plastochrons)
@@ -129,6 +129,7 @@ stems behave like this is a question for the data.
 | `with_free_parameters(f, v)` | to fit | the law of the same family at those parameters (`f` is a template) |
 | `reported_parameters(f)` | no | a named tuple that `delay_law_inference` reports with standard errors |
 | `nshared_parameters(f)` | no | how many leading free parameters groups share in a joint fit (default 0: no joint fit) |
+| `delay_grid(f)` | no | the grid of delays the law is evaluated on (default `DELAY_GRID`: −30 to 30, step 0.05) |
 | `rand(rng, f)` | no | one delay; without it, `simulate_stems` draws from the density, more slowly |
 
 Notes:
@@ -141,6 +142,35 @@ Notes:
 - **Generic number types.** The fits pass dual numbers through these methods to get exact derivatives: use one type
   parameter `T <: Real` for all the fields, as above, and no `Float64` annotations.
 
+## The delay grid
+
+**What it is for.** A delay law is used only through its values on a grid of delays, where it is renormalised
+(hence no normalising constant): the exact probability of an order is computed on that grid, and so are the overtaking
+profile and the tail masses. Why, and what it requires of the law, is in
+[§5.4](timing.md#5.4-The-exact-probability-of-one-order). The default, `DELAY_GRID` (−30 to 30 plastochrons, step
+0.05), suits the default law.
+
+**When to change it.** The grid must hold the whole law and resolve its finest detail:
+
+- **Long or heavy tails: a wider grid.** A law cut off by the grid scores better than it should. The fits warn when
+  the density has not decayed at the edge of the grid.
+- **A narrow core: a finer step.** The error is set by the step relative to the narrowest feature of the law.
+- **Always a step that divides one plastochron** (0.05, 0.1, 0.025, …), so that the shifts between sites fall on
+  the grid.
+
+A wider or finer grid costs proportionally more time.
+
+**How to change it.** Declare the grid once, with the law:
+
+```julia
+delay_grid(::MyLaw) = range(-60.0, 60.0; step = 0.05)   # MyLaw: your DelayLaw type
+```
+
+Every function then uses it by default: the fits and their standard errors (the fit result records it as
+`fit.grid`, which `delay_law_inference` reuses), the scores, the profile, the tail masses and the fallback sampler of
+`simulate_stems`. A `grid` keyword still overrides it for a single call, e.g. to check that a result does not change
+on a finer grid.
+
 ## Checks
 
 The checks of the worked analysis apply to any law:
@@ -150,10 +180,8 @@ The checks of the worked analysis apply to any law:
 - **The score.** Count about one unit of log-likelihood per extra parameter (Akaike), and do not interpret gains
   below about 5 ([§6.4](validation.md#6.4-The-delay-law)). To know how far a gain can be trusted, simulate stems from both laws and
   refit.
-- **The grid.** Delays are evaluated on a grid from −30 to 30 plastochrons. If the density has not decayed at its
-  edges, the fit warns: pass a wider `grid`, e.g. `range(-60.0, 60.0; step = 0.05)`. Keep a step that fits a whole
-  number of times in one plastochron (0.05, 0.1, 0.25, …): sites are ready one plastochron apart, and the exact order
-  probability and the overtaking profile shift the density by whole plastochrons on the grid.
+- **The grid.** If a fit warns that the density has not decayed at the edge of the grid, give the law a wider one
+  ([The delay grid](custom_laws.md#The-delay-grid)).
 - **The parameters.** The orders identify the profile, not the parameters ([§5.6](timing.md#5.6-The-delay-law)). A parameter that only
   shapes the far tails comes out with a large standard error; fewer parameters, or sharing one between groups, help.
 

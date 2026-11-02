@@ -61,7 +61,7 @@ export TransformedLogDensityProblem
 export simulate_stems, sample_prior, divergence_angles, Golden_angle, Lucas_angle
 # commitment timing
 export DelayLaw, GaussianExpTails, delay_logpdf, free_parameters, with_free_parameters, reported_parameters,
-    nshared_parameters, DELAY_GRID, delay_logdensity, tail_masses, overtaking, loglik_order_exact, order_diagnostics,
+    nshared_parameters, delay_grid, DELAY_GRID, delay_logdensity, tail_masses, overtaking, loglik_order_exact, order_diagnostics,
     order_samples, stem_terms, relative_loglik, fit_delay_law, delay_law_inference, shared_core_test,
     overtaking_profile, compare_profiles
 # plastochron

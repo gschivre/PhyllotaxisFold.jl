@@ -6,7 +6,7 @@ using Bijectors: Bijectors
 using SpecialFunctions: SpecialFunctions
 using Aqua: Aqua
 using ExplicitImports: check_no_stale_explicit_imports
-import PhyllotaxisFold: delay_logpdf, free_parameters, with_free_parameters, reported_parameters, nshared_parameters
+import PhyllotaxisFold: delay_logpdf, free_parameters, with_free_parameters, reported_parameters, nshared_parameters, delay_grid
 # internals, by their qualified names (one module; the permanents are the submodule `Permanents`)
 const AL = PhyllotaxisFold
 const TO = PhyllotaxisFold
@@ -66,6 +66,17 @@ free_parameters(f::StudentDelay) = [log(f.s), log(f.ν)]
 with_free_parameters(::StudentDelay, v) = StudentDelay(exp(v[1]), exp(v[2]))
 reported_parameters(f::StudentDelay) = (; s = f.s, ν = f.ν)
 nshared_parameters(::StudentDelay) = 1 # no rand: simulate_stems uses the fallback sampler
+
+# the Student t on its own, wider grid (delay_grid)
+struct WideStudent{T <: Real} <: DelayLaw
+    s::T
+    ν::T
+end
+const WIDE_GRID = range(-60.0, 60.0; step = 0.05)
+delay_logpdf(f::WideStudent, z) = delay_logpdf(StudentDelay(f.s, f.ν), z)
+free_parameters(f::WideStudent) = [log(f.s), log(f.ν)]
+with_free_parameters(::WideStudent, v) = WideStudent(exp(v[1]), exp(v[2]))
+delay_grid(::WideStudent) = WIDE_GRID
 
 struct GumbelDelay{T <: Real} <: DelayLaw
     β::T
@@ -754,6 +765,19 @@ twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisP
         @test length(simulate_stems(t; plants = 2, organs = 10, rng).orders) == 2
         # a density that has not decayed at the edge of the grid is flagged
         @test_logs (:warn, r"edge of the grid") match_mode = :any PhyllotaxisFold._check_grid(StudentDelay(0.4, 0.3), DELAY_GRID)
+        # a law's own grid (delay_grid) is the default of every function and of the fallback sampler
+        @test delay_grid(t) === DELAY_GRID
+        w = WideStudent(0.4, 3.0)
+        @test relative_loglik(kt, w) ≈ relative_loglik(kt, t; grid = WIDE_GRID)
+        @test overtaking(w) ≈ overtaking(t; grid = WIDE_GRID)
+        @test loglik_order_exact([2, 1, 3], w) ≈ loglik_order_exact([2, 1, 3], t; grid = WIDE_GRID)
+        wh = WideStudent(0.4, 0.3) # half its draws beyond ±30: cut off on DELAY_GRID, not on its own grid
+        rng = Xoshiro(53)
+        @test maximum(abs, (rand(rng, StudentDelay(0.4, 0.3)) for _ in 1:2_000)) < 30.1
+        @test maximum(abs, (rand(rng, wh) for _ in 1:2_000)) > 30.1
+        fw = fit_delay_law(kt, w)
+        @test fw.grid === WIDE_GRID && fw.law isa WideStudent
+        @test delay_law_inference(kt, fw).estimate == delay_law_inference(kt, fw; grid = WIDE_GRID).estimate
     end
 
     @testset "CommitmentTiming: the whole pipeline on simulated stems (angles → orders → delay law)" begin
