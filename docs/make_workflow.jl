@@ -180,6 +180,9 @@ function workflow_figures(res = workflow_data())
         save(joinpath(WFIG, "w2_step1_checks.png"), fig)
     end
 
+    # w2b. one decoded stem and the posterior of its order
+    fig_decoded_stem(res)
+
     # w3. the overtaking profiles: read from the orders, from the fitted law, and the truth
     let fig = Figure(size = (1100, 430))
         ax = Axis(
@@ -261,6 +264,93 @@ function workflow_figures(res = workflow_data())
         save(joinpath(WFIG, "w5_hours.png"), fig)
     end
     return
+end
+
+# the shuffled blocks of an order: the shortest segments a:b that σ maps onto themselves, other than fixed organs
+function shuffled_blocks(σ)
+    blocks, a, top = UnitRange{Int}[], 1, 0
+    for i in eachindex(σ)
+        top = max(top, σ[i])
+        if top == i
+            (i > a || σ[a] != a) && push!(blocks, a:i)
+            a = i + 1
+        end
+    end
+    return blocks
+end
+
+# the motif of the divergences around a block, in multiples of the canonical angle α: from the organ below the block to
+# the organ above it (an isolated swap reads "2α −α 2α")
+function block_motif(σ, b)
+    i0, i1 = max(first(b) - 1, 1), min(last(b), length(σ) - 1)
+    c = [σ[i + 1] - σ[i] for i in i0:i1]
+    return join(alpha_label.(c), " ")
+end
+alpha_label(c) = (c == 1 ? "α" : c == -1 ? "−α" : "$(c < 0 ? "−" : "")$(abs(c))α")
+
+# a stem that reads well: blocks of at most three organs (one of three at least), and an organ whose displacement is
+# uncertain; among those, the one with the most blocks
+function readable_stem(g)
+    k = g.k
+    ok(s) = (bl = shuffled_blocks(g.dec[s].σ);
+        !isempty(bl) && maximum(length, bl) == 3 && any(i -> 0.25 < 1 - g.ρ[s][i, k + 1] < 0.75, axes(g.ρ[s], 1)))
+    return argmax(s -> ok(s) ? length(shuffled_blocks(g.dec[s].σ)) : -1, eachindex(g.dec))
+end
+
+# w2b. the decoding of one stem, drawn like Refahi et al. (2011, Fig. 3), and the posterior of its order
+function fig_decoded_stem(res; s = nothing)
+    g, k = res.mutant, res.mutant.k
+    s = something(s, readable_stem(g))
+    d, y, x, ρ = g.dec[s], g.sim.angles[s], g.x[s], g.ρ[s]
+    n, σ, ψ = length(y), d.σ, rad2deg(d.ψ)
+    yc = y .- deg2rad(d.ω) .* x # the twist removed
+    pred = d.o .* (σ .- 1) .* d.ψ # the sites of the decoded order (the offset cancels in the divergences)
+    blocks = shuffled_blocks(σ)
+    fig = Figure(size = (1200, 700))
+    cs = [3, -2, 1, -4, 4, -1, 2, -3] # the divergences of the short permutations, in multiples of α (increasing angle)
+    ax = Axis(
+        fig[1, 1]; title = "(a) The decoded order of one mutant stem", ylabel = "divergence angle",
+        yticks = ([mod(c * ψ, 360) for c in cs], ["$(alpha_label(c)) = $(round(mod(c * ψ, 360); digits = 1))°" for c in cs]),
+        titlesize = 15, xticklabelsvisible = false, ygridvisible = false
+    )
+    for b in blocks
+        vspan!(ax, [first(b) - 0.5], [last(b) + 0.5]; color = (W_COL.mutant, 0.12))
+    end
+    hlines!(ax, [mod(c * ψ, 360) for c in cs]; color = :gray70, linewidth = 0.8)
+    xs = (1:(n - 1)) .+ 0.5 # divergence i lies between organs i and i + 1
+    scatterlines!(ax, xs, divergence_angles(yc; o = d.o); color = :black, linestyle = :dot, marker = :rect,
+        markersize = 6, label = "measured (twist removed)")
+    lines!(ax, xs, divergence_angles(pred; o = d.o); color = W_COL.mutant, linewidth = 2, label = "decoded")
+    for (j, b) in enumerate(blocks)
+        text!(ax, (first(b) + last(b)) / 2, (isodd(j) ? 372 : 352); text = block_motif(σ, b), align = (:center, :center),
+            fontsize = 11)
+    end
+    ylims!(ax, 0, 385)
+    Legend(fig[1, 2], ax; framevisible = false)
+
+    ax2 = Axis(
+        fig[2, 1]; title = "(b) Posterior probability that each organ is displaced", xlabel = "organ (height p)",
+        ylabel = "probability", titlesize = 15, yticks = 0:0.25:1
+    )
+    pd(i, r) = sum(ρ[i, k + 1 + dd] for dd in -k:k if abs(dd) in r)
+    p1, p2, p3 = [pd(i, 1:1) for i in 1:n], [pd(i, 2:2) for i in 1:n], [pd(i, 3:k) for i in 1:n]
+    barplot!(ax2, 1:n, p1 .+ p2 .+ p3; color = (:steelblue, 0.45), label = "|d| = 1")
+    barplot!(ax2, 1:n, p2 .+ p3; color = (:darkorange, 0.75), label = "|d| = 2")
+    barplot!(ax2, 1:n, p3; color = :firebrick, label = "|d| ≥ 3")
+    for i in 1:n # the displacement of the most probable order
+        dd = σ[i] - i
+        dd != 0 && text!(ax2, i, 1.06; text = (dd > 0 ? "+$dd" : "−$(-dd)"), align = (:center, :center), fontsize = 10)
+    end
+    truth = findall(g.sim.orders[s] .!= 1:n)
+    scatter!(ax2, truth, fill(-0.07, length(truth)); marker = :utriangle, color = :black, markersize = 8,
+        label = "truly displaced")
+    ylims!(ax2, -0.12, 1.12)
+    Legend(fig[2, 2], ax2; framevisible = false)
+    linkxaxes!(ax, ax2)
+    xlims!(ax2, 0.3, n + 0.7)
+    rowsize!(fig.layout, 1, Relative(0.55))
+    save(joinpath(WFIG, "w2b_decoded_stem.png"), fig)
+    return s
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

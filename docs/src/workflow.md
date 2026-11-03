@@ -74,6 +74,29 @@ band, ``|d| = 4``, per stem: a mass there would call for a wider band. (c) The p
 stem with the most long displacements: each column is a height, each row a displacement ``d = \sigma(p) - p``. Black
 crosses: the most probable order.*
 
+**Draw a decoded stem.** Figure 3 draws one stem the way [refahi2011combinatorial](@citet) did: the divergence
+angles, measured and decoded, with the permuted organs marked. Below it, the posterior shows how sure the
+reconstruction is, organ by organ. For a stem `s`:
+
+```julia
+s = 1
+(; σ, o, ψ, ω) = dec[s]                             # the most probable order, spiral and twist of the stem
+y = angles_wt[s] .- deg2rad(ω) .* x_wt[s]           # its angles, the twist removed
+measured = divergence_angles(y; o)                  # figure 3a, dotted
+decoded = divergence_angles(o .* (σ .- 1) .* ψ; o)  # figure 3a, solid: the divergences of the decoded order
+ρ = post[s].ρ                                       # ρ[p, :]: probability that the organ at height p is displaced by d = −k … k
+```
+
+The script of the figure, `docs/make_workflow.jl` (`fig_decoded_stem`), also finds the shuffled blocks and their motifs.
+
+![One decoded stem](figures/w2b_decoded_stem.png)
+
+*Figure 3. One mutant stem, decoded. (a) Divergence angles, measured with the twist removed (dotted) and decoded
+(solid). Shaded: the shuffled blocks, labelled with their motif (an isolated swap reads 2α −α 2α). (b) Posterior
+probability that each organ is displaced, by ``|d|``; on top, the displacements of the most probable order; triangles,
+the organs truly displaced. A partial bar marks an uncertain organ: at organs 3 and 12–14 the most probable order is
+wrong, but the posterior still gives the truth about 0.3.*
+
 ## Step 2: read the overtaking profile
 
 The first result needs no model of timing at all. For each distance ``d``, the **overtaking profile** ``q_d`` is the
@@ -104,7 +127,7 @@ prior of step 1 weigh most. Here, including it would change little (``\chi^2 = 5
 
 ![The overtaking profiles](figures/w3_profiles.png)
 
-*Figure 3. (a) The overtaking profile of each group, read from the orders (dots, ± 2 se) and from the fitted delay law
+*Figure 4. (a) The overtaking profile of each group, read from the orders (dots, ± 2 se) and from the fitted delay law
 of step 3 (dashed); diamonds: the truth. (b) The difference between the groups, ± 2 se; diamonds: the truth.*
 
 **Reading it.** In the wild type, an organ is overtaken by its neighbour about once in ten, and by the organ two
@@ -147,7 +170,7 @@ whether the orders call for tails:
 
 Both groups clearly need tails: adding late organs gains 40 (wild type) and 117 (mutant) units of log-likelihood,
 early organs another 24 and 10. Gains below about 5 would not be meaningful on their own ([§6.4](validation.md#6.4-The-delay-law)).
-Before reading the parameters, check that the fitted law reproduces the profile of step 2: in figure 3a, the dashed
+Before reading the parameters, check that the fitted law reproduces the profile of step 2: in figure 4a, the dashed
 lines go through the dots, so the law's shape is not distorting the data.
 
 The estimates of the `:both` law (± robust se), with the truth:
@@ -192,7 +215,7 @@ matches the truth.
 
 ![The fitted delay laws](figures/w4_delay_laws.png)
 
-*Figure 4. The fitted delay laws (log scale): each group fitted alone (solid), the two fitted with a shared core
+*Figure 5. The fitted delay laws (log scale): each group fitted alone (solid), the two fitted with a shared core
 (dotted), and the truth (dashed).*
 
 ## Step 5: delays in hours
@@ -209,12 +232,12 @@ in_hours(inf2.estimate[1].σc, inf2.se[1].σc, T)  # the shared core sd, in hour
 ```
 
 `fit_flowering` fits a flowering rate that rises, then declines from a change point specific to each plant, until the
-meristem arrests (the model is in the docstring of `Plastochron`). Figure 5 shows the counts and the plastochron it
+meristem arrests (the model is in the docstring of `Plastochron`). Figure 6 shows the counts and the plastochron it
 implies.
 
 ![Delays in hours](figures/w5_hours.png)
 
-*Figure 5. (a) Daily counts of open flowers for six wild-type plants (dots), and the fitted curves, each with the
+*Figure 6. (a) Daily counts of open flowers for six wild-type plants (dots), and the fitted curves, each with the
 plant's own change point. (b) The plastochron by flower rank: the median plant of each group (thick), six wild-type
 plants (thin), and the truth (dashed). Grey: the ranks of the measured organs.*
 

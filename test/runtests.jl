@@ -884,7 +884,7 @@ twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisP
             angles_wt = t1.angles, x_wt = t1.x, angles_mutant = t2.angles, x_mutant = t2.x,
             smp_wt = known_samples(LAW, 30, 25, 6), smp_mutant = known_samples(LAW, 30, 25, 12), counts_wt = counts
         )
-        run_blocks!(work, "workflow.md", 1:6; subs = fewer)
+        run_blocks!(work, "workflow.md", 1:7; subs = fewer)
         @test work.cmp.df == 3 && isfinite(work.inf2.Δoff[1].estimate)
         # custom delay laws: the Student t and the Gumbel law, fitted and simulated
         laws = doc_sandbox(; smp = known_samples(LAW, 30, 25, 8), smp_wt = known_samples(LAW, 30, 25, 9), smp_mutant = known_samples(LAW, 30, 25, 10))
