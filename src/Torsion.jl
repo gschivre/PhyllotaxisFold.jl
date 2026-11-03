@@ -14,7 +14,7 @@
 # so the integral uses *adaptive* quadrature: Gauss–Hermite nodes placed on each mode of the stem's own likelihood, found
 # by a scan at preliminary parameters (`stem_nodes`), and kept fixed during the fit (an importance-sampling rule with a
 # Gaussian-mixture proposal, `TorsionNodes`). The fitted objective is then a smooth function of the global parameters and
-# (`m_ω`, `log s_ω`), maximised by Newton (`newton_map` and the derivatives are in `AngleLikelihood.jl`).
+# (`m_ω`, `log s_ω`), maximised by Newton (`newton_map` in `Fitting.jl`; the derivatives in `AngleLikelihood.jl`).
 
 
 """

@@ -12,7 +12,7 @@ PhyllotaxisFold
 
 ```@autodocs
 Modules = [PhyllotaxisFold]
-Pages = ["PropensityModel.jl", "PropensityPriors.jl"]
+Pages = ["PropensityModel.jl", "PropensityPriors.jl", "Fitting.jl"]
 Private = false
 ```
 
@@ -28,7 +28,7 @@ Private = false
 
 ```@autodocs
 Modules = [PhyllotaxisFold]
-Pages = ["AngleLikelihood.jl"]
+Pages = ["AngleLikelihood.jl", "Decoding.jl"]
 Private = false
 ```
 

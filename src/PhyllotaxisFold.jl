@@ -11,11 +11,13 @@ order:
 | `Permanents.jl`       | the submodule `Permanents`: banded permanents (graph, forward / backward, sampling, Viterbi) |
 | `Common.jl`           | canonical angles; log I₀ and Bessel ratio (dual-safe), half-t                             |
 | `Torsion.jl`          | stem twist: coordinates, prior, per-stem rate scan, adaptive quadrature, Newton MAP       |
-| `AngleLikelihood.jl`  | the angle likelihood and its analytic gradient; the fits, `PhyllotaxisFit`; decoding      |
+| `AngleLikelihood.jl`  | the angle likelihood, its analytic gradient and Hessian, the twist integrated out         |
 | `PropensityPriors.jl` | log-normal softplus prior on free log-propensities η and its bijectors                    |
-| `PropensityModel.jl`  | the propensity model `PhyllotaxisModelAD`, `fit_map`, the fit's accessors and diagnostics |
-| `Simulation.jl`       | simulated stems, from parameters or from a fit; divergence angles                         |
+| `PropensityModel.jl`  | the propensity model `PhyllotaxisModelAD`: parameters, priors, log density                |
+| `Fitting.jl`          | `fit_map`, Newton and the twist schedule; `PhyllotaxisFit`, its accessors and diagnostics |
+| `Decoding.jl`         | per-stem log-likelihoods, corrected angles, organ orders (MAP, posterior, spiral)         |
 | `CommitmentTiming.jl` | commitment delay laws, exact order likelihood, re-weighting of the posterior orders       |
+| `Simulation.jl`       | simulated stems, from parameters, a delay law or a fit; divergence angles                 |
 | `Plastochron.jl`      | plastochron by flower rank from daily open-flower counts (delays in hours)                |
 
 The exported names are the interface for an analysis. The building blocks (the banded permanents, the numerical tools,
@@ -42,8 +44,10 @@ include("Torsion.jl")
 include("AngleLikelihood.jl")
 include("PropensityPriors.jl")
 include("PropensityModel.jl")
-include("Simulation.jl")
+include("Fitting.jl")
+include("Decoding.jl")
 include("CommitmentTiming.jl")
+include("Simulation.jl")
 include("Plastochron.jl")
 
 # the propensity model: data, prior, fit and its result

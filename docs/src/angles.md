@@ -169,17 +169,17 @@ the running example.
     sharpest ones dominate the error.
 
     **Accuracy.** On the 40 stems of the running example, at their fitted parameters, each stem's log-likelihood was
-    compared with a reference computed on 256 × 64 nodes (``\phi`` × ``\kappa``), for the fitted ``\sigma_\kappa``
-    and three larger ones (0.3, 0.5, 0.8):
+    compared with a reference computed on 256 × 64 nodes (``\phi`` × ``\kappa``; 64 ``\kappa`` nodes in the rule too,
+    so that only the ``\phi`` rule differs), for the fitted ``\sigma_\kappa`` and three larger ones (0.3, 0.5, 0.8):
 
     | ``\phi`` nodes | median error per stem | worst stem |
     |---|---|---|
-    | 16 | 1.1–1.4 | 3.6–4.9 |
-    | 32 (default) | 0.17–0.19 | 0.30–0.43 |
-    | 64 | 0.0002 | 0.003 |
-    | 128 | ``10^{-9}`` | ``10^{-7}`` |
+    | 16 | 1.1–1.3 | 3.6–5.0 |
+    | 32 (default) | 0.16–0.17 | 0.30–0.46 |
+    | 64 | 0.0002–0.0003 | 0.003–0.02 |
+    | 128 | ``10^{-12}\text{–}10^{-10}`` | ``10^{-9}\text{–}10^{-6}`` |
 
-    (in log-likelihood units; the 64- and 128-node rows at the fitted ``\sigma_\kappa``). As predicted, each
+    (in log-likelihood units; the ranges run over the four ``\sigma_\kappa``). As predicted, each
     doubling squares the error factor ``e^{-N^2/(2a)}``. The error of the default depends on where each stem's peak
     falls between the nodes; see the last box of this section.
 
@@ -206,7 +206,7 @@ the running example.
     |---|---|---|---|
     | 0.21 (fitted) | 0.00003, 0.0003 | ``< 10^{-6}`` | ``< 10^{-9}`` |
     | 0.3 | 0.002, 0.013 | ``< 10^{-4}`` | ``< 10^{-7}`` |
-    | 0.5 | 0.05, 0.12 | 0.004, 0.013 | 0.0002 |
+    | 0.5 | 0.05, 0.11 | 0.004, 0.013 | 0.00002, 0.0002 |
     | 0.8 | 0.31, 0.75 | 0.08, 0.17 | 0.009, 0.02 |
 
     The default is accurate up to ``\sigma_\kappa \approx 0.5``. Beyond, use 32 nodes.
@@ -235,17 +235,19 @@ the running example.
 
     **Accuracy.** On the 40 stems of the running example, at their fitted parameters, each stem's integral was
     compared with a brute-force sum over a fine grid of rates (step 0.005 °/mm), for the fitted population law and three
-    others (sd doubled, sd halved, mean shifted by 0.5 °/mm). 38 stems have one mode, one has two and one has four.
+    others (sd doubled, sd halved, mean shifted by 0.5 °/mm). 38 stems have one mode, one has two and one has four. The
+    highest peak of a stem has an sd of 0.04 °/mm (median; 0.03–0.06), against ``s_\omega = 0.65`` °/mm for the
+    population law: 16 times narrower.
 
     | rule | median error per stem | worst stem |
     |---|---|---|
-    | adaptive, 5 nodes per mode | 0.02 | 0.23–0.29 |
-    | adaptive, 9 nodes per mode (default) | | 0.08 |
-    | adaptive, 15 nodes per mode | | 0.01 |
-    | Gauss–Hermite on the population law, 32 nodes | 0.2–2.5 | 0.6–11 |
+    | adaptive, 5 nodes per mode | 0.02 | 0.18–0.22 |
+    | adaptive, 9 nodes per mode (default) | 0.0007–0.0008 | 0.04–0.06 |
+    | adaptive, 15 nodes per mode | ``2\text{–}3 \times 10^{-5}`` | 0.005–0.007 |
+    | Gauss–Hermite on the population law, 32 nodes | 0.2–2.3 | 0.6–11 |
     | Gauss–Hermite on the population law, 128 nodes | 0.1–0.8 | 0.4–3.4 |
 
-    Errors are in log-likelihood units (the 9- and 15-node rows on the six worst stems). The adaptive rule is equally
+    Errors are in log-likelihood units; the ranges run over the four population laws. The adaptive rule is equally
     accurate for the four population laws, as the derivation says. Its residual error comes from peaks that are not
     quite Gaussian, and more nodes per mode remove it. A rule placed on the population law misses the sharp peaks
     even with 128 nodes.
@@ -272,5 +274,5 @@ The timing laws of [§5](timing.md) are compared on the orders, not
 through these integrals, and do not need them.
 
 **Code.** `AngleLikelihood.stem_loglik!` (one stem, all grids, and its gradient), `stem_loglik(fit)` (per stem),
-`angle_loglikelihood(model, u)`;
+`angle_loglikelihood(model, u)`; the accuracy checks of the three boxes: `docs/integration_accuracy_study.jl`;
 the twist: `torsion_coordinate(ℓ)`, `corrected_angles`; simulation: `simulate_stems` (both laws of the order).

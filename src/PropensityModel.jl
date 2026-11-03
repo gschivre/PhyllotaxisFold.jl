@@ -14,8 +14,8 @@
 # (`∂ℓ/∂η_d = E_post[N_d] − E_η[N_d]`), as are those in log μκ, σκ, α and `π_o`. The unconstrained parameters u map to θ by
 # a Stacked bijector (softplus gaps for η, identity, log, logit), and `(m_ω, log s_ω)` for the twist.
 #
-# `fit_map(model)` is the one fitting function: it dispatches on the model (outliers or not, twist or not) and returns a
-# `PhyllotaxisFit`. The LogDensityProblems interface gives the same log posterior: `logdensity(model, θ)` in the
+# `fit_map(model)` (in `Fitting.jl`) is the one fitting function: it dispatches on the model (outliers or not, twist or
+# not) and returns a `PhyllotaxisFit`. The LogDensityProblems interface gives the same log posterior: `logdensity(model, θ)` in the
 # constrained space and `TransformedLogDensityProblem(model)` in u (with its analytic gradient).
 
 # default gap prior: (μΔ, σΔ) of gaps with means (0.5, 1.25, 2, 3.75) and variances (0.1, 0.75, 2, 4)
@@ -295,46 +295,6 @@ function LogDensityProblems.logdensity_and_gradient(prob::TransformedLogDensityP
 end
 
 #################################################################################################################
-# fitting
-#################################################################################################################
-
-"""
-    fit_map(model; u0, g_tol = 1e-5, iterations = 100, recenter = 1, nodes_kw = (;), options)
-
-MAP of the propensity model by Newton trust region in the unconstrained space, with the analytic gradient and the
-Hessian from one dual pass over it. Dispatches on the model: with or without outlier angles, with or without a twist
-(`PhyllotaxisModelAD(...; torsion)`). Returns a `PhyllotaxisFit`.
-
-Without twist: one Newton fit from `u0` (the prior mean by default). With a twist, each stem's rate is integrated out
-by adaptive quadrature (nodes on the modes of the stem's own likelihood): 1. fit without twist; 2. nodes at that fit,
-rates set to each stem's best mode; 3. fit with these rates fixed; 4. nodes at that fit; 5. Newton on the integrated
-objective in `[u; m_ω; log s_ω]`; then `recenter` times: nodes at the new fit and refit. `nodes_kw` are passed to the
-node placement (e.g. `(; nnodes = 9)`, nodes per mode; `scan`). `u0` has the model parameters only, or the twist
-hyperparameters too (a previous fit's `u`), which then start step 5; by default step 5 starts from the spread of the
-best modes. The nodes of the fit are stored in the model (its log density is then the objective of the fit).
-
-Convergence: each Newton fit stops when no component of the gradient of the log posterior (in the unconstrained
-space) exceeds `g_tol`, or after `iterations` steps (the fit is then reported as not converged). The default `g_tol`
-leaves the parameters off the maximum by about `g_tol` × their posterior variance, far below their uncertainty on
-usual data; lower it for data that determine the parameters very precisely. `options` (an `Optim.Options`) replaces
-both, for full control of the optimiser.
-"""
-function fit_map(
-        model::PhyllotaxisModelAD; u0 = nothing, g_tol::Real = MAP_G_TOL, iterations::Integer = MAP_ITERATIONS,
-        options = map_options(; g_tol, iterations), recenter::Int = 1, nodes_kw = (;)
-    )
-    G, D = nmodel(model), LogDensityProblems.dimension(model)
-    u = collect(Float64, (u0 === nothing ? prior_mean_parameters(model)[1:G] : u0))
-    length(u) ∈ (G, D) || throw(DimensionMismatch("u0: $(G) model parameters, or $(D) with the twist hyperparameters"))
-    return _fit(model, u, options, recenter, nodes_kw)
-end
-fit_map(prob::TransformedLogDensityProblem; kw...) = fit_map(prob.model; kw...)
-
-_fit(m::PhyllotaxisModelAD{T, N, O, Nothing}, u0, options, recenter, nodes_kw) where {T, N, O} = _fit_no_twist(m, u0, options)
-_fit(m::PhyllotaxisModelAD{T, N, O, TorsionPrior}, u0, options, recenter, nodes_kw) where {T, N, O} =
-    _fit_twist(m, u0, options, recenter, nodes_kw)
-
-#################################################################################################################
 # parameters
 #################################################################################################################
 
@@ -379,140 +339,6 @@ function unconstrained_parameters(
 end
 unconstrained_parameters(model::PhyllotaxisModelAD, θ::AbstractVector) = _unconstrained(model, θ)
 prior_mean_parameters(model::PhyllotaxisModelAD) = _unconstrained(model, prior_mean(model))
-
-#################################################################################################################
-# the fit: accessors, diagnostics, show
-#################################################################################################################
-
-const _AnyFit = PhyllotaxisFit{<:PhyllotaxisModelAD}
-
-function _parnames(m::PhyllotaxisModelAD)
-    return vcat(
-        ["η_$d" for d in 1:(m.k)], ["log μκ", "σκ", "α"], (_has_outlier(m) ? ["π_o"] : String[]),
-        (_has_twist(m) ? ["m_ω", "s_ω"] : String[])
-    )
-end
-
-"the MAP as the flat constrained vector θ (the order of `coefnames`)"
-coef(fit::_AnyFit) = _constrained(fit.model, fit.u)
-coefnames(fit::_AnyFit) = _parnames(fit.model)
-loglikelihood(fit::_AnyFit) = fit.loglik
-dof(fit::_AnyFit) = length(fit.u)
-"the number of organs"
-nobs(fit::_AnyFit) = sum(length, fit.model.data)
-
-_negH_posdef(fit) = isposdef(Symmetric(-fit.H))
-"Laplace covariance of the unconstrained parameters, −H⁻¹ (NaN if −H is not positive definite)"
-_vcov_u(fit) = (_negH_posdef(fit) ? Matrix(inv(Symmetric(-fit.H))) : fill(NaN, size(fit.H)))
-
-"""
-    vcov(fit)
-
-Laplace covariance of the constrained parameters θ (`coef`): `J (−H)⁻¹ Jᵀ`, J the Jacobian of θ in u at the MAP (delta
-method). NaN if the Hessian is not negative definite (the fit is not at a maximum).
-"""
-function vcov(fit::_AnyFit)
-    J = ForwardDiff.jacobian(u -> _constrained(fit.model, u), fit.u)
-    return J * _vcov_u(fit) * J'
-end
-stderror(fit::_AnyFit) = sqrt.(max.(diag(vcov(fit)), 0.0))
-
-# Laplace intervals: quantiles of θ(u) for u ~ N(û, −H⁻¹) (exact under the bijection, unlike θ̂ ± z sd)
-function _laplace_intervals(fit, level; ndraws = 4000)
-    V = _vcov_u(fit)
-    all(isfinite, V) || return fill(NaN, length(fit.u), 2)
-    L = cholesky(Symmetric(V)).L
-    rng = Xoshiro(0)
-    draws = reduce(hcat, [_constrained(fit.model, fit.u .+ L * randn(rng, length(fit.u))) for _ in 1:ndraws])
-    a = (1 - level) / 2
-    return reduce(vcat, [quantile(r, [a, 1 - a])' for r in eachrow(draws)])
-end
-
-"""
-    coeftable(fit; level = 0.95)
-
-The parameters at the MAP: estimate, Laplace standard deviation (`stderror`), Laplace interval at `level` (the normal
-approximation in the unconstrained space, mapped back), and the ratio of the posterior sd to the prior sd: near 1, the
-data say little about the parameter beyond its prior.
-"""
-function coeftable(fit::_AnyFit; level::Real = 0.95)
-    ci = _laplace_intervals(fit, level)
-    sd = stderror(fit)
-    p = round(Int, 100 * level)
-    return CoefTable(
-        [coef(fit), sd, ci[:, 1], ci[:, 2], sd ./ _prior_sds(fit.model)],
-        ["MAP", "Std. dev.", "Lower $(p)%", "Upper $(p)%", "sd / prior sd"], coefnames(fit)
-    )
-end
-
-"""
-    fit_diagnostics(fit; prior_ratio = 0.9, mode_mass = 0.9)
-
-Checks of a `fit_map` result, as a NamedTuple:
-
-- `converged`, `iterations`, `gradnorm` (largest |∂ log posterior / ∂u| at the MAP);
-- `hessian_posdef` (−H positive definite: the MAP is a strict maximum), `hessian_cond` (its condition number: large
-  values flag a direction the data barely determine);
-- `logposterior`, `loglik`, `log_evidence` (Laplace approximation of the log marginal likelihood,
-  `logposterior + D/2 log 2π − ½ log det(−H)`, to compare models fitted to the same stems, e.g. with and without
-  outliers or another band k);
-- `prior_dominated`: the parameters whose posterior sd exceeds `prior_ratio` × their prior sd (what the data do not
-  inform, so what the prior sets);
-- `low_stems`: stems whose log-likelihood per organ lies more than 3 robust sd (MAD) below the median (stems the model
-  describes poorly: a measurement problem, another phyllotaxis);
-- with a twist, `twist_multimodal`: the stems whose heaviest twist mode has a posterior mass below `mode_mass` (aliases
-  of the twist, integrated over by the fit but worth a look), and `twist_at_edge`: stems with a mode at the edge of the
-  rate scan (widen `nodes_kw = (; scan)`).
-"""
-function fit_diagnostics(fit::_AnyFit; prior_ratio::Real = 0.9, mode_mass::Real = 0.9)
-    m = fit.model
-    pd = _negH_posdef(fit)
-    ev = eigvals(Symmetric(-fit.H))
-    D = length(fit.u)
-    log_evidence = pd ? fit.logposterior + D / 2 * log(2π) - sum(log, ev) / 2 : NaN
-    ratio = stderror(fit) ./ _prior_sds(m)
-    ll = _stem_loglik_per_organ(fit)
-    med = median(ll)
-    mad = 1.4826 * median(abs.(ll .- med))
-    out = (;
-        fit.converged, fit.iterations, gradnorm = maximum(abs, fit.gradient), hessian_posdef = pd,
-        hessian_cond = (pd ? maximum(ev) / minimum(ev) : Inf), fit.logposterior, fit.loglik, log_evidence,
-        prior_dominated = coefnames(fit)[ratio .> prior_ratio], low_stems = findall(ll .< med - 3 * mad),
-    )
-    fit.twist === nothing && return out
-    edge = 25.0 - 1.0 # the default scan reaches ±25 degrees per mean step
-    at_edge = findall(s -> any(md -> abs(md[1]) * _step(m, s) > edge, fit.twist.nodes.modes[s]), eachindex(m.data))
-    return (; out..., twist_multimodal = findall(fit.twist.mode_mass .< mode_mass), twist_at_edge = at_edge)
-end
-_step(m, s) = (x = m.torsion_x[s]; x[end] / (length(x) - 1))
-_stem_loglik_per_organ(fit) = stem_loglik(fit) ./ length.(fit.model.data)
-
-function Base.show(io::IO, fit::_AnyFit)
-    m = fit.model
-    print(io, "PhyllotaxisFit (MAP): ")
-    return show(io, m)
-end
-function Base.show(io::IO, ::MIME"text/plain", fit::_AnyFit)
-    m = fit.model
-    d = fit_diagnostics(fit)
-    println(io, "PhyllotaxisFit (MAP) of the ", m)
-    @printf(io, "  %s after %d iterations, max |gradient| %.1e\n", d.converged ? "converged" : "NOT CONVERGED", d.iterations, d.gradnorm)
-    if d.hessian_posdef
-        @printf(io, "  -Hessian positive definite, condition number %.1e\n", d.hessian_cond)
-    else
-        println(io, "  -Hessian NOT positive definite: not a strict maximum, no Laplace uncertainty")
-    end
-    @printf(io, "  log posterior %.2f, log-likelihood %.2f, Laplace log evidence %.2f (%d parameters)\n", d.logposterior, d.loglik, d.log_evidence, dof(fit))
-    show(io, MIME"text/plain"(), coeftable(fit))
-    println(io)
-    isempty(d.prior_dominated) || println(io, "  set mostly by the prior (sd / prior sd > 0.9): ", join(d.prior_dominated, ", "))
-    isempty(d.low_stems) || println(io, "  stems with a low log-likelihood per organ: ", d.low_stems)
-    if fit.twist !== nothing
-        isempty(d.twist_multimodal) || println(io, "  stems with a multimodal twist (heaviest mode < 90 %): ", d.twist_multimodal)
-        isempty(d.twist_at_edge) || println(io, "  stems with a twist mode at the edge of the scan: ", d.twist_at_edge)
-    end
-    return nothing
-end
 
 #################################################################################################################
 # post-processing
