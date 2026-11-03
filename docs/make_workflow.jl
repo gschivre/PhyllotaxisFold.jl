@@ -288,6 +288,16 @@ function block_motif(σ, b)
 end
 alpha_label(c) = (c == 1 ? "α" : c == -1 ? "−α" : "$(c < 0 ? "−" : "")$(abs(c))α")
 
+# chains of touching blocks (each starts right above the previous one): they share the divergences at their junctions,
+# so a chain gets one motif, as in Refahi et al. (2011, Fig. 3)
+function block_chains(blocks)
+    chains = Vector{Vector{UnitRange{Int}}}()
+    for b in blocks
+        !isempty(chains) && first(b) == last(last(chains[end])) + 1 ? push!(chains[end], b) : push!(chains, [b])
+    end
+    return chains
+end
+
 # a stem that reads well: blocks of at most three organs (one of three at least), and an organ whose displacement is
 # uncertain; among those, the one with the most blocks
 function readable_stem(g)
@@ -305,7 +315,7 @@ function fig_decoded_stem(res; s = nothing)
     n, σ, ψ = length(y), d.σ, rad2deg(d.ψ)
     yc = y .- deg2rad(d.ω) .* x # the twist removed
     pred = d.o .* (σ .- 1) .* d.ψ # the sites of the decoded order (the offset cancels in the divergences)
-    blocks = shuffled_blocks(σ)
+    chains = block_chains(shuffled_blocks(σ))
     fig = Figure(size = (1200, 700))
     cs = [3, -2, 1, -4, 4, -1, 2, -3] # the divergences of the short permutations, in multiples of α (increasing angle)
     ax = Axis(
@@ -313,17 +323,20 @@ function fig_decoded_stem(res; s = nothing)
         yticks = ([mod(c * ψ, 360) for c in cs], ["$(alpha_label(c)) = $(round(mod(c * ψ, 360); digits = 1))°" for c in cs]),
         titlesize = 15, xticklabelsvisible = false, ygridvisible = false
     )
-    for b in blocks
-        vspan!(ax, [first(b) - 0.5], [last(b) + 0.5]; color = (W_COL.mutant, 0.12))
+    for ch in chains # shaded chain, a dotted line between its blocks
+        vspan!(ax, [first(ch[1]) - 0.5], [last(ch[end]) + 0.5]; color = (W_COL.mutant, 0.12))
+        length(ch) > 1 && vlines!(ax, [last(b) + 0.5 for b in ch[1:(end - 1)]]; color = (W_COL.mutant, 0.6), linestyle = :dot)
     end
     hlines!(ax, [mod(c * ψ, 360) for c in cs]; color = :gray70, linewidth = 0.8)
     xs = (1:(n - 1)) .+ 0.5 # divergence i lies between organs i and i + 1
     scatterlines!(ax, xs, divergence_angles(yc; o = d.o); color = :black, linestyle = :dot, marker = :rect,
         markersize = 6, label = "measured (twist removed)")
     lines!(ax, xs, divergence_angles(pred; o = d.o); color = W_COL.mutant, linewidth = 2, label = "decoded")
-    for (j, b) in enumerate(blocks)
-        text!(ax, (first(b) + last(b)) / 2, (isodd(j) ? 372 : 352); text = block_motif(σ, b), align = (:center, :center),
-            fontsize = 11)
+    row = 1 # a label one row lower when its chain starts close to the previous one
+    for (j, ch) in enumerate(chains)
+        a, b = first(ch[1]), last(ch[end])
+        row = (j > 1 && a - last(chains[j - 1][end]) < 5 ? 3 - row : 1)
+        text!(ax, (a + b) / 2, (row == 1 ? 372 : 352); text = block_motif(σ, a:b), align = (:center, :center), fontsize = 11)
     end
     ylims!(ax, 0, 385)
     Legend(fig[1, 2], ax; framevisible = false)

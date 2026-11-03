@@ -87,12 +87,11 @@ decoded = divergence_angles(o .* (σ .- 1) .* ψ; o)  # figure 3a, solid: the di
 ρ = post[s].ρ                                       # ρ[p, :]: probability that the organ at height p is displaced by d = −k … k
 ```
 
-The script of the figure, `docs/make_workflow.jl` (`fig_decoded_stem`), also finds the shuffled blocks and their motifs.
-
 ![One decoded stem](figures/w2b_decoded_stem.png)
 
 *Figure 3. One mutant stem, decoded. (a) Divergence angles, measured with the twist removed (dotted) and decoded
-(solid). Shaded: the shuffled blocks, labelled with their motif (an isolated swap reads 2α −α 2α). (b) Posterior
+(solid). Shaded: the shuffled blocks (dotted: between touching blocks), each run labelled with its motif (an
+isolated swap reads 2α −α 2α). (b) Posterior
 probability that each organ is displaced, by ``|d|``; on top, the displacements of the most probable order; triangles,
 the organs truly displaced. A partial bar marks an uncertain organ: at organs 3 and 12–14 the most probable order is
 wrong, but the posterior still gives the truth about 0.3.*
