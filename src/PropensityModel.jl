@@ -84,7 +84,7 @@ end
         ngrid_ϕ = 32, ngrid_κ = 16, logspace = false)
 
 The propensity model of the stems `data` (one vector of absolute azimuths per stem, radians, bottom to top); its
-band k is the length of the prior tuples.
+band k is the length of the prior tuples. Every organ needs a finite angle: `NaN`, `Inf` or `missing` is an error.
 
 - `outlier` (on by default): each angle is an outlier (uniform on the circle) with probability `π_o`, fitted (prior
   Beta(aπ, bπ)); `outlier = false` drops `π_o`.
@@ -100,11 +100,15 @@ function PhyllotaxisModelAD(
         data::Vector{Vector{T}}, prior::PhyllotaxisPrior{N} = PhyllotaxisPrior(); ngrid_ϕ::Int = 32, ngrid_κ::Int = 16,
         logspace::Bool = false, outlier::Bool = true, torsion::Union{Nothing, TorsionPrior} = nothing, torsion_x = nothing
     ) where {T, N}
+    _all_finite(x) = all(v -> v isa Real && isfinite(v), x)
+    bad = findall(!_all_finite, data)
+    isempty(bad) || throw(ArgumentError("data: every angle must be a finite number (no NaN, Inf or missing); see stems $(bad)"))
     n_min, n_max = extrema(length.(data))
     N ≤ n_min || throw(ArgumentError("the band k = $(N) (length of the prior tuples) exceeds the shortest stem ($(n_min) organs)"))
     tx = (torsion_x === nothing ? [torsion_coordinate(length(y)) for y in data] : [collect(Float64, x) for x in torsion_x])
     (length(tx) == length(data) && all(length.(tx) .== length.(data))) ||
         throw(ArgumentError("torsion_x: one coordinate per organ of each stem"))
+    all(_all_finite, tx) || throw(ArgumentError("torsion_x: every coordinate must be a finite number"))
     κ_nodes, κ_weights = gausshermite(ngrid_κ; normalize = true)
     grid = (;
         k = N, ngrid_ϕ, ngrid_κ, ϕ_grid = collect(range(0, 2π; length = ngrid_ϕ + 1)[1:ngrid_ϕ]), κ_nodes,

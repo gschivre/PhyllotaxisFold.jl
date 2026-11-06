@@ -430,6 +430,20 @@ twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisP
         @test f1.iterations == 1 && !f1.converged && !fit_diagnostics(f1).converged
         @test occursin("NOT CONVERGED", sprint(show, MIME"text/plain"(), f1))
         @test abs(fA.θ.outlier - 0.06) < 3 * stderror(fA)[end] + 0.01
+        # an angle that is not a finite number is refused, and a fit cannot start from a non-finite objective
+        for v in (NaN, Inf)
+            dv = deepcopy(sA.angles)
+            dv[2][5] = v
+            @test_throws ArgumentError PhyllotaxisModelAD(dv)
+        end
+        dm = [Vector{Union{Missing, Float64}}(y) for y in sA.angles]
+        dm[1][1] = missing
+        @test_throws ArgumentError PhyllotaxisModelAD(dm)
+        tx = [PhyllotaxisFold.torsion_coordinate(length(y)) for y in sA.angles]
+        tx[3][4] = NaN
+        @test_throws ArgumentError PhyllotaxisModelAD(sA.angles; torsion_x = tx)
+        nan_start(v, order) = (NaN, (order ≥ 1 ? fill(NaN, 2) : nothing), (order ≥ 2 ? fill(NaN, 2, 2) : nothing))
+        @test_throws ErrorException PhyllotaxisFold.newton_map(nan_start, [0.0, 0.0])
         # the fit object: accessors, uncertainty and diagnostics
         @test coefnames(fA) == ["η_1", "η_2", "η_3", "log μκ", "σκ", "α", "π_o"]
         @test coef(fA) ≈ [fA.θ.η[5:end]; fA.θ.logμκ; fA.θ.σκ; fA.θ.α; fA.θ.outlier]

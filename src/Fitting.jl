@@ -65,7 +65,8 @@ map_options(; g_tol::Real = MAP_G_TOL, iterations::Integer = MAP_ITERATIONS) = O
 
 Maximise f by Newton trust region, `vgh(v, order)` returning (f, ∇f or nothing, ∇²f or nothing) up to `order`. A
 non-finite evaluation is a rejected step. Returns (; v, l, g, H, result): the maximiser, and f, ∇f and ∇²f there (the
-last Hessian evaluation, re-evaluated if it was not at the maximiser).
+last Hessian evaluation, re-evaluated if it was not at the maximiser). Throws an error if f or its derivatives are
+not finite at the point reached (at `v0`, with no finite point to move to).
 """
 function newton_map(vgh, v0::AbstractVector; options = map_options())
     P = length(v0)
@@ -90,6 +91,9 @@ function newton_map(vgh, v0::AbstractVector; options = map_options())
     v = Optim.minimizer(res)
     if v != last_v
         l, g, h = vgh(v, 2)
+        # (a non-finite point is given a zero gradient above, which the optimiser would report as converged)
+        (isfinite(l) && all(isfinite, g) && all(isfinite, h)) ||
+            error("newton_map: the objective or its derivatives are not finite at the point reached, v = $(v)")
         last_l, last_g, last_H = l, collect(Float64, g), (h .+ h') ./ 2
     end
     return (; v, l = last_l, g = last_g, H = last_H, result = res)
