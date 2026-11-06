@@ -446,7 +446,7 @@ end
 function _newton(obj, v0; iterations::Int = 200)
     v = collect(Float64, v0)
     # f_abstol: along a ridge where the likelihood no longer changes (a core collapsing below the grid step), stop
-    return optimize(_ad_objective(obj, v), v, NewtonTrustRegion(), Optim.Options(; iterations, g_tol = 1.0e-6, f_abstol = 1.0e-6))
+    return _finite_result(optimize(_ad_objective(obj, v), v, NewtonTrustRegion(), Optim.Options(; iterations, g_tol = 1.0e-6, f_abstol = 1.0e-6)))
 end
 
 # joint fit: v = [the k shared parameters; the q others of group 1; of group 2; ...]

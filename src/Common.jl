@@ -96,3 +96,10 @@ function _ad_objective(obj, v0::AbstractVector{Float64})
     f(v) = (l = obj(v); isfinite(l) ? l : oftype(l, Inf))
     return TwiceDifferentiable(f, v0; autodiff = AutoForwardDiff())
 end
+
+# the result of a minimisation with `_ad_objective`, or an error if it never reached a finite value: a non-finite start
+# has a zero gradient, which Optim reports as converged
+function _finite_result(res)
+    isfinite(Optim.minimum(res)) || error("the objective is not finite at the starting point, $(Optim.minimizer(res))")
+    return res
+end

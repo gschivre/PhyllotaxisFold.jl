@@ -840,6 +840,11 @@ twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisP
         @test fit.converged
         @test all(abs.((fit.p[1:4] .- p[1:4]) ./ fit.se[1:4]) .< 3)
         @test fit.se ≈ sqrt.(diag(fit.V))
+        # a non-finite start: outbid by the other starts, an error alone (and the same in the delay-law fits)
+        nan_p0, good_p0 = fill(NaN, 5), fit.p
+        @test fit_flowering([pl.c for pl in plants]; starts = [nan_p0, good_p0]).nll ≈ fit.nll
+        @test_throws ErrorException fit_flowering([pl.c for pl in plants]; starts = [nan_p0])
+        @test_throws ErrorException PhyllotaxisFold._newton(v -> NaN * sum(v), [1.0, 2.0])
         τhat = [(post = tau_posterior(fit, pl.c); sum(post.w .* post.τ)) for pl in plants]
         @test cor(τhat, [pl.τ for pl in plants]) > 0.85
         # per-plant plastochron over the first 80 % of each plant's flowers

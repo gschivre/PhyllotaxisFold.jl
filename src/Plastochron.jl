@@ -99,7 +99,7 @@ function fit_flowering(
         res = optimize(_ad_objective(f, v0), v0, NewtonTrustRegion())
         (best === nothing || Optim.minimum(res) < Optim.minimum(best)) && (best = res)
     end
-    p = Optim.minimizer(best)
+    p = Optim.minimizer(_finite_result(best)) # (a non-finite start loses to the others; an error if all are)
     H = ForwardDiff.hessian(f, p)
     V = inv(H)
     se = sqrt.(max.(diag(V), 0.0))
