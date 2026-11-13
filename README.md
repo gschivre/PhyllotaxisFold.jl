@@ -116,6 +116,8 @@ throughout. It is written in [`docs/src`](docs/src):
   checks to make and how to read the results;
 - [custom delay laws](docs/src/custom_laws.md): how to define, fit and compare other laws of the commitment
   delays, and why the default is a Gaussian core with exponential tails;
+- [deriving a law: the fold switch](docs/src/fold_law.md): a worked example, from a model of the commitment switch to
+  a law that the orders can test;
 - [the problem](docs/src/problem.md): swaps, what is measured, and the two-step plan;
 - [angles given an order](docs/src/angles.md), [summing over all orders](docs/src/orders.md) and
   [the propensity model](docs/src/propensity.md): how the orders are reconstructed;

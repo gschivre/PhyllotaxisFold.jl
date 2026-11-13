@@ -19,7 +19,7 @@
 | ``A``, ``P_A(\sigma)`` | the propensity model ([§4](propensity.md)), its law of the order |
 | ``P_f(\sigma)`` | the law of the order when the sites commit with independent delays ``f`` ([§5.2](timing.md#5.2-The-law-of-the-order-of-a-paced-meristem)) |
 | ``W``, ``\rho_{p,d}`` | weight matrix, marginal probability ``P(\sigma(p) = p + d)`` |
-| ``X``, ``\mu`` | switch variable and margin above the fold, in noise units ([§5.1](timing.md#5.1-Why-a-random-delay)) |
+| ``X``, ``\mu`` | switch variable and margin above the fold, in noise units ([Deriving a law: the fold switch](fold_law.md)) |
 | ``\tau_i``, ``e_i``, ``f`` | commitment time and delay of site ``i`` (plastochrons), delay law |
 | ``\sigma_c``, ``\pi_L``, ``m_L``, ``\pi_E``, ``m_E`` | core sd; fraction and mean extra delay of late sites; of early sites |
 | ``q_d`` | overtaking profile: ``P(\text{site } i + d \text{ commits before site } i)`` ([§5.6](timing.md#5.6-The-delay-law)) |

@@ -37,7 +37,8 @@ make and how to read the results.
 !!! tip "Custom delay laws"
     The orders are reconstructed without any assumption on timing. Hypotheses about timing are then tested on these
     orders: a hypothesis written as a law of the commitment delay, in a few lines of code, is fitted and compared with
-    the default law or with other laws. See [**Custom delay laws**](custom_laws.md).
+    the default law or with other laws. See [**Custom delay laws**](custom_laws.md), and
+    [**Deriving a law: the fold switch**](fold_law.md) for a law derived from a model of the commitment switch.
 
 ## The method in five steps
 

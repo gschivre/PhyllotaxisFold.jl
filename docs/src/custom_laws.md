@@ -2,7 +2,8 @@
 
 The default delay law is one hypothesis about how the meristem times its organs. Any other hypothesis that can be
 written as a law of the commitment delay can be fitted to the same stems and compared with it, or with any other law,
-on the same scale. This is the main use of the package beyond the default analysis, and it takes a few lines:
+on the same scale. This is the main use of the package beyond the default analysis, and it takes a few lines
+([Deriving a law: the fold switch](fold_law.md) derives one from a model of the commitment switch):
 
 - **The orders are reconstructed once.** Step 1 does not depend on the delay law, so every law is scored on the same
   posterior orders ([§5.5](timing.md#5.5-Re-weighting-the-reconstructed-orders)), with nothing to refit.
@@ -13,7 +14,7 @@ on the same scale. This is the main use of the package beyond the default analys
 
 ## Example: a Student t law
 
-**Hypothesis.** In the fold picture of [§5.1](timing.md#5.1-Why-a-random-delay), how precisely a site commits depends on its *margin*, how
+**Hypothesis.** If commitment is a switch driven through a fold ([Deriving a law: the fold switch](fold_law.md)), how precisely a site commits depends on its *margin*, how
 far above the fold its input is when it switches. Nothing requires the margin to be the same at every site. Suppose
 that each site commits after a Gaussian delay, but with its own precision, and that the precision varies between sites
 as a Gamma law. The delay of a random site then follows a **Student t** law, with a scale ``s`` and ``\nu`` degrees of
@@ -119,6 +120,13 @@ stems behave like this is a question for the data.
 
 **Closed form.** For this law, the probability of an order has a closed form (a Plackett–Luce law).
 [§6.8](validation.md#6.8-An-exact-check-of-the-re-weighting) uses the same `GumbelDelay` to check the re-weighting against an exact answer.
+
+## Example: the fold switch
+
+The two laws above are short hypotheses. [Deriving a law: the fold switch](fold_law.md) goes the whole way, from a model of
+the commitment switch (a bistable network driven through a fold) to a delay law: an inverse Gaussian whose skew is
+set by how far above the fold the cell commits. It shows how to simplify a mechanism until its delay law can be
+written down, fitted and tested on the orders.
 
 ## The interface
 

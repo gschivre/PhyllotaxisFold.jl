@@ -53,7 +53,10 @@ makedocs(;
     pages = [
         "Home" => "index.md",
         "A worked analysis" => "workflow.md",
-        "Custom delay laws" => "custom_laws.md",
+        "Custom delay laws" => [
+            "Defining and fitting a law" => "custom_laws.md",
+            "Deriving a law: the fold switch" => "fold_law.md",
+        ],
         "Simulating stems" => "simulation.md",
         "Method" => [
             "The problem" => "problem.md",

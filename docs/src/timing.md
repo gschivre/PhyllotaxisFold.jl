@@ -18,127 +18,20 @@ random at all?
 signalling reads an *input*: the strength of auxin signalling in that cell. The input rises as auxin accumulates at
 the site, and is lowered near young primordia, which inhibit new ones around them. *Commitment* is the switch of the
 network to the organ-founder state, a switch that is not undone when the input falls back: a site has committed once
-removing auxin no longer prevents the organ from forming. The visible signs of the organ come later, but that lag does
-no harm: its common part shifts every site alike, which leaves the order unchanged ([§5.2](timing.md#5.2-The-law-of-the-order-of-a-paced-meristem)), and its jitter adds to ``f``.
+removing auxin no longer prevents the organ from forming.
 
-**Why a fold.** The **assumption** is that the network has two stable states over a range of inputs, uncommitted and
-committed, and that the rising input makes the uncommitted state disappear. Positive feedback readily builds such a
-switch [ferrell2012bistability](@cite); nothing is assumed about the genes, their number or their kinetics. When a
-smoothly rising input makes a stable state disappear, the generic way is a *fold*: the state merges with the threshold
-that separates it from the committed state, and both vanish (figure 1). The other ways need a symmetry or a finely
-tuned network [saez2022dynamical](@cite). The fold also explains why commitment lasts: the committed state is still
-there when the input falls back [ferrell2012bistability](@cite).
+**Why random.** A switch made of a few molecules in a few cells is noisy, and so is the input it reads. Several
+mechanisms turn this noise into a random commitment delay: a bistable switch driven slowly through its threshold, a
+long cascade of steps, or a precise switch reading a jittery input. The package assumes none of them. It keeps only
+what [§1.4](problem.md#1.4-The-question-behind-the-order) assumed: each site commits after a random delay, with the
+same law for every site. It fits a flexible law ([§5.6](timing.md#5.6-The-delay-law)) and lets the orders decide its
+shape; a law derived from a mechanism can be put in its place and compared with it
+([Custom delay laws](custom_laws.md); [Deriving a law: the fold switch](fold_law.md) works through one example).
 
-!!! details "Why a fold is generic"
-    Write the network as ``d\mathbf y/dt = \mathbf F(\mathbf y; u, \boldsymbol\theta)``, with ``\mathbf y`` its
-    concentrations, ``u`` the input and ``\boldsymbol\theta`` its gains, cooperativities, turnover rates and growth
-    dilution. A stable state disappears (rather than just losing stability) when it collides with an unstable one, at
-    a zero eigenvalue of the Jacobian ``\partial_{\mathbf y}\mathbf F``. With a single parameter varying, the input,
-    the generic collision is a saddle-node at ``u = u_{\rm on}``: it has codimension one and needs no symmetry. A cusp
-    needs a second parameter tuned; a pitchfork needs a symmetry of ``\mathbf F``. If a second parameter varies too
-    (between cells, or in a mutant), the folds form lines in the plane of the two parameters, while the other
-    bifurcations sit at single points: a path through that plane crosses fold lines without any tuning
-    [saez2022dynamical](@cite). The fold is assumed non-degenerate: raising the input moves the system through it
-    rather than just touching it.
-
-**One slow variable.** This is a **result**: near a fold, the whole network behaves as a single slow variable, whose
-dynamics take the same form for every network,
-
-```math
-dX = (\mu + X^2)\, ds + dW_s .
-```
-
-``X`` is the position along the slow direction, ``dW_s`` the molecular noise felt along it, and ``\mu`` the
-*margin*: how far the input is above the fold, all in units set by the noise (box). Below the fold (``\mu < 0``), the
-speed ``\mu + X^2`` vanishes at the uncommitted state and at the threshold; at the fold they merge, and above it they
-are gone (figure 1). Commitment is the moment ``X`` passes the *point of no return*, beyond which the cell reaches the
-committed state even if the input falls back.
-
-!!! details "Derivation"
-    At the fold, ``\partial_{\mathbf y}\mathbf F`` has a single zero eigenvalue. The other directions relax on their
-    own time scales, and the dynamics collapse onto a one-dimensional centre manifold. With ``x`` the coordinate
-    along it (projected on the left null vector, centred at the fold) and ``\Delta = (u - u_{\rm on})/u_s`` the
-    margin, a Taylor expansion gives
-    ``dx/dt = k_m(\Delta + a_f x^2 + b_1 x\Delta + b_3 x^3 + \dots)``, where ``k_m`` is the rate of the slow mode and
-    ``a_f > 0`` the curvature of the fold. The two leading terms are the same for every network that satisfies the
-    assumption; the coefficients ``b`` are network-specific and, to leading order, only add a constant to the
-    commitment time. Noise in every component, and fluctuations of the input, project onto ``x`` with an intensity
-    ``S_0``: ``dx = k_m(\Delta + a_f x^2)\,dt + \sqrt{k_m S_0}\,dW_t``. With the noise units
-    ``x_S = (S_0/a_f)^{1/3}``, ``t_S = (a_f^2 S_0)^{-1/3}/k_m`` and ``\Delta_S = (a_f S_0^2)^{1/3}``, the variables
-    ``X = x/x_S``, ``s = t/t_S`` and ``\mu = \Delta/\Delta_S`` obey ``dX = (\mu + X^2)\,ds + dW_s``. This is an
-    asymptotic statement, exact as ``\Delta`` and ``x`` go to 0.
-
-![The fold](figures/m0_fold.png)
-
-*Figure 1. The speed of the switch variable, ``dX/ds = \mu + X^2``, for three margins. Left, before the fold: a stable
-uncommitted state (blue) and a threshold (red circle). Middle: the two merge, at the fold. Right, after the fold: no
-state is left, but the speed stays small near ``X = 0``. The time spent there sets the commitment delay.*
-
-**Slow from fast.** Another **result**: after the fold the speed stays small near ``X = 0``, where the uncommitted
-state used to be. The cell lingers there before it escapes, for a time proportional to ``1/\sqrt\mu``: this is how a
-network of fast reactions produces a slow commitment. The same slowness just *before* a fold, *critical slowing
-down*, is used to anticipate tipping points [wissel1984universal, scheffer2009early](@cite), and has been measured in a
-cyanobacterial population pushed towards a fold [veraart2012recovery](@cite).
-
-!!! details "Derivation"
-    Without noise and at a constant margin ``\Delta > 0``, the time from the uncommitted state ``x_0 < 0`` to the
-    point of no return ``x_c > 0`` is
-    ``T = \frac{1}{k_m}\int_{x_0}^{x_c} \frac{dx}{\Delta + a_f x^2} \simeq \frac{1}{k_m}\Big[\frac{\pi}{\sqrt{a_f\Delta}} - C\Big]``,
-    with ``C \simeq (1/|x_0| + 1/x_c)/a_f`` plus network-specific corrections. In noise units, the first term is
-    ``\pi/\sqrt\mu``. The time is spent near ``x = 0``, the "ghost" of the vanished state, where the flow almost
-    stops.
-
-**Noise makes the delay random.** A third **result**: near the ghost the speed is small, so a small push from the
-noise moves the moment of escape a lot. The closer to the fold, the longer the passage, and its spread grows faster
-than its mean: in noise units, the relative spread of the delay depends on ``\mu`` alone and increases as ``\mu``
-shrinks. The randomness of the delay is a property of the switch itself, not an imperfection added to it.
-
-!!! details "Derivation"
-    For a margin well above the noise scale (``\mu \gg 1``), follow the deterministic path: a push ``\delta x`` at a
-    point where the speed is ``v`` shifts the passage by ``\delta x / v``. Adding up the noise along the path,
-    ``\mathrm{Var}(T) \simeq \int k_m S_0\, v(x)^{-3}\, dx`` with ``v = k_m(\Delta + a_f x^2)``, so
-    ``\mathrm{sd}(T) \simeq \frac{\sqrt{S_0}}{k_m}\sqrt{\tfrac{3\pi}{8}}\, a_f^{-1/4}\Delta^{-5/4}``. The mean grows
-    as ``\Delta^{-1/2}`` and the sd as ``\Delta^{-5/4}``; in noise units, the coefficient of variation is
-    ``\mathrm{sd}/\text{mean} \simeq \sqrt{3/(8\pi)}\,\mu^{-3/4}``. Fluctuations of the input that are fast compared
-    with the passage (bursts of transcription upstream, for instance) simply add to the noise ``S_0``.
-
-**Why near the fold.** The fold makes the delay slow and variable only if cells commit at a small margin. This is an
-**assumption**, but a natural one: auxin accumulates much more slowly than the network responds, and a switch driven
-this slowly commits shortly after the uncommitted state has disappeared, while the margin is still small (**result**,
-box below). Such slow passages through a bifurcation shape cell fates in morphogen gradients
-[wedgwood2022morphogen](@cite). The meristem points the same way: inhibition by young primordia keeps the input of
-nearby sites from rising far above threshold, and meristem cells integrate auxin over time before changing fate, with
-stronger responses to longer treatments [galvan2020temporal](@cite). A switch near its fold behaves this way: the
-longer the input stays above threshold, the more likely the cell crosses the slow region and commits.
-
-!!! details "Derivation"
-    Without noise, let the margin rise through the fold, ``\Delta(t) = \dot\Delta\, t``, in
-    ``dx/dt = k_m(\Delta + a_f x^2)``. Rescaling time by ``T_0 = (k_m^2 a_f \dot\Delta)^{-1/3}`` gives
-    ``dX/d\tau = \tau + X^2``, whose solution from the uncommitted state escapes at a fixed ``\tau`` (a zero of the
-    Airy function). The cell therefore commits a time of order ``T_0`` after the fold, at a margin of order
-    ``(\dot\Delta/k_m)^{2/3}``, which is small whenever the input rises slowly compared with the switch: the classical
-    delay of a slow passage through a fold. Noise spreads the passage around this time; strong noise can even trigger
-    the escape a little before the fold, but it never makes the margin larger [berglund2002effect](@cite).
-
-**Delays in the network.** Some steps take time by themselves (transcript elongation, a lagging feedback). A delay
-upstream of the switch shifts every commitment equally and leaves the order unchanged. A delay inside the feedback
-slows the switch: the commitment delay gets longer and, relative to its mean, a little less variable. Either way, the
-delay stays slow and random.
-
-!!! details "Derivation"
-    A pure lag of the input, ``u(t) \to u(t - \tau_d)``, shifts commitment by ``\tau_d``. A distributed delay acts,
-    to first order, as a lag equal to its mean; it also smooths the rise of the input, which changes the shape of the
-    delay law only when ``\tau_d`` is not short compared with the passage. A delay ``\tau_d`` inside the positive
-    feedback does not move the fold but slows the switch, ``k_m \to k_m/(1 + c)`` with ``c = k_{\rm fb}\tau_d`` and
-    ``k_{\rm fb}`` the slope of the feedback at the fold. To first order, the mean delay is multiplied by ``1 + c``
-    and its sd by ``\sqrt{1 + c}``, so the coefficient of variation decreases. These are first-order results
-    (``k_{\rm fb}\tau_d \ll 1``); long delays can change the switch itself.
-
-From this picture the package keeps only what [§1.4](problem.md#1.4-The-question-behind-the-order) assumed: each site commits after a random delay,
-with the same law for every site. A fold is not the only source of such a delay (a long cascade of steps, or a precise
-switch reading a jittery input, give one too), so the package does not impose the delay law of a fold: it fits a
-flexible law ([§5.6](timing.md#5.6-The-delay-law)) and lets the orders decide its shape. Any other law, a fold's included, can be put in
-its place ([Custom delay laws](custom_laws.md)).
+**What the order sees.** Only differences between delays change the order. The visible signs of an organ come later
+than its commitment, and some steps upstream of the switch take time, but the common part of these lags shifts every
+site alike and leaves the order unchanged ([§5.2](timing.md#5.2-The-law-of-the-order-of-a-paced-meristem)); their
+jitter adds to ``f``.
 
 ## 5.2 The law of the order of a paced meristem
 
