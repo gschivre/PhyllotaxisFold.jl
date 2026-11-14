@@ -3,7 +3,7 @@
 The package needs only the assumptions of [§1.4](problem.md#1.4-The-question-behind-the-order): sites are ready at a
 regular pace, and each commits after a random delay drawn from one law ``f``. What makes the delay random, and what
 shape ``f`` has, is left open: the default law ([§5.6](timing.md#5.6-The-delay-law)) is a flexible description, and
-[Custom delay laws](custom_laws.md) shows how to fit any other.
+[Defining and fitting a law](custom_laws.md) shows how to fit any other.
 
 This page works through one example of how a mechanism becomes a delay law that the orders can test: a commitment
 switch driven through a *fold*. It goes in four steps:
@@ -238,7 +238,7 @@ The fold law makes predictions that the default law leaves free, and each can be
   law is strongly skewed, not what the margin is.
 
 **On the simulated stems of the worked analysis**, which were drawn from the default law, the comparison behaves as
-expected (scores relative to the propensity model, as in [Custom delay laws](custom_laws.md)):
+expected (scores relative to the propensity model, as in [Defining and fitting a law](custom_laws.md)):
 
 | law (free parameters) | wild type | mutant |
 |---|---|---|

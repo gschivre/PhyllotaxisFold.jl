@@ -1,4 +1,4 @@
-# Custom delay laws
+# Defining and fitting a law
 
 The default delay law is one hypothesis about how the meristem times its organs. Any other hypothesis that can be
 written as a law of the commitment delay can be fitted to the same stems and compared with it, or with any other law,
@@ -14,21 +14,19 @@ on the same scale. This is the main use of the package beyond the default analys
 
 ## Example: a Student t law
 
-**Hypothesis.** If commitment is a switch driven through a fold ([Deriving a law: the fold switch](fold_law.md)), how precisely a site commits depends on its *margin*, how
-far above the fold its input is when it switches. Nothing requires the margin to be the same at every site. Suppose
-that each site commits after a Gaussian delay, but with its own precision, and that the precision varies between sites
-as a Gamma law. The delay of a random site then follows a **Student t** law, with a scale ``s`` and ``\nu`` degrees of
-freedom that measure how much the precision varies (the smaller ``\nu``, the heavier the tails; as ``\nu \to \infty``,
-a Gaussian). Under this law, off-time organs are not a separate class: they come from the sites with the least
-precise commitment.
+**Hypothesis.** Nothing requires every site to commit with the same precision. Suppose that each site commits after
+a Gaussian delay, but with its own precision, and that the precision varies between sites as a Gamma law. The delay
+of a random site then follows a **Student t** law, with a scale ``s`` and ``\nu`` degrees of freedom that measure how
+much the precision varies (the smaller ``\nu``, the heavier the tails; as ``\nu \to \infty``, a Gaussian). Under this
+law, off-time organs are not a separate class: they come from the sites with the least precise commitment.
 
 !!! details "Derivation and caveats"
     Take a precision ``\lambda \sim \mathrm{Gamma}(\nu/2, \nu/2)`` (shape and rate) and a delay
     ``\mathcal N(0, s^2/\lambda)``. Integrating ``\lambda`` out gives the density
-    ``\propto (1 + z^2/(\nu s^2))^{-(\nu + 1)/2}``: a Student t of scale ``s``. Two approximations are involved: a
-    site's delay is close to Gaussian only for margins well above the noise scale, and a smaller margin also
-    lengthens the mean delay, which would skew the law towards late sites. The Student t keeps only the change of
-    precision, so it is symmetric.
+    ``\propto (1 + z^2/(\nu s^2))^{-(\nu + 1)/2}``: a Student t of scale ``s``. The law is symmetric: it assumes that a
+    less precise site is not also later on average. Where imprecision comes with lateness, as in the fold switch
+    ([Deriving a law: the fold switch](fold_law.md), where a smaller margin both widens and lengthens the delay), the
+    law should instead be skewed towards late sites.
 
 **Definition.**
 
