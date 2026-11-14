@@ -68,6 +68,14 @@ vary, so that its errors add up like a random walk, or a late site that also del
 delays of neighbouring sites dependent ([§7](limits.md) lists the signs); [§6.7](validation.md#6.7-A-clock-that-drifts) shows when a drifting clock
 starts to be read as tails.
 
+**A clock in plastochrons, not in hours.** The clock is regular by construction: time is counted in plastochrons, one
+per site. The plastochron in hours may change along the stem, as the flower counts show
+([Step 5](workflow.md#Step-5:-delays-in-hours)); counting in plastochrons absorbs the change, as long as it is slow
+over the one or two plastochrons that a delay spans. What it does not absorb is the delay: ``f`` is the same law in
+plastochrons all along the stem only if the delays scale with the plastochron. A delay fixed in hours, under a
+plastochron that shortens along the stem, becomes longer in plastochrons towards the top, and a law fitted to the
+whole stem mixes these scales, which reads as heavier tails ([§7](limits.md)).
+
 ## 5.3 Not a product, but close to one
 
 The integral has one factor per organ, as in the product form of [§3.1](orders.md#3.1-The-sum-as-a-permanent), but the chain

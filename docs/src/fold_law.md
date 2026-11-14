@@ -167,12 +167,17 @@ time of a Brownian motion with drift), with a coefficient of variation set by th
     spread of the state of the cell when the input starts to rise, and the rise of the margin during the passage
     ([Why near the fold](fold_law.md#The-mechanism)); each would change the shape of the law, not its kind.
 
-**From time to plastochrons.** The delay is measured in plastochrons, and the time units of the switch are unknown.
-Its mean is not identified anyway, since a delay common to every site leaves the order unchanged
-([§5.2](timing.md#5.2-The-law-of-the-order-of-a-paced-meristem)). The law therefore has two parameters: the sd ``s`` of
-the delay, in plastochrons, and the margin ``\mu``, which sets its shape. The delay is centred on its mean,
-``e = T - \mathbb E\,T``, with ``T`` inverse Gaussian of mean ``s/\mathrm{CV}`` and sd ``s``. As ``\mu`` grows the law
-becomes a Gaussian of sd ``s``; as ``\mu`` falls it becomes skewed, with a longer late tail.
+**From time to plastochrons.** The passage time ``T`` above is in the time units of the switch, and the delay is
+measured in plastochrons. Converting one into the other multiplies ``T`` by a factor that is unknown: it changes the
+scale of the law, not its shape, which is set by its coefficient of variation, and so by the margin ``\mu`` alone. The
+law in plastochrons therefore has two parameters: its sd ``s``, which takes in the unknown factor, and the margin
+``\mu``. Together they also fix its mean, ``m = s/\mathrm{CV}``, but the orders cannot measure it: a delay common to
+every site leaves the order unchanged ([§5.2](timing.md#5.2-The-law-of-the-order-of-a-paced-meristem)). The law is
+therefore centred, ``e = T - m``. As ``\mu`` grows, the CV and the skew vanish and the law becomes a Gaussian of sd
+``s``; as ``\mu`` falls, it becomes skewed, with a longer late tail.
+
+The factor is the same for every site only if the plastochron is; a plastochron that changes along the stem changes
+``s`` with it ([§5.2](timing.md#5.2-The-law-of-the-order-of-a-paced-meristem), a clock in plastochrons, not in hours).
 
 ## Definition
 
