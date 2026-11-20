@@ -55,8 +55,9 @@ simulated data only. Each script says at its top how to run it.
 - `docs/make_figures.jl`: the illustrations of the method, and the running example (`fig_examples()`).
 - `docs/make_validation_figures.jl`: the validation on simulated stems (manual §6). `run_validation(; refit_timing =
   true)` refits only the delay laws, from the cached replicates.
-- `docs/validation_clock_drift.jl`: the drifting-clock simulation of manual §6.7.
-- `docs/validation_plackett_luce.jl`: the exact check of the re-weighting of manual §6.8.
+- `docs/validation_site_walk.jl`: the wandering-sites simulation of manual §6.2 (table only, no figure).
+- `docs/validation_clock_drift.jl`: the drifting-clock simulation of manual §6.8.
+- `docs/validation_plackett_luce.jl`: the exact check of the re-weighting of manual §6.9.
 - `docs/make_workflow.jl`: the figures of the worked analysis.
 - `docs/make_simulation_figures.jl`: the figures of the page "Simulating stems" (simulation only, seconds).
 - `docs/make_plate_diagram.jl`: the plate diagram of manual §2.5, from `docs/plate_diagram.tex` (TikZ, `bayesnet`).

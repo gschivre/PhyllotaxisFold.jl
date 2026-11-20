@@ -2,6 +2,7 @@
 
 Each step of the method rests on assumptions and approximations, and could go wrong in its own way:
 
+- the sites might not be as regular as the model assumes;
 - the twist could be confused with a change of spiral;
 - the posterior of the order could be overconfident;
 - the re-weighting could rest on too few samples;
@@ -9,10 +10,10 @@ Each step of the method rests on assumptions and approximations, and could go wr
 - the plant's clock might not be as regular as the model assumes.
 
 The way to know is to run the whole pipeline on stems whose truth is known, and compare. This page does so step by
-step: the angle model and the twist ([§6.2](validation.md#6.2-The-angle-model-and-the-twist)), the orders ([§6.3](validation.md#6.3-The-orders)), the delay law
-([§6.4](validation.md#6.4-The-delay-law)) and a remedy for its weak point ([§6.5](validation.md#6.5-A-shared-core)), the two computations behind the delay
-law ([§6.6](validation.md#6.6-The-exact-order-likelihood-and-the-weights)), a clock that drifts ([§6.7](validation.md#6.7-A-clock-that-drifts)), and an exact check of the re-weighting
-([§6.8](validation.md#6.8-An-exact-check-of-the-re-weighting)). The figures are made by `docs/make_validation_figures.jl`.
+step: sites that wander ([§6.2](validation.md#6.2-Sites-that-wander)), the angle model and the twist ([§6.3](validation.md#6.3-The-angle-model-and-the-twist)), the orders ([§6.4](validation.md#6.4-The-orders)), the delay law
+([§6.5](validation.md#6.5-The-delay-law)) and a remedy for its weak point ([§6.6](validation.md#6.6-A-shared-core)), the two computations behind the delay
+law ([§6.7](validation.md#6.7-The-exact-order-likelihood-and-the-weights)), a clock that drifts ([§6.8](validation.md#6.8-A-clock-that-drifts)), and an exact check of the re-weighting
+([§6.9](validation.md#6.9-An-exact-check-of-the-re-weighting)). The figures are made by `docs/make_validation_figures.jl`.
 
 ## 6.1 The simulated stems
 
@@ -49,9 +50,36 @@ steps of the [worked analysis](workflow.md), exactly as real data would:
 5. `delay_law_inference` (robust standard errors, *se* below).
 
 In each replicate, the light- and heavy-tailed data sets are also fitted together, with a shared core
-([§6.5](validation.md#6.5-A-shared-core)).
+([§6.6](validation.md#6.6-A-shared-core)).
 
-## 6.2 The angle model and the twist
+## 6.2 Sites that wander
+
+**What could go wrong.** The angle noise is independent from organ to organ, around sites on a regular spiral
+([§2.2](angles.md#2.2-The-noise)). If instead each site were placed relative to the previous one, the errors of the
+sites would add up like a random walk, and the organs would drift away from the spiral. Would the fit read the drift
+as permutations?
+
+Here the sites of the light-tailed stems of [§6.1](validation.md#6.1-The-simulated-stems) wander: site ``j`` is moved by
+``w_j = w_{j-1} + \varepsilon_j``, ``\varepsilon_j \sim \mathcal N(0, s^2)``, on top of the usual angle noise (about 23°).
+One data set of 60 stems of 45 organs per value of ``s``, with the same orders, fitted and decoded as usual.
+
+| ``s`` (per site) | fitted ``\kappa`` | displaced organs, decoded (true) | displaced by 2 or more, decoded (true) |
+|---|---|---|---|
+| 0° | 6.4 | 18.8 % (19.0 %) | 2.5 % (2.7 %) |
+| 10° | 4.4 | 18.9 % (19.0 %) | 2.2 % (2.7 %) |
+| 15° | 3.8 | 22.1 % (19.0 %) | 3.9 % (2.7 %) |
+| 20° | 3.5 | 25.7 % (19.0 %) | 5.1 % (2.7 %) |
+
+**What we find.**
+
+- **A small walk is absorbed.** Up to 10° per site, the orders are recovered as without the walk: the walk only
+  lowers the fitted ``\kappa``, which takes it up as noise.
+- **A larger walk is read as displacements.** From 15° per site, the drift is partly decoded as extra displacements,
+  mostly by two sites or more.
+
+The simulation is `docs/validation_site_walk.jl`.
+
+## 6.3 The angle model and the twist
 
 **What could go wrong.** The twist of a stem and a change of its spiral can both rotate the organs. If the model
 confused them, it would get the twist wrong, and then the orders.
@@ -70,7 +98,7 @@ One stem in 540 gets a twist at a secondary mode of its likelihood (figure 1a, t
 a reminder that the twist likelihood of a stem can have several peaks. This is why the twist is integrated out rather
 than fixed at its best value ([§2.6](angles.md#2.6-Integrating-out-the-unknowns-of-each-stem), [§4.5](propensity.md#4.5-Fitting-with-the-twist-integrated-out)).
 
-## 6.3 The orders
+## 6.4 The orders
 
 **What could go wrong.** The posterior of the order could be overconfident (or underconfident). Step 2 relies on its
 samples, so it must be *calibrated*: an event to which it gives a probability of 70 % should happen about 70 % of the
@@ -96,7 +124,7 @@ against true.*
   posterior usually shares its probability between it and the true order. This is why step 2 uses the posterior
   samples, not the best order alone.
 
-## 6.4 The delay law
+## 6.5 The delay law
 
 **What could go wrong.** The delay law is seen only through the orders it produces, and different laws can produce
 nearly the same orders ([§5.6](timing.md#5.6-The-delay-law)). Is the overtaking profile, which the orders identify, recovered? And how
@@ -159,7 +187,7 @@ Truth, then the `:both` fits of the three replicates (the readings of [§5.6](ti
    the heavy-tailed law (47 % of the sites in a tail), the fitted core collapses: ``\sigma_c`` falls to about 0.01, below the
    step of the delay grid (0.05), where a narrower core no longer changes anything. Its standard error is
    misleadingly small. A narrow core plus more tail mass predicts nearly the same orders. The overestimated off-time
-   fraction of point 3 comes with this collapse; a shared core ([§6.5](validation.md#6.5-A-shared-core)) usually removes both.
+   fraction of point 3 comes with this collapse; a shared core ([§6.6](validation.md#6.6-A-shared-core)) usually removes both.
 5. **The split between late and early leans late.** For the light-tailed law, ``P(e > 1)`` is overestimated
    (0.043–0.045 for 0.035) and ``P(e < -1)`` underestimated (0.018–0.026 for 0.030). The reason is that some orders
    have two readings. In the order 2 3 1, the organ of site 1 sits two heights above its place. Either site 1
@@ -173,7 +201,7 @@ Truth, then the `:both` fits of the three replicates (the readings of [§5.6](ti
 fitted law interpret it: the off-time fraction, the core sd and the late/early split are informative for laws with
 light tails, and should be read with the caveats of points 1, 3, 4 and 5.
 
-## 6.5 A shared core
+## 6.6 A shared core
 
 **What could go wrong.** Comparing two groups by their profiles needs no core sd. But to *read* a group with heavy
 tails in terms of the law (how precise a typical commitment is, how many organs are off time), point 4 is a real
@@ -195,7 +223,7 @@ Truth, then the shared-core fit of each replicate (estimate ± se):
 | 2 | 0.41 ± 0.02 | 0.066 ± 0.006 | 0.203 ± 0.011 | 0.137 ± 0.012 | 2.3 (0.13) |
 | 3 | 0.01 ± 0.001 | 0.093 ± 0.013 | 0.216 ± 0.010 | 0.123 ± 0.016 | 2.2 (0.14) |
 
-With separate fits ([§6.4](validation.md#6.4-The-delay-law)), the heavy-tailed off-time fraction was 0.215–0.218 and the difference
+With separate fits ([§6.5](validation.md#6.5-The-delay-law)), the heavy-tailed off-time fraction was 0.215–0.218 and the difference
 0.148–0.154.
 
 For comparison, the difference between the two groups' profiles (heavy minus light, truth 0.096, 0.052, 0.021) read
@@ -218,9 +246,9 @@ from the orders, with no delay law: 0.100, 0.102, 0.102 for ``q_1`` (± 0.008), 
 
 **In practice.** Compare the groups by their profiles. To read them in terms of the law, fit each group alone, then
 together. If the shared ``\sigma_c`` stays close to the light-tailed group's own ``\sigma_c``, report the shared-core estimates. If it collapses far below it, the light-tailed group does not hold the core:
-report the separate fits, with the caveat of [§6.4](validation.md#6.4-The-delay-law) point 4.
+report the separate fits, with the caveat of [§6.5](validation.md#6.5-The-delay-law) point 4.
 
-## 6.6 The exact order likelihood and the weights
+## 6.7 The exact order likelihood and the weights
 
 **What could go wrong.** Two computations of [§5](timing.md) carry the delay law: the recursion that scores one order
 ([§5.4](timing.md#5.4-The-exact-probability-of-one-order)), and the re-weighting average over the posterior samples ([§5.5](timing.md#5.5-Re-weighting-the-reconstructed-orders)). The first could be
@@ -240,7 +268,7 @@ fitted law, per stem, out of 200 posterior samples.*
   stems (median 172–200), and above 100 for nearly all (figure 4b). The posterior of the propensity model covers the
   orders that the delay laws favour, as [§5.3](timing.md#5.3-Not-a-product,-but-close-to-one) led us to expect.
 
-## 6.7 A clock that drifts
+## 6.8 A clock that drifts
 
 **What could go wrong.** The model asks the deviations of the sites from a regular clock to be independent
 ([§5.2](timing.md#5.2-The-law-of-the-order-of-a-paced-meristem)). Independent jitter of the readiness is absorbed into ``f``, but a clock whose *intervals* vary
@@ -272,14 +300,14 @@ swaps (``\sigma_c^2 = 0.3^2 + \sigma_\xi^2/2``).
   for a group in which a fifth of the organs are off time. Whether drift or true commitment tails, the orders cannot
   tell them apart.
 - **One false tail in twelve data sets without drift** (the gain of 6.1 at ``\sigma_\xi = 0``). With a narrow law
-  (sd 0.3) and 60 stems, a gain slightly above the threshold of about 5 of [§6.4](validation.md#6.4-The-delay-law) can occur by chance.
+  (sd 0.3) and 60 stems, a gain slightly above the threshold of about 5 of [§6.5](validation.md#6.5-The-delay-law) can occur by chance.
 
 The simulation is `docs/validation_clock_drift.jl`.
 
-## 6.8 An exact check of the re-weighting
+## 6.9 An exact check of the re-weighting
 
 **What could go wrong.** The re-weighting of [§5.5](timing.md#5.5-Re-weighting-the-reconstructed-orders) replaces an exact sum over all orders by an average over
-posterior samples. [§6.6](validation.md#6.6-The-exact-order-likelihood-and-the-weights) shows that the weights are even, but not that the average lands on the right
+posterior samples. [§6.7](validation.md#6.7-The-exact-order-likelihood-and-the-weights) shows that the weights are even, but not that the average lands on the right
 value: for that, we need the exact answer.
 
 **An exact answer.** For one family of delay laws, we have it. If each delay is minus a Gumbel variable of scale

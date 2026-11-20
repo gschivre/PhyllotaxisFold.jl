@@ -168,7 +168,7 @@ whether the orders call for tails:
 | `:both` | +15.6 | +56.3 |
 
 Both groups clearly need tails: adding late organs gains 40 (wild type) and 117 (mutant) units of log-likelihood,
-early organs another 24 and 10. Gains below about 5 would not be meaningful on their own ([§6.4](validation.md#6.4-The-delay-law)).
+early organs another 24 and 10. Gains below about 5 would not be meaningful on their own ([§6.5](validation.md#6.5-The-delay-law)).
 Before reading the parameters, check that the fitted law reproduces the profile of step 2: in figure 4a, the dashed
 lines go through the dots, so the law's shape is not distorting the data.
 
@@ -203,7 +203,7 @@ inf2.Δoff                                                              # mutant
 
 The likelihood ratio is 1.1 (``p = 0.30``): nothing against a shared core. The shared sd, 0.38 ± 0.05, stays close to
 the wild type's own 0.41, so the wild type does hold the core (if it collapsed far below, the separate fits should be
-reported instead; [§6.5](validation.md#6.5-A-shared-core)). Under the shared core:
+reported instead; [§6.6](validation.md#6.6-A-shared-core)). Under the shared core:
 
 | | wild type | mutant | difference | truth |
 |---|---|---|---|---|

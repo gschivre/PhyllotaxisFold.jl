@@ -1,4 +1,4 @@
-# Manual §6.7: does a drifting readiness clock look like delay tails? Simulated data only.
+# Manual §6.8: does a drifting readiness clock look like delay tails? Simulated data only.
 # Orders from τ_i = r_i + c_i, with a clock of i.i.d. intervals r_{i+1} − r_i = 1 + ξ_i, ξ ~ N(0, σξ²) (errors add up
 # like a random walk) and Gaussian commitment c_i ~ N(0, σ0²). The delay law is fitted on the TRUE orders (one sample
 # per stem, log P_A = 0), so the objective is Σ log P_f(σ_true): no angles, only the question of the timing model.

@@ -214,7 +214,7 @@ function pl_summary(PL)
     end
 end
 
-# v5. the re-weighting against the exact likelihood (manual §6.8)
+# v5. the re-weighting against the exact likelihood (manual §6.9)
 function fig_v5(PL)
     βs = [row.β for row in PL.rows]
     cols = ("#eb6834", "#2a78d6")

@@ -117,7 +117,7 @@ many neighbour swaps (``q_1 = 0.111`` against 0.094 in the wild type, ``q_3 = 0.
 stems behave like this is a question for the data.
 
 **Closed form.** For this law, the probability of an order has a closed form (a Plackett–Luce law).
-[§6.8](validation.md#6.8-An-exact-check-of-the-re-weighting) uses the same `GumbelDelay` to check the re-weighting against an exact answer.
+[§6.9](validation.md#6.9-An-exact-check-of-the-re-weighting) uses the same `GumbelDelay` to check the re-weighting against an exact answer.
 
 ## Example: the fold switch
 
@@ -184,7 +184,7 @@ The checks of the worked analysis apply to any law:
 - **The profile.** The fitted law's profile (`overtaking(fit.law)`) should agree with the one read from the orders
   (`overtaking_profile(smp)`). If it does not, the law's shape is distorting the data, whatever its score.
 - **The score.** Count about one unit of log-likelihood per extra parameter (Akaike), and do not interpret gains
-  below about 5 ([§6.4](validation.md#6.4-The-delay-law)). To know how far a gain can be trusted, simulate stems from both laws and
+  below about 5 ([§6.5](validation.md#6.5-The-delay-law)). To know how far a gain can be trusted, simulate stems from both laws and
   refit.
 - **The grid.** If a fit warns that the density has not decayed at the edge of the grid, give the law a wider one
   ([The delay grid](custom_laws.md#The-delay-grid)).

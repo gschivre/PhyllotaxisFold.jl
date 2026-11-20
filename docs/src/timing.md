@@ -65,7 +65,7 @@ then ``\tau_i = i + (u_i + c_i)``: the same model with ``e_i = u_i + c_i``, as l
 ``f`` is the total timing noise around a regular clock; the orders cannot split it between readiness and commitment
 ([§7](limits.md)). What the model does not cover are timing errors that build on each other: a clock whose intervals
 vary, so that its errors add up like a random walk, or a late site that also delays the next ones. Both make the
-delays of neighbouring sites dependent ([§7](limits.md) lists the signs); [§6.7](validation.md#6.7-A-clock-that-drifts) shows when a drifting clock
+delays of neighbouring sites dependent ([§7](limits.md) lists the signs); [§6.8](validation.md#6.8-A-clock-that-drifts) shows when a drifting clock
 starts to be read as tails.
 
 **A clock in plastochrons, not in hours.** The clock is regular by construction: time is counted in plastochrons, one
@@ -229,7 +229,7 @@ close to the true core sd (c).
 *effective sample size* over the ``N`` draws, ``(\sum r)^2 / \sum r^2``, measures this: ``N`` when all weights are
 equal, 1 when a single draw carries everything. The weights are even when ``P_A`` is close to ``P_f``, as
 [§5.3](timing.md#5.3-Not-a-product,-but-close-to-one) leads us to expect; in the validation the effective sample size is typically 175–200 out of 200
-([§6.6](validation.md#6.6-The-exact-order-likelihood-and-the-weights)).
+([§6.7](validation.md#6.7-The-exact-order-likelihood-and-the-weights)).
 
 **Limits.** The angle nuisances (``\kappa``, spiral, twist) are those of the propensity model's fit. Orders outside its
 band (``|d| > k``) are never sampled, so a law that puts mass on them is slightly penalised. A stem whose effective
@@ -288,7 +288,7 @@ q_d = P(\text{site } i + d \text{ commits before site } i) = P(e_i - e_{i+d} > d
 So the profile is the result to report and to compare between groups (`overtaking_profile` reads it from the
 posterior orders, with no delay law; `delay_law_inference` gives that of the fitted law). The fitted law interprets
 it, within its assumed shape: how precise a typical commitment is, and how many sites are off time.
-[§6.4](validation.md#6.4-The-delay-law) measures each of these statements on simulated stems.
+[§6.5](validation.md#6.5-The-delay-law) measures each of these statements on simulated stems.
 
 ## 5.7 Fit, uncertainty and comparisons
 
@@ -321,7 +321,7 @@ it, within its assumed shape: how precise a typical commitment is, and how many 
   freedom per extra group; with heavy tails, permuting the group labels among the stems calibrates it).
   `delay_law_inference` on the joint fit gives each group's off-time fraction and their difference. Check that the
   shared core stays close to the light-tailed group's own; if it collapses, report the separate fits instead
-  ([§6.5](validation.md#6.5-A-shared-core)).
+  ([§6.6](validation.md#6.6-A-shared-core)).
 - **Delays in hours.** The delays are in plastochrons. The `Plastochron` module estimates the plastochron at each
   flower rank from daily counts of open flowers (box below), and converts a delay to hours with the mean plastochron
   of the measured organs (`mean_plastochron`, `in_hours`; [worked analysis](workflow.md), step 5).

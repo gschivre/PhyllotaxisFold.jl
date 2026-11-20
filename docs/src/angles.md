@@ -39,6 +39,23 @@ integrated out of its likelihood ([§2.6](angles.md#2.6-Integrating-out-the-unkn
 Why one ``\kappa`` per stem? A poorly measured stem must be allowed to be noisy. With a single ``\kappa``, the model
 could only explain its scattered angles by spurious permutations, which would bias everything downstream.
 
+!!! details "Why the noise is on the absolute angles, not on the divergences"
+    One could instead place each site relative to the previous one, ``\theta_j = \theta_{j-1} + \psi + \varepsilon_j``,
+    with the noise on the divergences. Putting it on the absolute angles has two advantages:
+
+    - **The sum over all orders is exact.** Given the order, each angle depends only on its own site, so the sum over
+      orders is a permanent, computed exactly ([§3](orders.md)). A divergence involves two organs, and with the noise
+      on the divergences the sum no longer factorises.
+    - **A bad angle is one observation**, which the outlier term of [§2.4](angles.md#2.4-Outlier-angles) sets aside.
+      In divergences, it would spoil two neighbours in opposite directions, like a swap.
+
+    The price is that anything that adds up along the stem must be in the model, or it is read as permutations. This
+    is why the twist of [§2.3](angles.md#2.3-The-twist) should be fitted.
+
+    It is also the biology. Inhibitory-field models place a new primordium in the gap left by *several* older ones
+    [douady1996phyllotaxis, refahi2016stochastic](@cite), not by the last one only: an error is corrected rather than
+    inherited, and the sites stay close to a regular lattice.
+
 ## 2.3 The twist
 
 Many stems twist as they elongate [landrein2013impaired](@cite). If the surface of a stem of radius ``r_s`` is inclined by a
