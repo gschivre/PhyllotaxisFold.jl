@@ -77,5 +77,5 @@ makedocs(;
     plugins = [bib],
 )
 
-# The repository is private: the manual is built locally (docs/build/index.html). To publish it on GitHub Pages:
-# deploydocs(; repo = "github.com/gschivre/PhyllotaxisFold.jl.git", devbranch = "main")
+# on GitHub Actions, publish to the gh-pages branch (dev from main, stable from version tags); locally, nothing
+deploydocs(; repo = "github.com/gschivre/PhyllotaxisFold.jl.git", devbranch = "main")

@@ -1,5 +1,9 @@
 # PhyllotaxisFold.jl
 
+[![CI](https://github.com/gschivre/PhyllotaxisFold.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/gschivre/PhyllotaxisFold.jl/actions/workflows/CI.yml)
+[![Manual (dev)](https://img.shields.io/badge/docs-dev-blue.svg)](https://gschivre.github.io/PhyllotaxisFold.jl/dev/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 *Reading the timing of organ initiation from the angles of the organs on a plant stem.*
 
 In *Arabidopsis*, the flowers of a stem follow a spiral: each one is rotated by about 137.5° (the golden angle) from
@@ -113,8 +117,8 @@ why, and shows how well each quantity is recovered on simulated stems.
 
 ## Learn more
 
-The manual explains the method step by step, from the biology to the equations, with one simulated stem followed
-throughout. It is written in [`docs/src`](docs/src):
+The [manual](https://gschivre.github.io/PhyllotaxisFold.jl/dev/) explains the method step by step, from the biology to
+the equations, with one simulated stem followed throughout. Its sources are in [`docs/src`](docs/src):
 
 - [a worked analysis](docs/src/workflow.md): a simulated wild type and mutant, analysed step by step, with the
   checks to make and how to read the results;
@@ -122,6 +126,9 @@ throughout. It is written in [`docs/src`](docs/src):
   delays, and why the default is a Gaussian core with exponential tails;
 - [deriving a law: the fold switch](docs/src/fold_law.md): a worked example, from a model of the commitment switch to
   a law that the orders can test;
+- [canonical angles](docs/src/canonical_angles.md): other divergences than golden and Lucas, or a single fixed one;
+- [breaks of the spiral](docs/src/breaks.md): reversals or switches of the spiral along a stem, and the break rate of
+  a group;
 - [the problem](docs/src/problem.md): swaps, what is measured, and the two-step plan;
 - [angles given an order](docs/src/angles.md), [summing over all orders](docs/src/orders.md) and
   [the propensity model](docs/src/propensity.md): how the orders are reconstructed;
@@ -130,7 +137,7 @@ throughout. It is written in [`docs/src`](docs/src):
 - [assumptions and limits](docs/src/limits.md): the assumptions, and what would break them;
 - [notation and references](docs/src/notation.md), and the [API](docs/src/api.md).
 
-To build the manual as a website, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+To build the manual locally, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Authorship and AI assistance
 
