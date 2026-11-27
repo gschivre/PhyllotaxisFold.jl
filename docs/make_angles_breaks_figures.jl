@@ -16,8 +16,10 @@ divs(y, o) = [mod(o * rad2deg(y[p + 1] - y[p]), 360.0) for p in 1:(length(y) - 1
 function angles_example()
     isfile(AB_FILE) && return deserialize(AB_FILE)
     angles = (Golden_angle, Lucas_angle, π)
-    sim = simulate_stems([-1.2, -2.5, -3.1, -4.0]; plants = 40, organs = 40, logμκ = 1.85, α = (0.6, 0.5), angles,
-        rng = Xoshiro(3))
+    sim = simulate_stems(
+        [-1.2, -2.5, -3.1, -4.0]; plants = 40, organs = 40, logμκ = 1.85, α = (0.6, 0.5), angles,
+        rng = Xoshiro(3)
+    )
     prior = PhyllotaxisPrior(; angles, aα = (95, 999), bα = (5, 1))
     r = fit_map(PhyllotaxisModelAD(sim.angles, prior))
     post = spiral_posterior(r)
@@ -29,8 +31,10 @@ end
 
 function fig_angles(ex)
     f = Figure(size = (1000, 360), fontsize = 14)
-    ax = Axis(f[1, 1]; title = "(a) divergences, all stems of each angle", xlabel = "divergence (°)", ylabel = "density",
-        xticks = [0, 99.5, 137.5, 180, 360])
+    ax = Axis(
+        f[1, 1]; title = "(a) divergences, all stems of each angle", xlabel = "divergence (°)", ylabel = "density",
+        xticks = [0, 99.5, 137.5, 180, 360]
+    )
     for (ψ, c, lab) in ((Golden_angle, C_GOLD, "golden stems"), (Float64(π), C_DIST, "stems at 180°"))
         idx = findall(==(ψ), ex.sim.ψ)
         d = reduce(vcat, [divs(ex.sim.angles[s], ex.sim.o[s]) for s in idx])
@@ -38,8 +42,10 @@ function fig_angles(ex)
     end
     xlims!(ax, 0, 360)
     axislegend(ax; position = :rt, framevisible = false)
-    ax2 = Axis(f[1, 2]; title = "(b) P(180°) of each stem", xticks = (1:3, ["golden", "Lucas", "180°"]),
-        ylabel = "posterior probability of 180°", xlabel = "true canonical angle")
+    ax2 = Axis(
+        f[1, 2]; title = "(b) P(180°) of each stem", xticks = (1:3, ["golden", "Lucas", "180°"]),
+        ylabel = "posterior probability of 180°", xlabel = "true canonical angle"
+    )
     rng = Xoshiro(1)
     for (i, ψ) in enumerate((Golden_angle, Lucas_angle, Float64(π)))
         idx = findall(==(ψ), ex.sim.ψ)
@@ -58,8 +64,10 @@ function fig_breaks_stem(VB; s = nothing)
     f = Figure(size = (1000, 560), fontsize = 14)
     o = r.o[s]
     d = divs(r.angles[s], o)
-    ax = Axis(f[1, 1]; title = "(a) a simulated mutant stem with two reversals", ylabel = "divergence (°)",
-        yticks = [0, 137.5, 222.5, 360])
+    ax = Axis(
+        f[1, 1]; title = "(a) a simulated mutant stem with two reversals", ylabel = "divergence (°)",
+        yticks = [0, 137.5, 222.5, 360]
+    )
     hlines!(ax, [137.5, 222.5]; color = (:gray, 0.4), linestyle = :dash)
     vlines!(ax, r.cuts[s] .- 0.5; color = :black, linestyle = :dot)
     scatterlines!(ax, 1:length(d), d; color = C_GREY, markercolor = :black, markersize = 6)
@@ -81,8 +89,10 @@ end
 # the break rate of each group, and each stem's P(≥ 1 break) against its true number of breaks
 function fig_breaks_groups(VB)
     f = Figure(size = (1000, 380), fontsize = 14)
-    ax = Axis(f[1, 1]; title = "(a) posterior of the break rate", xlabel = "π_b (breaks per gap)",
-        ylabel = "posterior density (scaled to 1)")
+    ax = Axis(
+        f[1, 1]; title = "(a) posterior of the break rate", xlabel = "π_b (breaks per gap)",
+        ylabel = "posterior density (scaled to 1)"
+    )
     for (g, c) in (("WT", C_GOLD), ("mutant", C_DIST))
         rt = VB[g].rate
         dens = rt.posterior[1:(end - 1)] ./ diff(rt.grid)

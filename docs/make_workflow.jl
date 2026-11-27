@@ -302,8 +302,10 @@ end
 # uncertain; among those, the one with the most blocks
 function readable_stem(g)
     k = g.k
-    ok(s) = (bl = shuffled_blocks(g.dec[s].σ);
-        !isempty(bl) && maximum(length, bl) == 3 && any(i -> 0.25 < 1 - g.ρ[s][i, k + 1] < 0.75, axes(g.ρ[s], 1)))
+    ok(s) = (
+        bl = shuffled_blocks(g.dec[s].σ);
+        !isempty(bl) && maximum(length, bl) == 3 && any(i -> 0.25 < 1 - g.ρ[s][i, k + 1] < 0.75, axes(g.ρ[s], 1))
+    )
     return argmax(s -> ok(s) ? length(shuffled_blocks(g.dec[s].σ)) : -1, eachindex(g.dec))
 end
 
@@ -329,8 +331,10 @@ function fig_decoded_stem(res; s = nothing)
     end
     hlines!(ax, [mod(c * ψ, 360) for c in cs]; color = :gray70, linewidth = 0.8)
     xs = (1:(n - 1)) .+ 0.5 # divergence i lies between organs i and i + 1
-    scatterlines!(ax, xs, divergence_angles(yc; o = d.o); color = :black, linestyle = :dot, marker = :rect,
-        markersize = 6, label = "measured (twist removed)")
+    scatterlines!(
+        ax, xs, divergence_angles(yc; o = d.o); color = :black, linestyle = :dot, marker = :rect,
+        markersize = 6, label = "measured (twist removed)"
+    )
     lines!(ax, xs, divergence_angles(pred; o = d.o); color = W_COL.mutant, linewidth = 2, label = "decoded")
     row = 1 # a label one row lower when its chain starts close to the previous one
     for (j, ch) in enumerate(chains)
@@ -355,8 +359,10 @@ function fig_decoded_stem(res; s = nothing)
         dd != 0 && text!(ax2, i, 1.06; text = (dd > 0 ? "+$dd" : "−$(-dd)"), align = (:center, :center), fontsize = 10)
     end
     truth = findall(g.sim.orders[s] .!= 1:n)
-    scatter!(ax2, truth, fill(-0.07, length(truth)); marker = :utriangle, color = :black, markersize = 8,
-        label = "truly displaced")
+    scatter!(
+        ax2, truth, fill(-0.07, length(truth)); marker = :utriangle, color = :black, markersize = 8,
+        label = "truly displaced"
+    )
     ylims!(ax2, -0.12, 1.12)
     Legend(fig[2, 2], ax2; framevisible = false)
     linkxaxes!(ax, ax2)

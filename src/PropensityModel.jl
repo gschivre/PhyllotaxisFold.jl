@@ -368,8 +368,10 @@ log-propensities, α the M stick-breaking probabilities (a tuple, `()` for a sin
 """
 function constrained_parameters(model::PhyllotaxisModelAD, u::AbstractVector)
     p = stem_params(model, u)
-    nt = (; p.η, p.logμκ, p.σκ, p.α, outlier = (p.outlier === nothing ? zero(p.logμκ) : p.outlier),
-        angle_probs = exp.(_angle_logprobs(p.α)))
+    nt = (;
+        p.η, p.logμκ, p.σκ, p.α, outlier = (p.outlier === nothing ? zero(p.logμκ) : p.outlier),
+        angle_probs = exp.(_angle_logprobs(p.α)),
+    )
     _has_twist(model) || return nt
     G = nmodel(model)
     return (; nt..., m_ω = u[G + 1], s_ω = exp(u[G + 2]))

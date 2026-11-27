@@ -30,8 +30,10 @@ end
 function run_walk(s; seed = 61)
     rng = Xoshiro(seed)
     x = sw_coordinates(rng)
-    sim = simulate_stems(SW_LAW; plants = SW_NSTEMS, organs = SW_NORGANS, x, logμκ = 1.85, σκ = 0.15, α = 0.95,
-        torsion_mean = 1.0, torsion_sd = 0.7, rng)
+    sim = simulate_stems(
+        SW_LAW; plants = SW_NSTEMS, organs = SW_NORGANS, x, logμκ = 1.85, σκ = 0.15, α = 0.95,
+        torsion_mean = 1.0, torsion_sd = 0.7, rng
+    )
     angles = map(1:SW_NSTEMS) do i
         w = [0.0; cumsum(deg2rad(s) .* randn(rng, SW_NORGANS - 1))] # the walk of the sites, from site 1
         σ = sim.orders[i]
@@ -55,7 +57,11 @@ end
 
 function site_walk_table(res)
     pc(v) = round(100v; digits = 1)
-    return [(s, κ = round(exp(r.θ.logμκ); digits = 1), η = round.(r.θ.η[(end ÷ 2 + 2):end]; digits = 2),
-        displaced = (pc(r.decoded.any), pc(r.truth.any)), by_2plus = (pc(r.decoded.d2plus), pc(r.truth.d2plus)))
-        for (s, r) in sort(collect(res); by = first)]
+    return [
+        (
+            s, κ = round(exp(r.θ.logμκ); digits = 1), η = round.(r.θ.η[(end ÷ 2 + 2):end]; digits = 2),
+            displaced = (pc(r.decoded.any), pc(r.truth.any)), by_2plus = (pc(r.decoded.d2plus), pc(r.truth.d2plus)),
+        )
+            for (s, r) in sort(collect(res); by = first)
+    ]
 end

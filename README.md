@@ -1,7 +1,9 @@
 # PhyllotaxisFold.jl
 
-[![CI](https://github.com/gschivre/PhyllotaxisFold.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/gschivre/PhyllotaxisFold.jl/actions/workflows/CI.yml)
 [![Manual (dev)](https://img.shields.io/badge/docs-dev-blue.svg)](https://gschivre.github.io/PhyllotaxisFold.jl/dev/)
+[![CI](https://github.com/gschivre/PhyllotaxisFold.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/gschivre/PhyllotaxisFold.jl/actions/workflows/CI.yml)
+[![Aqua QA](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
+[![code style: runic](https://img.shields.io/badge/code_style-%E1%9A%B1%E1%9A%A2%E1%9A%BE%E1%9B%81%E1%9A%B2-black)](https://github.com/fredrikekre/Runic.jl)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 *Reading the timing of organ initiation from the angles of the organs on a plant stem.*

@@ -206,8 +206,10 @@ function brute_breaks(fit, s, kd)
                     o = :orientation in kd ? t[1] : os
                     j = :angle in kd ? t[2] : js
                     v += get!(memo, (a, b, o, j, iϕ, qs)) do
-                        logsumexp((lat ? -log(Nϕ) : 0.0) + (:precision in kd ? g.κ_logweights[q] : 0.0) + part(a, b, o, j, q, g.ϕ_grid[ϕi])
-                            for ϕi in (lat ? (1:Nϕ) : (iϕ,)) for q in (:precision in kd ? eachindex(κs) : (qs,)))
+                        logsumexp(
+                            (lat ? -log(Nϕ) : 0.0) + (:precision in kd ? g.κ_logweights[q] : 0.0) + part(a, b, o, j, q, g.ϕ_grid[ϕi])
+                                for ϕi in (lat ? (1:Nϕ) : (iϕ,)) for q in (:precision in kd ? eachindex(κs) : (qs,))
+                        )
                     end
                 end
                 Z[J + 1] = logaddexp(Z[J + 1], v)

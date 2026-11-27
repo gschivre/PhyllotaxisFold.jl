@@ -22,8 +22,10 @@ function _draw_angle(rng::AbstractRNG, α::Tuple, angles)
     end
     return Float64(angles[end])
 end
-_check_angles(α, angles) = (length(angles) == (α isa Real ? 1 : length(α)) + 1 ||
-    throw(ArgumentError("angles: one more canonical angle than stick-breaking probabilities α")))
+_check_angles(α, angles) = (
+    length(angles) == (α isa Real ? 1 : length(α)) + 1 ||
+        throw(ArgumentError("angles: one more canonical angle than stick-breaking probabilities α"))
+)
 
 # the angles of one stem of order σ (twist coordinate x): κ ~ LogNormal(logμκ, σκ), the canonical angle from α and
 # `angles`, uniform ϕ and orientation, twist ω ~ N(torsion_mean, torsion_sd²) degrees per unit of x, and each angle

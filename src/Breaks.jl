@@ -104,8 +104,10 @@ end
 # log BF of ≥ 1 break against none (the prior given ≥ 1 break: the binomial renormalised), averaged over the rate's
 # posterior
 function _logBF_breaks(lz, n, πn, πw)
-    return logsumexp(log(w) + logsumexp(j * log(π) + (n - 1 - j) * log1p(-π) + lz[j + 1] for j in 1:(n - 1)) -
-        log1mexp((n - 1) * log1p(-π)) - lz[1] for (π, w) in zip(πn, πw))
+    return logsumexp(
+        log(w) + logsumexp(j * log(π) + (n - 1 - j) * log1p(-π) + lz[j + 1] for j in 1:(n - 1)) -
+            log1mexp((n - 1) * log1p(-π)) - lz[1] for (π, w) in zip(πn, πw)
+    )
 end
 
 # the break rate: a fixed number, or the posterior of a Beta prior given every stem (on a fine logit grid), summarised
@@ -317,8 +319,10 @@ function Base.show(io::IO, ::MIME"text/plain", r::SpiralBreaks)
     else
         @printf(io, "  break rate π_b: posterior mean %.4f, 95%% interval (%.4f, %.4f) per gap\n", br.mean, br.ci95...)
     end
-    @printf(io, "  stems with P(≥ 1 break) > 0.5: %d; expected breaks per stem: %.2f\n",
-        count(x -> 1 - x.p_breaks[1] > 0.5, r.stems), mean(nb))
+    @printf(
+        io, "  stems with P(≥ 1 break) > 0.5: %d; expected breaks per stem: %.2f\n",
+        count(x -> 1 - x.p_breaks[1] > 0.5, r.stems), mean(nb)
+    )
     return nothing
 end
 Base.show(io::IO, r::SpiralBreaks) = print(io, "SpiralBreaks($(join(r.kind, " + ")), $(length(r.stems)) stems)")

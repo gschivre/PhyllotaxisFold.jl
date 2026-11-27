@@ -182,8 +182,10 @@ end
 # median and worst |error| per stem (log-likelihood units), per rule (ranges over the four laws); the widths of the peaks
 function twist_table(res)
     laws, stems = res[:twist][:laws], res[:twist][:stems]
-    rules = vcat([("adaptive, $nn nodes per mode", st -> st.adaptive[nn]) for nn in TQ_NNODES],
-        [("Gauss–Hermite on the population law, $K nodes", st -> st.fixed[K]) for K in TQ_GH])
+    rules = vcat(
+        [("adaptive, $nn nodes per mode", st -> st.adaptive[nn]) for nn in TQ_NNODES],
+        [("Gauss–Hermite on the population law, $K nodes", st -> st.fixed[K]) for K in TQ_GH]
+    )
     rows = map(rules) do (name, get)
         err = [abs.(get(st) .- st.ref) for st in stems] # stems × laws
         med = [median(e[l] for e in err) for l in eachindex(laws)]
@@ -214,10 +216,14 @@ function integration_accuracy_study(; refresh = Symbol[])
         key === :phi || key === :kappa || continue
         foreach(k -> delete!(cache, k), [k for k in keys(cache) if k isa Tuple && k[1] === :reference])
     end
-    for (key, run!) in ((:fit, stage_fit!), (:phi, c -> stage_grids!(c, :phi)), (:kappa, c -> stage_grids!(c, :kappa)),
-            (:twist, stage_twist!))
-        complete = haskey(cache, key) && (key ∉ (:phi, :kappa) || length(cache[key]) == length(IA_SIGMAS) *
-                                          length(key === :phi ? IA_PHI : IA_KAPPA))
+    for (key, run!) in (
+            (:fit, stage_fit!), (:phi, c -> stage_grids!(c, :phi)), (:kappa, c -> stage_grids!(c, :kappa)),
+            (:twist, stage_twist!),
+        )
+        complete = haskey(cache, key) && (
+            key ∉ (:phi, :kappa) || length(cache[key]) == length(IA_SIGMAS) *
+                length(key === :phi ? IA_PHI : IA_KAPPA)
+        )
         complete && continue
         run!(cache)
         serialize(IA_FILE, cache)

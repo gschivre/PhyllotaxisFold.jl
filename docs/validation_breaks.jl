@@ -29,8 +29,10 @@ end
 function vb_stems(πb; seed)
     rng = Xoshiro(seed)
     x = vb_coordinates(rng)
-    sim = simulate_stems(VB_LAW; plants = VB_NSTEMS, organs = VB_NORGANS, x, logμκ = 1.85, σκ = 0.15, α = 0.95,
-        torsion_mean = 1.0, torsion_sd = 0.7, rng)
+    sim = simulate_stems(
+        VB_LAW; plants = VB_NSTEMS, organs = VB_NORGANS, x, logμκ = 1.85, σκ = 0.15, α = 0.95,
+        torsion_mean = 1.0, torsion_sd = 0.7, rng
+    )
     cuts = [[τ for τ in 2:VB_NORGANS if rand(rng) < πb] for _ in 1:VB_NSTEMS]
     angles = map(1:VB_NSTEMS) do s
         o, ψ, ϕ, σ = sim.o[s], sim.ψ[s], sim.ϕ[s], sim.orders[s]
@@ -57,8 +59,10 @@ function run_breaks_validation(; groups = (("WT", 0.0, 71), ("mutant", 0.02, 72)
         r = fit_map(PhyllotaxisModelAD(st.angles; torsion = VB_TPRIOR, torsion_x = st.x))
         dec = decode_orders(r)
         br = spiral_breaks(r)
-        res[g] = (; πb, cuts = st.cuts, orders = st.orders, o = st.o, angles = st.angles, x = st.x, θ = r.θ, dec,
-            breaks = br.stems, rate = br.break_rate)
+        res[g] = (;
+            πb, cuts = st.cuts, orders = st.orders, o = st.o, angles = st.angles, x = st.x, θ = r.θ, dec,
+            breaks = br.stems, rate = br.break_rate,
+        )
         serialize(VB_FILE, res)
         isdefined(Main, :KaimonGate) && Main.KaimonGate.progress("breaks: $(g) done")
     end
@@ -74,10 +78,12 @@ function breaks_table(res)
         pb = [1 - b.p_breaks[1] for b in r.breaks]
         # a true cut is found if p_cut summed over ±1 organ around it exceeds 0.5
         found = [sum(r.breaks[s].p_cut[max(τ - 1, 1):min(τ + 1, VB_NORGANS)]) > 0.5 for s in eachindex(r.cuts) for τ in r.cuts[s]]
-        (; group = g, true_breaks = sum(length, r.cuts), stems_with = count(has),
+        (;
+            group = g, true_breaks = sum(length, r.cuts), stems_with = count(has),
             detected = count(pb[has] .> 0.5), false_alarms = count(pb[.!has] .> 0.5), cuts_found = (count(found), length(found)),
             rate = (round(r.rate.mean; digits = 4), round.(r.rate.ci95; digits = 4)),
             displaced = (decoded = round(displaced(r.dec); digits = 3), truth = round(displaced(r.orders); digits = 3)),
-            κ = round(exp(r.θ.logμκ); digits = 2), η = round.(r.θ.η[6:8]; digits = 2))
+            κ = round(exp(r.θ.logμκ); digits = 2), η = round.(r.θ.η[6:8]; digits = 2),
+        )
     end
 end
