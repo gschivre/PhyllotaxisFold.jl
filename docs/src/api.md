@@ -32,6 +32,14 @@ Pages = ["AngleLikelihood.jl", "Decoding.jl"]
 Private = false
 ```
 
+## Breaks of the spiral
+
+```@autodocs
+Modules = [PhyllotaxisFold]
+Pages = ["Breaks.jl"]
+Private = false
+```
+
 ## Stem twist
 
 ```@autodocs
@@ -73,6 +81,7 @@ PhyllotaxisFold.Permanents
 PhyllotaxisFold.Permanents.PermutationGraph
 PhyllotaxisFold.Permanents.PermanentWorkspace
 PhyllotaxisFold.Permanents.toeplitz_weights!
+PhyllotaxisFold.Permanents.prefix_logperms!
 PhyllotaxisFold.Permanents.forward!
 PhyllotaxisFold.Permanents.forward_linear!
 PhyllotaxisFold.Permanents.backward!

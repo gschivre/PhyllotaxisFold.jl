@@ -28,6 +28,8 @@ independent commitment delays (`simulate_stems(f::DelayLaw; ...)`, [§5](timing.
 
 **The spiral.** Site ``j`` sits at ``\phi + o\,(j - 1)\,\psi``: ``\psi`` is the golden angle (137.5°) with
 probability `α`, else the Lucas angle (99.5°), the orientation ``o = \pm 1`` and the offset ``\phi`` are uniform.
+Another list of canonical angles is given by `angles`, with `α` a tuple of stick-breaking probabilities
+([Canonical angles](canonical_angles.md)).
 
 **The precision.** Each angle is von Mises around its site. Its concentration ``\kappa`` varies from stem to stem:
 ``\log\kappa`` is normal, with mean `logμκ` and sd `σκ` (``e^{1.85} \approx 6.4`` for the median stem of the

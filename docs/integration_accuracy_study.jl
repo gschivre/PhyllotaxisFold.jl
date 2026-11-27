@@ -53,7 +53,7 @@ end
 # the fitted parameters as a flat constrained vector [η_1..η_k; log μκ; σκ; α; π_o; m_ω; s_ω], with σκ replaced
 function constrained_vector(m, θ; σκ = θ.σκ)
     k = m.k
-    return vcat(θ.η[(k + 2):end], θ.logμκ, σκ, θ.α, (m.outlier ? [θ.outlier] : Float64[])..., θ.m_ω, θ.s_ω)
+    return vcat(θ.η[(k + 2):end], θ.logμκ, σκ, θ.α..., (m.outlier ? [θ.outlier] : Float64[])..., θ.m_ω, θ.s_ω)
 end
 unconstrained(m, θ; σκ = θ.σκ) = PF._unconstrained(m, constrained_vector(m, θ; σκ))
 

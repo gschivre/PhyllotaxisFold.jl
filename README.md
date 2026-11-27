@@ -19,6 +19,10 @@ alone, it:
 4. **compares groups of plants**, for instance a mutant and its wild type, with standard errors that treat the stem as
    the unit of replication.
 
+Two checks go beyond the default spiral: other **canonical angles** than golden and Lucas (e.g. 180°, or any noble
+angle), with a small prior for the unexpected ones, and **breaks of the spiral** along a stem (a reversal of its
+orientation, a switch of its angle), with the number of breaks of each stem and the break rate of each group.
+
 ## Input data
 
 For each stem, from the bottom to the top:

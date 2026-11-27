@@ -12,7 +12,7 @@ const AL = PhyllotaxisFold
 const TO = PhyllotaxisFold
 # internals tested directly: the banded permanents and the numerical tools
 using PhyllotaxisFold.Permanents: PermutationGraph, PermanentWorkspace, toeplitz_weights!, forward!, forward_linear!, backward!,
-    sample_permutation!, map_permutation, logprob_permutation, cycle_lengths
+    sample_permutation!, map_permutation, logprob_permutation, cycle_lengths, prefix_logperms!
 using PhyllotaxisFold: logbesseli, besseliratio, marginal_quantiles
 
 #################################################################################################################
@@ -148,6 +148,74 @@ run_blocks!(mod, page, idxs; subs = ()) =
 # stems with a twist (degrees per position) for the angle-model and twist tests: one simulation, a coarse nuisance grid
 const TWIST = simulate_stems(LAW; plants = 8, organs = 40, logμκ = 1.8, torsion_mean = 4.0, torsion_sd = 3.0, rng = Xoshiro(21))
 twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisPrior(); ngrid_ϕ = 8, ngrid_κ = 4, outlier = false, torsion)
+
+# spiral_breaks' log Z(j) by brute force on a short stem (no twist): every segmentation, every sequence of part values,
+# each part by a direct permanent at each phase and κ node (its sites at ϕ + o (i − 1) ψ in the stem's indices)
+
+function brute_breaks(fit, s, kd)
+    m = fit.model
+    p = PhyllotaxisFold.stem_params(m, fit.u)
+    g = m.grid
+    y = m.data[s]
+    n, k = length(y), m.k
+    κs = exp.(p.logμκ .+ p.σκ .* g.κ_nodes)
+    lps = PhyllotaxisFold._angle_logprobs(p.α)
+    L = length(g.angles)
+    ws = PermanentWorkspace(Float64, k, n; logspace = true)
+    πo = something(p.outlier, 0.0)
+    function part(a, b, o, j, q, ϕ)
+        nn, κ = b - a + 1, κs[q]
+        lI = PhyllotaxisFold.logbesseli(0, κ)
+        for i in 1:nn, d in -k:k
+            1 ≤ i + d ≤ nn || continue
+            site = ϕ + o * (a + i + d - 2) * g.angles[j]
+            lv = log((1 - πo) * exp(κ * cos(y[a + i - 1] - site) - lI) / (2π) + πo / (2π))
+            ws.w[i, d + k + 1] = p.η[d + k + 1] + lv
+        end
+        l = forward!(ws, nn)
+        toeplitz_weights!(ws, p.η, nn)
+        return l - forward!(ws, nn)
+    end
+    lat = true # every part has its own phase
+    Nϕ = length(g.ϕ_grid)
+    # the shared values: (ϕ index if the lattice is shared, o if not breaking, j if not breaking, q if not breaking)
+    sh_ϕ = lat ? (0,) : Tuple(1:Nϕ)
+    sh_o = :orientation in kd ? (0,) : (-1, 1)
+    sh_j = :angle in kd ? (0,) : Tuple(1:L)
+    sh_q = :precision in kd ? (0,) : Tuple(eachindex(κs))
+    types = [(o, j) for j in (:angle in kd ? (1:L) : (0:0)) for o in (:orientation in kd ? (-1, 1) : (0,))]
+    lpt(t) = (:orientation in kd ? -log(2) : 0.0) + (:angle in kd ? lps[t[2]] : 0.0)
+    Z = fill(-Inf, n)
+    memo = Dict{Any, Float64}()
+    for cutmask in 0:(2^(n - 1) - 1)
+        cuts = [c + 1 for c in 1:(n - 1) if (cutmask >> (c - 1)) & 1 == 1]
+        bounds = [1; cuts; n + 1]
+        parts = [(bounds[i], bounds[i + 1] - 1) for i in 1:(length(bounds) - 1)]
+        J = length(cuts)
+        for iϕ in sh_ϕ, os in sh_o, js in sh_j, qs in sh_q
+            lw = (lat ? 0.0 : -log(Nϕ)) + (:orientation in kd ? 0.0 : -log(2)) + (:angle in kd ? 0.0 : lps[js]) +
+                (:precision in kd ? 0.0 : g.κ_logweights[qs])
+            # type sequences
+            tseqs = length(types) == 1 ? [fill(types[1], length(parts))] :
+                [collect(t) for t in Iterators.product(ntuple(_ -> types, length(parts))...) if all(t[i] != t[i + 1] for i in 1:(length(t) - 1))]
+            for ts in tseqs
+                v = lw
+                for (ip, (a, b)) in enumerate(parts)
+                    t = ts[ip]
+                    v += ip == 1 ? lpt(t) : (length(types) == 1 ? 0.0 : lpt(t) - log1mexp(lpt(ts[ip - 1])))
+                    o = :orientation in kd ? t[1] : os
+                    j = :angle in kd ? t[2] : js
+                    v += get!(memo, (a, b, o, j, iϕ, qs)) do
+                        logsumexp((lat ? -log(Nϕ) : 0.0) + (:precision in kd ? g.κ_logweights[q] : 0.0) + part(a, b, o, j, q, g.ϕ_grid[ϕi])
+                            for ϕi in (lat ? (1:Nϕ) : (iϕ,)) for q in (:precision in kd ? eachindex(κs) : (qs,)))
+                    end
+                end
+                Z[J + 1] = logaddexp(Z[J + 1], v)
+            end
+        end
+    end
+    return Z
+end
 
 @testset verbose = true "PhyllotaxisFold" begin
 
@@ -325,7 +393,8 @@ twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisP
         θA = constrained_parameters(model, uA)
         @test θA.η ≈ η && θA.σκ ≈ 0.1 && θA.outlier == 0 && !haskey(θA, :m_ω)
         p = AL.stem_params(model, uA)
-        @test [p.logμκ, p.σκ, p.α] ≈ [θA.logμκ, θA.σκ, θA.α] && p.outlier === nothing
+        @test [p.logμκ, p.σκ] ≈ [θA.logμκ, θA.σκ] && p.α == θA.α && p.α isa NTuple{1} && p.outlier === nothing
+        @test collect(θA.angle_probs) ≈ [0.95, 0.05]
         @test unconstrained_parameters(model; η = η[6:end], logμκ = 1.8, σκ = 0.1, α = 0.95) ≈ uA
         @test_throws ArgumentError unconstrained_parameters(model; η = [-3.0, -2.4, -1.9, -0.8, 0.0, -0.9, -1.8, -2.6, -3.1], logμκ = 1.8, σκ = 0.1, α = 0.95) # asymmetric
         @test_throws ArgumentError unconstrained_parameters(model; η = η[6:8], logμκ = 1.8, σκ = 0.1, α = 0.95)
@@ -417,6 +486,76 @@ twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisP
         @inferred Union{Tuple{eltype(ud), Nothing}, Tuple{eltype(ud), Vector{eltype(ud)}}} AL._data_value_grad(m, ud, nothing, true)
     end
 
+    @testset "Canonical angles: one, two (default) or more, stick-breaking prior" begin
+        # the prior: M stick-breaking Betas for M + 1 angles, numbers converted, the lengths checked
+        @test PhyllotaxisPrior() isa PhyllotaxisPrior{4, 1}
+        p3 = PhyllotaxisPrior(; aα = (95, 999), bα = (5, 1), angles = (Golden_angle, Lucas_angle, π))
+        @test p3 isa PhyllotaxisPrior{4, 2} && p3.angles[3] === Float64(π)
+        @test PhyllotaxisPrior(; aα = (), bα = (), angles = Golden_angle) isa PhyllotaxisPrior{4, 0}
+        @test PhyllotaxisPrior(; aα = 90, bα = 10).aα === (90.0,)
+        @test_throws ArgumentError PhyllotaxisPrior(; aα = (95, 999), bα = (5, 1)) # two Betas, two angles
+        @test_throws ArgumentError PhyllotaxisPrior(; aα = (95,), bα = (5, 1), angles = (1.0, 2.0, 3.0))
+        @test_throws ArgumentError PhyllotaxisPrior(; angles = (Golden_angle, 2π - Golden_angle)) # the same spirals
+        @test PhyllotaxisPrior{4}() isa PhyllotaxisPrior{4, 1}
+        @test_throws ArgumentError PhyllotaxisPrior{3}()
+        # stick-breaking probabilities and their derivatives
+        lp = AL._angle_logprobs((0.9, 0.99))
+        @test collect(exp.(lp)) ≈ [0.9, 0.1 * 0.99, 0.1 * 0.01] && AL._angle_logprobs(()) == (0.0,)
+        @test [AL._dlogp_dalpha((0.9, 0.99), i, j) for i in 1:2, j in 1:3] ≈
+            ForwardDiff.jacobian(a -> collect(AL._angle_logprobs(Tuple(a))), [0.9, 0.99])'
+        # noble numbers: golden and Lucas, folded into (0, π], and the condition |ad − bc| = 1
+        @test noble_angle(1, 0, 2, 1) ≈ Golden_angle && noble_angle(1, 0, 3, 1) ≈ Lucas_angle
+        @test 0 < noble_angle(1, 1, 3, 2) ≤ π # 2π (1 + τ⁻¹) / (3 + 2τ⁻¹) folded
+        @test_throws ArgumentError noble_angle(1, 0, 2, 2)
+        # likelihood, gradient and Hessian with one and with three canonical angles
+        for (pr, M) in ((PhyllotaxisPrior(; aα = (), bα = (), angles = Golden_angle), 0), (p3, 2))
+            for outlier in (false, true)
+                m = PhyllotaxisModelAD(TWIST.angles[1:3], pr; ngrid_ϕ = 8, ngrid_κ = 4, outlier)
+                @test AL.nmodel(m) == 4 + 2 + M + outlier && length(AL._parnames(m)) == AL.nmodel(m)
+                v = prior_mean_parameters(m) .+ 0.1
+                f(w) = AL.angle_vgh(m, w, nothing, 0)[1]
+                l, g, H = AL.angle_vgh(m, v, nothing, 2)
+                @test g ≈ ForwardDiff.gradient(f, v) rtol = 1.0e-6
+                @test H ≈ ForwardDiff.hessian(f, v) rtol = 1.0e-4
+                θ = constrained_parameters(m, v)
+                @test length(θ.α) == M && length(θ.angle_probs) == M + 1 && sum(θ.angle_probs) ≈ 1
+                @test unconstrained_parameters(m; η = θ.η, θ.logμκ, θ.σκ, θ.α, θ.outlier) ≈ v
+                p = @inferred AL.stem_params(m, v)
+                fws = AL._workspace(m, Float64)
+                @inferred AL._stem_ll!(m, p, 1, 0.5, fws, zeros(AL.nmodel(m)))
+            end
+        end
+        # the twist integrated out, three angles: gradient and Hessian against central differences (the node-integrated
+        # value is a Float64 path, so ForwardDiff cannot run through it)
+        mt3 = PhyllotaxisModelAD(TWIST.angles[1:3], p3; ngrid_ϕ = 8, ngrid_κ = 4, torsion = TorsionPrior(mt = 0.0, st = 10.0, νt = 4.0, τt = 5.0))
+        u3 = prior_mean_parameters(mt3)[1:AL.nmodel(mt3)]
+        nd3 = AL._place_nodes(mt3, u3)
+        v3 = [u3; 3.5; log(2.5)]
+        _, g3, H3 = AL.twist_vgh(mt3, nd3, v3, 2)
+        E = Matrix(1.0I, length(v3), length(v3))
+        h = 1.0e-5
+        fv3(w) = AL.twist_vgh(mt3, nd3, w, 0)[1]
+        gv3(w) = AL.twist_vgh(mt3, nd3, w, 1)[2]
+        @test g3 ≈ [(fv3(v3 .+ h .* e) - fv3(v3 .- h .* e)) / 2h for e in eachcol(E)] rtol = 1.0e-5
+        @test H3 ≈ reduce(hcat, [(gv3(v3 .+ h .* e) - gv3(v3 .- h .* e)) / 2h for e in eachcol(E)]) rtol = 1.0e-4
+        # a single angle: the likelihood of the default prior with α → 1
+        mg = PhyllotaxisModelAD(TWIST.angles[1:3], PhyllotaxisPrior(; aα = (), bα = (), angles = Golden_angle); ngrid_ϕ = 8, ngrid_κ = 4)
+        m2 = PhyllotaxisModelAD(TWIST.angles[1:3]; ngrid_ϕ = 8, ngrid_κ = 4)
+        θg = constrained_parameters(mg, prior_mean_parameters(mg))
+        @test angle_loglikelihood(mg, prior_mean_parameters(mg)) ≈
+            angle_loglikelihood(m2, unconstrained_parameters(m2; η = θg.η, θg.logμκ, θg.σκ, α = 1 - 1.0e-12, θg.outlier)) rtol = 1.0e-8
+        # stems at 180° are recognised when 180° is in the list; spiral stems are not
+        sd = simulate_stems(LAW; plants = 40, organs = 30, logμκ = 1.8, α = (0.5, 0.5), angles = p3.angles, rng = Xoshiro(21))
+        m3 = PhyllotaxisModelAD(sd.angles, p3; ngrid_ϕ = 16, ngrid_κ = 4, outlier = false)
+        post = spiral_posterior(m3, unconstrained_parameters(m3; η = [-0.8, -1.9, -2.4, -3.0], logμκ = 1.8, σκ = 0.1, α = (0.5, 0.5)))
+        # (Float64(π) == π is false: π is compared exactly)
+        @test mean((p.p_angle[3] > 0.5) == (ψ == p3.angles[3]) for (p, ψ) in zip(post, sd.ψ)) ≥ 0.95
+        @test count(==(p3.angles[3]), sd.ψ) > 5
+        # the prior predictive and the simulator draw the angles of the list
+        @test all(s -> s.canonical_angle in p3.angles, sample_prior(m3; Nsample = 20, rng = Xoshiro(3)))
+        @test_throws ArgumentError simulate_stems(LAW; plants = 2, angles = p3.angles) # α: two probabilities needed
+    end
+
     @testset "Angle model: recovery of the outlier rate and of the spiral of each stem" begin
         # outliers: π_o recovered on stems whose orders come from the banded permanent (the law of the model)
         η = [-3.5, -2.5, -1.2, 0.0, -1.2, -2.5, -3.5]
@@ -446,7 +585,7 @@ twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisP
         @test_throws ErrorException PhyllotaxisFold.newton_map(nan_start, [0.0, 0.0])
         # the fit object: accessors, uncertainty and diagnostics
         @test coefnames(fA) == ["η_1", "η_2", "η_3", "log μκ", "σκ", "α", "π_o"]
-        @test coef(fA) ≈ [fA.θ.η[5:end]; fA.θ.logμκ; fA.θ.σκ; fA.θ.α; fA.θ.outlier]
+        @test coef(fA) ≈ [fA.θ.η[5:end]; fA.θ.logμκ; fA.θ.σκ; fA.θ.α...; fA.θ.outlier]
         @test dof(fA) == 7 && nobs(fA) == 30 * 35
         @test loglikelihood(fA) ≈ angle_loglikelihood(mA, fA.u)
         @test sum(stem_loglik(fA)) ≈ loglikelihood(fA) && stem_loglik(fA)[2] ≈ stem_loglik(mA, fA.u, 2)
@@ -481,8 +620,55 @@ twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisP
         sp = simulate_stems(LAW; plants = 30, organs = 30, logμκ = 1.8, α = 0.6, rng = Xoshiro(12))
         m = PhyllotaxisModelAD(sp.angles; ngrid_ϕ = 8, ngrid_κ = 4, outlier = false)
         post = spiral_posterior(m, unconstrained_parameters(m; η = [-0.8, -1.9, -2.4, -3.0], logμκ = 1.8, σκ = 0.1, α = 0.6))
-        @test mean((p.p_lucas > 0.5) == (ψ == PhyllotaxisFold.Lucas_angle) for (p, ψ) in zip(post, sp.ψ)) ≥ 0.9
+        @test mean((p.p_angle[2] > 0.5) == (ψ == PhyllotaxisFold.Lucas_angle) for (p, ψ) in zip(post, sp.ψ)) ≥ 0.9
+        @test all(p -> sum(p.p_angle) ≈ 1, post)
         @test mean((p.p_ccw > 0.5) == (o == 1) for (p, o) in zip(post, sp.o)) ≥ 0.9
+    end
+
+    @testset "Breaks: prefix permanents, the change-point recursion against brute force, and a reversed stem" begin
+        # every prefix of a forward pass, against direct permanents, in both modes
+        for logspace in (false, true)
+            ws = PermanentWorkspace(Float64, 3, 12; logspace)
+            W = randn(Xoshiro(4), 12, 7)
+            ws.w[1:12, :] .= W
+            pre = prefix_logperms!(zeros(12), ws, 12)
+            ws2 = PermanentWorkspace(Float64, 3, 12; logspace = true)
+            direct = map(1:12) do i
+                ws2.w[1:i, :] .= W[1:i, :]
+                forward!(ws2, i)
+            end
+            @test pre ≈ direct atol = 1.0e-10
+        end
+        # short stems, three canonical angles: log Z(j) exact for single and joint kinds
+        ss = simulate_stems([-1.2, -2.6, -3.4, -4.2]; plants = 6, organs = 7, logμκ = 1.8, α = 0.7, outlier = 0.02, rng = Xoshiro(3))
+        p3pr = PhyllotaxisPrior(; aα = (70, 50), bα = (30, 50), angles = (Golden_angle, Lucas_angle, π))
+        fs = fit_map(PhyllotaxisModelAD(ss.angles, p3pr; ngrid_ϕ = 6, ngrid_κ = 3))
+        for kd in ((:orientation,), (:phase,), (:precision,), (:orientation, :angle, :precision))
+            sb = spiral_breaks(fs; kind = kd, break_rate = 0.05)
+            @test sb.stems[1].logZ ≈ brute_breaks(fs, 1, kd) atol = 1.0e-9
+            @test sb.stems[2].logZ[1] ≈ stem_loglik(fs)[2] # no break: the stem's likelihood
+            @test all(x -> sum(x.p_breaks) ≈ 1 && x.p_cut[1] == 0 && all(0 .≤ x.p_cut .≤ 1 + 1.0e-12), sb.stems)
+        end
+        @test_throws ArgumentError spiral_breaks(fs; kind = :twist)
+        @test_throws ArgumentError spiral_breaks(fs; kind = :offset)
+        @test_throws ArgumentError spiral_breaks(fs; break_rate = 1.5)
+        # a stem that reverses half-way (a new phase) among stems that do not: found, and the cut placed
+        rng = Xoshiro(11)
+        sr = simulate_stems(LAW; plants = 12, organs = 36, logμκ = 2.2, α = 1.0, rng)
+        y = copy(sr.angles[1])
+        o, ψ, ϕ2 = sr.o[1], sr.ψ[1], 1.3
+        θold(j) = sr.ϕ[1] + o * (j - 1) * ψ
+        θnew(j) = (j < 19 ? θold(j) : ϕ2 - o * (j - 1) * ψ)
+        sr.angles[1] .= [mod2pi(y[p] + θnew(sr.orders[1][p]) - θold(sr.orders[1][p])) for p in 1:36]
+        fr = fit_map(PhyllotaxisModelAD(sr.angles; ngrid_ϕ = 16, ngrid_κ = 4))
+        br = spiral_breaks(fr)
+        @test br.stems[1].logBF > 5 && 1 - br.stems[1].p_breaks[1] > 0.95
+        @test sum(br.stems[1].p_cut[18:20]) > 0.8
+        @test br.stems[1].p_part[5, 1 + (o == 1)] > 0.95 && br.stems[1].p_part[30, 1 + (o == -1)] > 0.95
+        @test all(x -> 1 - x.p_breaks[1] < 0.5, br.stems[2:end])
+        @test occursin("break rate", sprint(show, MIME"text/plain"(), br))
+        # each kind at once
+        @test keys(spiral_breaks(fs; kind = :each, break_rate = 0.05)) == (:phase, :orientation, :angle, :precision)
     end
 
     @testset "Torsion: coordinates, corrected angles, quadrature, per-stem rates" begin
@@ -913,6 +1099,15 @@ twist_model(; torsion = nothing) = PhyllotaxisModelAD(TWIST.angles, PhyllotaxisP
         sim = doc_sandbox(; m = PhyllotaxisModelAD(tiny(11).angles; ngrid_ϕ = 8, ngrid_κ = 4))
         run_blocks!(sim, "simulation.md", 1:4; subs = ["for _ in 1:200]" => "for _ in 1:3]"])
         @test length(sim.sim.angles) == 70 && 0 ≤ sim.observed ≤ 1 && length(sim.replicated) == 3
+        # canonical angles: the priors, a noble angle, and the example at 180°
+        ang = doc_sandbox()
+        run_blocks!(ang, "canonical_angles.md", 1:3; subs = ["plants = 40, organs = 40" => "plants = 8, organs = 25"])
+        @test ang.prior isa PhyllotaxisPrior{4, 2} && ang.golden_only isa PhyllotaxisPrior{4, 0} && length(ang.p180) == 8
+        # breaks of the spiral: two groups fitted and scanned
+        t1, t2 = tiny(13), tiny(14)
+        brk = doc_sandbox(; angles_wt = t1.angles, x_wt = t1.x, angles_mutant = t2.angles, x_mutant = t2.x)
+        run_blocks!(brk, "breaks.md", 1:1)
+        @test length(brk.p_any) == 8 && brk.b_mutant isa SpiralBreaks
         # the numbers quoted on the timing page
         tim = doc_sandbox()
         run_blocks!(tim, "timing.md", 1:1)

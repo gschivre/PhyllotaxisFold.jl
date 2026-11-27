@@ -193,7 +193,7 @@ const _AnyFit = PhyllotaxisFit{<:PhyllotaxisModelAD}
 
 function _parnames(m::PhyllotaxisModelAD)
     return vcat(
-        ["η_$d" for d in 1:(m.k)], ["log μκ", "σκ", "α"], (_has_outlier(m) ? ["π_o"] : String[]),
+        ["η_$d" for d in 1:(m.k)], ["log μκ", "σκ"], (_nalpha(m) == 1 ? ["α"] : ["α_$i" for i in 1:_nalpha(m)]), (_has_outlier(m) ? ["π_o"] : String[]),
         (_has_twist(m) ? ["m_ω", "s_ω"] : String[])
     )
 end

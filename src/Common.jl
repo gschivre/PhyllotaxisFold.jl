@@ -103,3 +103,21 @@ function _finite_result(res)
     isfinite(Optim.minimum(res)) || error("the objective is not finite at the starting point, $(Optim.minimizer(res))")
     return res
 end
+
+"""
+    noble_angle(a, b, c, d)
+
+The divergence angle (radians) of the noble number `(a + b τ⁻¹) / (c + d τ⁻¹)`, τ the golden mean and |ad − bc| = 1: 2π
+times the number, folded into (0, π] (an angle ψ and 2π − ψ give the same spirals with the opposite orientation). The
+golden angle is `noble_angle(1, 0, 2, 1)` and the Lucas angle `noble_angle(1, 0, 3, 1)`; other branches of the
+phyllotaxis bifurcation diagram converge towards the other noble numbers. For the `angles` of `PhyllotaxisPrior`.
+"""
+function noble_angle(a::Integer, b::Integer, c::Integer, d::Integer)
+    abs(a * d - b * c) == 1 || throw(ArgumentError("a noble number (a + b τ⁻¹) / (c + d τ⁻¹) needs |ad − bc| = 1"))
+    τi = 2 / (1 + sqrt(5)) # τ⁻¹
+    den = c + d * τi
+    ψ = mod(2π * (a + b * τi) / den, 2π)
+    ψ = (ψ > π ? 2π - ψ : ψ)
+    ψ > 0 || throw(ArgumentError("the noble number is an integer: no divergence"))
+    return ψ
+end

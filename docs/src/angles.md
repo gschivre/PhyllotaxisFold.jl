@@ -14,7 +14,8 @@ difficulty of [§1.3](problem.md#1.3-Why-the-order-cannot-simply-be-read-off).
 
 where ``\phi`` is the angle of the first site, ``o = \pm 1`` the orientation of the spiral and ``\psi`` the
 divergence. The divergence is the golden angle (``\approx 137.5^\circ``) with probability ``\alpha``, and the Lucas
-angle (``\approx 99.5^\circ``) otherwise. ``\phi`` is uniform on the circle, and each orientation has probability ½.
+angle (``\approx 99.5^\circ``) otherwise. (Other lists of canonical angles, or a single fixed one, are possible:
+[Canonical angles](canonical_angles.md).) ``\phi`` is uniform on the circle, and each orientation has probability ½.
 These three quantities are specific to each stem, unknown, and integrated out ([§2.6](angles.md#2.6-Integrating-out-the-unknowns-of-each-stem)).
 
 A permutation moves *organs* between sites, not the sites themselves: the organ at height ``p`` is expected at
@@ -77,6 +78,13 @@ a divergence ``\psi + \delta`` moves the organ of site ``j`` by ``o\,(j - 1)\,\d
 orientation*, while a twist rotates it by ``\omega_s x_p`` whatever the orientation. Clockwise and counter-clockwise
 stems tell them apart: a shifted divergence pushes them in opposite directions, a twist in the same one. A twist also
 follows the length of the stem (long internodes rotate more), a divergence the organ count.
+
+**Why fit the twist.** A twist of 1°/mm seems small, but the model reads absolute angles, and they accumulate it: an
+organ 60 mm up the stem is turned by 60°. Without a twist, the only way to explain this drift is to move organs to
+other sites, so it is read as permutations. The same holds for a single stem whose divergence is slightly off the
+canonical angle: within one stem, which has one orientation, this drift looks like a twist, and the stem's twist rate
+takes it up (only a shift shared by all the stems is told apart, as above). Divergences would hide these drifts;
+absolute angles do not. Fit the twist even for stems said to be untwisted.
 
 ![The twist of the example stem](figures/e2_example_twist.png)
 
@@ -150,7 +158,7 @@ them makes the orders look more certain than they are: another offset or twist, 
 the same angles, and a precision fixed too high turns noise into permutations. Integrating keeps every explanation, in
 proportion to its probability.
 
-The orientation and the divergence take four combinations, summed exactly. The other three integrals are
+The orientation and the divergence take four combinations (two per canonical angle), summed exactly. The other three integrals are
 one-dimensional, each with a rule suited to its integrand:
 
 - **the offset** ``\phi``, uniform on the circle: the rectangle rule on `ngrid_ϕ` equally spaced nodes (32 by

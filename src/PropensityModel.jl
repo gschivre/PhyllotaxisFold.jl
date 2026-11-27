@@ -3,7 +3,7 @@
 # The propensity model: the angle model with free log-propensities η (one κ per stem from a log-normal population,
 # softplus prior on η), optionally outlier angles and a stem twist. Parameters (constrained space, `coef`)
 #
-#     [η_1..η_k, log μκ, σκ, α (, π_o) (, m_ω, s_ω)]
+#     [η_1..η_k, log μκ, σκ, α_1..α_M (, π_o) (, m_ω, s_ω)]   (M + 1 canonical angles; M = 1 by default)
 #
 # with symmetric costs `η_{−d} = η_d` (`π_o`: probability of an outlier angle, with `outlier = true`; `m_ω`, `s_ω`: the
 # population law of the per-stem twist rates, with a twist prior `torsion`). With free early and late costs, the overall
@@ -22,40 +22,91 @@
 const _DEFAULT_GAPS = η_prior((0.5, 1.25, 2.0, 3.75), (0.1, 0.75, 2.0, 4.0))
 
 """
-    PhyllotaxisPrior(; μΔ, σΔ, mκ = 1.5, sκ = 0.5, νκ = 4, τκ = 0.25, aα = 95, bα = 5, aπ = 1, bπ = 49)
+    PhyllotaxisPrior(; μΔ, σΔ, mκ = 1.5, sκ = 0.5, νκ = 4, τκ = 0.25, aα = (95,), bα = (5,),
+        angles = (Golden_angle, Lucas_angle), aπ = 1, bπ = 49)
 
 Prior of the propensity model; its band k is the length N of the gap tuples (k = 4 by default):
 
 - `η_1..η_k`: `LogNormalSoftPlus(μΔ, σΔ)`, gaps with means (0.5, 1.25, 2, 3.75) and variances (0.1, 0.75, 2, 4) by
   default (`η_prior`);
 - log μκ ~ N(mκ, sκ²) and σκ ~ half-t(νκ, τκ): the log-normal population of the per-stem κ;
-- α ~ Beta(aα, bα): the probability of the golden spiral (else the Lucas one);
+- the canonical angle of each stem, one of the M + 1 `angles` (radians), with probabilities set by M stick-breaking
+  probabilities `α_j ~ Beta(aα[j], bα[j])`: α_1 is the probability of the first angle, α_2 that of the second among
+  the stems not at the first, and so on; the last angle takes what is left. The default, one Beta(95, 5) and the angles
+  (golden, Lucas), is the golden spiral with probability α ≈ 0.95, else the Lucas one. `aα = bα = ()` with a single
+  angle fixes the canonical angle (no α). List the angles from the most to the least expected: a rare angle is given
+  a Beta that holds its α near 1 at the previous step (e.g. `aα = (95, 999)`, `bα = (5, 1)` for (golden, Lucas, π)).
+  `noble_angle` builds angles from noble numbers;
 - `π_o ~ Beta(aπ, bπ)`: the outlier probability (the default Beta(1, 49) has mean 2 %, median 1.4 %), unused with
   `outlier = false`.
 
-The twist prior is given to the model separately (`TorsionPrior`, keyword `torsion`).
+Numbers are converted to `Float64`; a single number for `aα`, `bα` or `angles` is a 1-tuple.
+`PhyllotaxisPrior{N}(; ...)` also checks the band. The twist prior is given to the model separately (`TorsionPrior`, keyword `torsion`).
 """
-Base.@kwdef struct PhyllotaxisPrior{N}
+struct PhyllotaxisPrior{N, M}
     # LogNormal prior on the gaps Δ_d = η_{d−1} − η_d (mean m, variance v of each gap)
-    μΔ::NTuple{N, Float64} = _DEFAULT_GAPS[1]
-    σΔ::NTuple{N, Float64} = _DEFAULT_GAPS[2]
+    μΔ::NTuple{N, Float64}
+    σΔ::NTuple{N, Float64}
 
     # log(μκ) mean and standard deviation
-    mκ::Float64 = 1.5
-    sκ::Float64 = 0.5
+    mκ::Float64
+    sκ::Float64
 
     # Half-t prior on σκ
-    νκ::Float64 = 4.0
-    τκ::Float64 = 0.25
+    νκ::Float64
+    τκ::Float64
 
-    # Beta prior on the Golden vs Lucas sequence probability
-    aα::Float64 = 95.0
-    bα::Float64 = 5.0
+    # the canonical angles (radians) and the Beta priors of their stick-breaking probabilities
+    aα::NTuple{M, Float64}
+    bα::NTuple{M, Float64}
+    angles::Tuple{Float64, Vararg{Float64, M}}
 
     # Beta prior on the outlier probability π_o (unused with `outlier = false`): mean 2 %
-    aπ::Float64 = 1.0
-    bπ::Float64 = 49.0
+    aπ::Float64
+    bπ::Float64
 end
+
+_ftuple(x::Real) = (Float64(x),)
+_ftuple(x) = Tuple(Float64(v) for v in x)
+
+function PhyllotaxisPrior(;
+        μΔ = _DEFAULT_GAPS[1], σΔ = _DEFAULT_GAPS[2], mκ::Real = 1.5, sκ::Real = 0.5, νκ::Real = 4.0, τκ::Real = 0.25,
+        aα = (95.0,), bα = (5.0,), angles = (Golden_angle, Lucas_angle), aπ::Real = 1.0, bπ::Real = 49.0
+    )
+    μΔ, σΔ, aα, bα, ψ = _ftuple(μΔ), _ftuple(σΔ), _ftuple(aα), _ftuple(bα), _ftuple(angles)
+    length(μΔ) == length(σΔ) || throw(ArgumentError("μΔ and σΔ: one entry per cost η_1..η_k"))
+    length(aα) == length(bα) || throw(ArgumentError("aα and bα: one Beta per stick-breaking probability, as many of each"))
+    length(ψ) == length(aα) + 1 ||
+        throw(ArgumentError("angles: M + 1 canonical angles for M = $(length(aα)) Betas in aα, bα (got $(length(ψ)) angles)"))
+    all(>(0), aα) && all(>(0), bα) || throw(ArgumentError("aα, bα: the Beta parameters must be positive"))
+    for i in eachindex(ψ), j in 1:(i - 1)
+        # ψ and 2π − ψ give the same sites with the opposite orientation: the model could not tell them apart
+        (_samesite(ψ[i], ψ[j]) || _samesite(ψ[i], -ψ[j])) &&
+            throw(ArgumentError("angles $(j) and $(i) give the same spirals (equal, or opposite, modulo 2π)"))
+    end
+    return PhyllotaxisPrior{length(μΔ), length(aα)}(μΔ, σΔ, mκ, sκ, νκ, τκ, aα, bα, ψ, aπ, bπ)
+end
+function PhyllotaxisPrior{N}(; kw...) where {N}
+    p = PhyllotaxisPrior(; kw...)
+    length(p.μΔ) == N || throw(ArgumentError("PhyllotaxisPrior{$(N)}: the gap tuples μΔ, σΔ have $(length(p.μΔ)) entries"))
+    return p
+end
+_samesite(a, b) = abs(sin((a - b) / 2)) < 1.0e-9
+
+# log-probabilities of the M + 1 angles from the M stick-breaking α: log p_j = Σ_{i<j} log(1 − α_i) + log α_j
+function _angle_logprobs(α::Tuple{T, Vararg{T, M}}) where {T, M}
+    return ntuple(Val(M + 2)) do j
+        s = zero(T)
+        for i in 1:min(j - 1, M + 1)
+            s += log1p(-α[i])
+        end
+        j ≤ M + 1 ? s + log(α[j]) : s
+    end
+end
+_angle_logprobs(::Tuple{}) = (0.0,)
+_angle_logprobs(α::Real) = _angle_logprobs((α,)) # (a single α: the golden/Lucas pair)
+# ∂ log p_j / ∂α_i: 1/α_i if i = j, −1/(1 − α_i) if i < j, 0 if i > j
+_dlogp_dalpha(α, i::Int, j::Int) = (i == j ? inv(α[i]) : (i < j ? -inv(1 - α[i]) : zero(α[i])))
 
 # Type parameters: T the angles, N the band k, O whether angles can be outliers (a Bool), P the twist prior
 # (`TorsionPrior`, or `Nothing` without twist): `fit_map` and the likelihood dispatch on them.
@@ -64,10 +115,10 @@ struct PhyllotaxisModelAD{T, N, O, P <: Union{Nothing, TorsionPrior}, B, Gr <: N
     k::Int # permutation bandwidth = N
     ngrid_ϕ::Int
     ngrid_κ::Int
-    grid::Gr # (; k, ngrid_ϕ, ngrid_κ, ϕ_grid, κ_nodes, κ_logweights): the nuisance grid as `stem_loglik!` reads it
+    grid::Gr # (; k, ngrid_ϕ, ngrid_κ, ϕ_grid, κ_nodes, κ_logweights, angles), as `stem_loglik!` reads it
     logspace::Bool
     n_max::Int
-    prior::PhyllotaxisPrior{N}
+    prior::PhyllotaxisPrior{N} # (abstract in M: the likelihood reads the angles from `grid`)
     outlier::Bool # = O
     torsion::P # twist hyperprior, or nothing (no twist)
     torsion_x::Vector{Vector{Float64}} # twist coordinate of each organ of each stem
@@ -112,9 +163,9 @@ function PhyllotaxisModelAD(
     κ_nodes, κ_weights = gausshermite(ngrid_κ; normalize = true)
     grid = (;
         k = N, ngrid_ϕ, ngrid_κ, ϕ_grid = collect(range(0, 2π; length = ngrid_ϕ + 1)[1:ngrid_ϕ]), κ_nodes,
-        κ_logweights = log.(κ_weights),
+        κ_logweights = log.(κ_weights), angles = prior.angles,
     )
-    binv = Bijectors.inverse(_bijector(N, outlier))
+    binv = Bijectors.inverse(_bijector(N, outlier, length(prior.aα)))
     return PhyllotaxisModelAD{T, N, outlier, typeof(torsion), typeof(binv), typeof(grid)}(
         data, N, ngrid_ϕ, ngrid_κ, grid, logspace, n_max, prior, outlier, torsion, tx, binv, PermutationGraph(N),
         WorkspacePool{Float64}(), Dict{DataType, Any}(), ReentrantLock(), Ref{Union{Nothing, TorsionNodes}}(nothing)
@@ -130,12 +181,14 @@ end
 
 _has_outlier(::PhyllotaxisModelAD{T, N, O}) where {T, N, O} = O
 _has_twist(::PhyllotaxisModelAD{T, N, O, P}) where {T, N, O, P} = P !== Nothing
-nmodel(m::PhyllotaxisModelAD) = m.k + 3 + _has_outlier(m)
+# M, the number of stick-breaking α, from the grid's type
+_nalpha(::PhyllotaxisModelAD{T, N, O, P, B, Gr}) where {T, N, O, P, B, Gr} = fieldcount(fieldtype(Gr, :angles)) - 1
+nmodel(m::PhyllotaxisModelAD) = m.k + 2 + _nalpha(m) + _has_outlier(m)
 
 # Stacked bijector of the model parameters, a tuple of bijectors (type-stable): softplus gaps for η, identity, log,
-# logit (α, and π_o with outliers)
-function _bijector(k::Int, outlier::Bool)
-    d = (Normal(0.0, 1.0), _halft(1.0, 1.0), Beta(1.0, 1.0))
+# logit (each α_j, and π_o with outliers)
+function _bijector(k::Int, outlier::Bool, M::Int)
+    d = (Normal(0.0, 1.0), _halft(1.0, 1.0), ntuple(_ -> Beta(1.0, 1.0), M)...)
     dists = (LogNormalSoftPlus(zeros(k), ones(k)), (outlier ? (d..., Beta(1.0, 1.0)) : d)...)
     ranges = (1:k, ntuple(i -> (k + i):(k + i), length(dists) - 1)...)
     return Bijectors.Stacked(map(Bijectors.bijector, dists), ranges)
@@ -161,7 +214,9 @@ end
 function stem_params(m::PhyllotaxisModelAD, u::AbstractVector)
     k = m.k
     θ = m.binv(_umodel(m, u))
-    return (; η = full_eta(m, θ), logμκ = θ[k + 1], σκ = θ[k + 2], α = θ[k + 3], outlier = (_has_outlier(m) ? θ[k + 4] : nothing))
+    M = _nalpha(m)
+    α = ntuple(i -> θ[k + 2 + i], Val(M))
+    return (; η = full_eta(m, θ), logμκ = θ[k + 1], σκ = θ[k + 2], α, outlier = (_has_outlier(m) ? θ[k + 3 + M] : nothing))
 end
 # (the chunk size of ForwardDiff is chosen at run time: its result type is asserted)
 params_jacobian(m::PhyllotaxisModelAD, u::AbstractVector{T}) where {T} = ForwardDiff.jacobian(m.binv, _umodel(m, u))::Matrix{T}
@@ -170,7 +225,7 @@ function accumulate_gradθ!(gθ::AbstractVector, m::PhyllotaxisModelAD, g::Abstr
     @inbounds for d in 1:k
         gθ[d] += wgt * (g[k + 1 + d] + g[k + 1 - d])
     end
-    for i in 1:(3 + _has_outlier(m))
+    for i in 1:(2 + _nalpha(m) + _has_outlier(m))
         gθ[k + i] += wgt * g[K + i]
     end
     return gθ
@@ -199,10 +254,11 @@ end
 # prior of (η_1..η_k)
 _eta_dist(model) = LogNormalSoftPlus(collect(model.prior.μΔ), collect(model.prior.σΔ))
 
-# priors of the other parameters, in the order of θ: log μκ, σκ, α (π_o with outliers; m_ω, s_ω with the twist)
+# priors of the other parameters, in the order of θ: log μκ, σκ, α_1..α_M (π_o with outliers; m_ω, s_ω with the twist)
 function _nuisance_dists(model::PhyllotaxisModelAD)
     (; mκ, sκ, νκ, τκ, aα, bα, aπ, bπ) = model.prior
-    d = (Normal(mκ, sκ), _halft(νκ, τκ), Beta(aα, bα))
+    # (M from the grid's concrete type: the model's prior field is abstract in M)
+    d = (Normal(mκ, sκ), _halft(νκ, τκ), ntuple(i -> Beta(aα[i], bα[i]), Val(_nalpha(model)))...)
     d = (_has_outlier(model) ? (d..., Beta(aπ, bπ)) : d)
     _has_twist(model) || return d
     (; mt, st, νt, τt) = model.torsion
@@ -238,8 +294,8 @@ _halft_sd(ν, τ) = (ν > 2 ? sqrt(max(τ^2 * ν / (ν - 2) - _halft_mean(ν, τ
 function _logprior(model::PhyllotaxisModelAD, θ::AbstractVector)
     k = model.k
     d = _nuisance_dists(model)
-    lp = logpdf(_eta_dist(model), view(θ, 1:k)) + logpdf(d[1], θ[k + 1]) + logpdf(d[2], θ[k + 2]) + logpdf(d[3], θ[k + 3])
-    return (_has_outlier(model) ? lp + logpdf(d[4], θ[k + 4]) : lp)
+    G = Val(2 + _nalpha(model) + _has_outlier(model))
+    return logpdf(_eta_dist(model), view(θ, 1:k)) + sum(ntuple(i -> logpdf(d[i], θ[k + i]), G))
 end
 # and of the twist hyperparameters (m_ω, s_ω)
 function _logprior_twist(model::PhyllotaxisModelAD, mω, sω)
@@ -266,7 +322,8 @@ end
 """
     logdensity(model, θ)
 
-Log posterior in the constrained space θ (`coef`; dimension `k + 3`, + 1 with outliers, + 2 with the twist), the objective
+Log posterior in the constrained space θ (`coef`; dimension `k + 2 + M` for M + 1 canonical angles, + 1 with outliers,
++ 2 with the twist), the objective
 of `fit_map` up to the Jacobian of the parameter map. Per stem: `log ∫ N(log κ) ½ Σ_o Σ_ψ p(ψ) (1/2π) ∫ dϕ perm(A) / (perm(W)
 (2π I₀(κ))ⁿ)`, `A_{i, i+d} = exp(η_d + κ cos(y_i − ϕ − o (i + d − 1) ψ))`; rectangle rule in ϕ, Gauss–Hermite in log κ.
 With the twist, each stem's rate is integrated over the quadrature nodes placed by `fit_map` (fit the model first).
@@ -305,12 +362,14 @@ end
 """
     constrained_parameters(model, u)
 
-(; η, logμκ, σκ, α, outlier) from the unconstrained u (+ `m_ω`, `s_ω` with the twist): η the full 2k + 1 log-propensities,
-outlier = `π_o`, or 0 without outliers.
+(; η, logμκ, σκ, α, outlier, `angle_probs`) from the unconstrained u (+ `m_ω`, `s_ω` with the twist): η the full 2k + 1
+log-propensities, α the M stick-breaking probabilities (a tuple, `()` for a single canonical angle), outlier = `π_o`, or
+0 without outliers, and `angle_probs` the probability of each canonical angle.
 """
 function constrained_parameters(model::PhyllotaxisModelAD, u::AbstractVector)
     p = stem_params(model, u)
-    nt = (; p.η, p.logμκ, p.σκ, p.α, outlier = (p.outlier === nothing ? zero(p.α) : p.outlier))
+    nt = (; p.η, p.logμκ, p.σκ, p.α, outlier = (p.outlier === nothing ? zero(p.logμκ) : p.outlier),
+        angle_probs = exp.(_angle_logprobs(p.α)))
     _has_twist(model) || return nt
     G = nmodel(model)
     return (; nt..., m_ω = u[G + 1], s_ω = exp(u[G + 2]))
@@ -320,12 +379,13 @@ end
     unconstrained_parameters(model; η, logμκ, σκ, α, outlier, m_ω, s_ω)
     unconstrained_parameters(model, θ::AbstractVector)
 
-u from named values (η: `η_1..η_k`, or the full 2k + 1 vector, symmetric, `η_0 = 0`; outlier, `m_ω`, `s_ω` default to
-their prior means and are used only by a model that has them), or from the flat constrained vector θ (`coef`).
+u from named values (η: `η_1..η_k`, or the full 2k + 1 vector, symmetric, `η_0 = 0`; α: the M stick-breaking
+probabilities, a tuple or vector, or a number when M = 1; α, outlier, `m_ω`, `s_ω` default to their prior means and
+are used only by a model that has them), or from the flat constrained vector θ (`coef`).
 """
 function unconstrained_parameters(
-        model::PhyllotaxisModelAD; η, logμκ, σκ, α, outlier = mean(Beta(model.prior.aπ, model.prior.bπ)), m_ω = nothing,
-        s_ω = nothing
+        model::PhyllotaxisModelAD; η, logμκ, σκ, α = map((a, b) -> a / (a + b), model.prior.aα, model.prior.bα),
+        outlier = mean(Beta(model.prior.aπ, model.prior.bπ)), m_ω = nothing, s_ω = nothing
     )
     k = model.k
     if length(η) == 2k + 1
@@ -334,7 +394,9 @@ function unconstrained_parameters(
         η = η[(k + 2):end]
     end
     length(η) == k || throw(ArgumentError("η: k = $(k) costs η_1..η_k, or the full vector of 2k + 1"))
-    θ = vcat(η, [logμκ, σκ, α], (_has_outlier(model) ? [outlier] : Float64[]))
+    αv = (α isa Real ? [α] : collect(α))
+    length(αv) == _nalpha(model) || throw(ArgumentError("α: $(_nalpha(model)) stick-breaking probabilities"))
+    θ = vcat(η, [logμκ, σκ], αv, (_has_outlier(model) ? [outlier] : Float64[]))
     if _has_twist(model)
         pm = prior_mean(model)
         θ = vcat(θ, something(m_ω, pm[end - 1]), something(s_ω, pm[end]))
@@ -421,17 +483,18 @@ Returns one (; data, permutation, `offset_angle`, orientation, `canonical_angle`
 function sample_prior(model::PhyllotaxisModelAD{T}; n::Int = round(Int, mean(map(length, model.data))), Nsample::Int = 1, rng::AbstractRNG = Random.default_rng()) where {T}
     (; k, logspace) = model
     dists = _nuisance_dists(model)
-    dlogμκ, dσκ, dα = dists[1], dists[2], dists[3]
+    M = _nalpha(model)
+    dlogμκ, dσκ, dα = dists[1], dists[2], dists[3:(2 + M)]
     x = torsion_coordinate(n)
     ws = PermanentWorkspace(Float64, k, n; logspace = logspace)
     return map(1:Nsample) do _
         toeplitz_weights!(ws, full_eta(model, rand(rng, _eta_dist(model))), n)
         σ = sample_permutation!(rng, ws, n)
         κ = clamp(rand(rng, LogNormal(rand(rng, dlogμκ), rand(rng, dσκ))), 1.0e-3, 1.0e3) # for numerical stability
-        ψ = (rand(rng, Bernoulli(rand(rng, dα))) ? Golden_angle : Lucas_angle)
+        ψ = _draw_angle(rng, Tuple(rand(rng, d) for d in dα), model.prior.angles)
         ϕ = rand(rng, Uniform(0.0, 2π))
         o = (rand(rng, Bernoulli(0.5)) ? 1 : -1)
-        πo = (_has_outlier(model) ? rand(rng, dists[4]) : 0.0)
+        πo = (_has_outlier(model) ? rand(rng, dists[3 + M]) : 0.0)
         ω = (_has_twist(model) ? rand(rng, Normal(rand(rng, dists[end - 1]), rand(rng, dists[end]))) : 0.0)
         bad = [rand(rng) < πo for _ in 1:n]
         y = T[bad[i] ? 2π * rand(rng) : mod2pi(rand(rng, VonMises(mod2pi(ϕ + o * (σ[i] - 1) * ψ + deg2rad(ω) * x[i]), κ))) for i in 1:n]

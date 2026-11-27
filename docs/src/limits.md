@@ -6,7 +6,7 @@ sample size, per-stem terms that disagree with each other.
 
 | assumption | where | what would break it, and how to check |
 |---|---|---|
-| organs sit on a regular spiral; noise acts on timing, not on positions | [§2.1](angles.md#2.1-The-spiral) | missed organs are not modelled; a grossly wrong angle is caught as an outlier ([§2.4](angles.md#2.4-Outlier-angles)), or appears as a long displacement with `outlier = false` |
+| organs sit on a regular spiral; noise acts on timing, not on positions | [§2.1](angles.md#2.1-The-spiral) | a spiral that reverses or changes its angle along the stem: `spiral_breaks` ([Breaks of the spiral](breaks.md)); missed organs are not modelled, but a missed organ shows up as a `:phase` break ([Missed organs](breaks.md#Missed-organs)); a grossly wrong angle is caught as an outlier ([§2.4](angles.md#2.4-Outlier-angles)), or appears as a long displacement with `outlier = false` |
 | von Mises angular noise, one precision per stem | [§2.2](angles.md#2.2-The-noise) | a broad but not uniform error (e.g. angles off by a fraction of the divergence); errors that add up from site to site (sites placed relative to the previous one) may be read as displacements of two or three sites ([§6.2](validation.md#6.2-Sites-that-wander)) |
 | one twist rate per stem, Normal across stems | [§2.3](angles.md#2.3-The-twist) | a tapering stem makes the rate drift along the stem |
 | displacements bounded by ``k = 4`` | [§3.2](orders.md#3.2-The-band) | posterior mass at ``\lvert d\rvert = k``; refit with a larger ``k`` |

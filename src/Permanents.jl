@@ -32,7 +32,7 @@ _fullvalue(x) = (x isa ForwardDiff.Dual ? _fullvalue(ForwardDiff.value(x)) : x)
 @static if VERSION >= v"1.11"
     eval(
         Meta.parse(
-            "public PermutationGraph, PermanentWorkspace, toeplitz_weights!, forward!, forward_linear!, " *
+            "public PermutationGraph, PermanentWorkspace, toeplitz_weights!, forward!, forward_linear!, prefix_logperms!, " *
                 "backward!, sample_permutation!, map_permutation, logprob_permutation, cycle_lengths"
         )
     )
@@ -334,6 +334,63 @@ function _scaled_dp!(ws::PermanentWorkspace{T}, n::Int, logZ) where {T}
         # one state is reachable after the last step (all columns used): F_end = 1 up to rounding
         return (true, logZ + log(F[g.end_s, n + 1]))
     end
+end
+
+"""
+    prefix_logperms!(out, ws, n)
+
+The log-permanents of every prefix of the log-weights in ws.w, from one forward pass: `out[i]` is the log of the summed
+weight of the orders of rows 1..i that use exactly the columns 1..i (the state of the forward pass in which no
+column beyond i is used yet), for i = 1..n; `out[n]` is `forward!`'s value. Starting the weights at a later row a (rows
+a..n copied to the top of ws.w) gives the segments [a, b] for every b. Float64 weights; scaled pass with the
+log-space fallback of `forward!`.
+"""
+function prefix_logperms!(out::AbstractVector, ws::PermanentWorkspace{Float64}, n::Int)
+    ws.wstale[] = false
+    if !ws.logspace && !_isneginf(_scale_rows_log!(ws, n)) && _scaled_prefix!(out, ws, n)
+        ws.inlog[] = false
+        return out
+    end
+    _forward_log!(ws, n)
+    ws.inlog[] = true
+    @inbounds for i in 1:n
+        out[i] = ws.F[ws.g.start_s, i + 1]
+    end
+    return out
+end
+# the scaled pass of `_scaled_dp!`, keeping the log-scale of every step: false when it cannot be trusted
+function _scaled_prefix!(out, ws::PermanentWorkspace{Float64}, n::Int)
+    (; g, F, ew, lrow) = ws
+    (; M, in_ptr, in_src, in_col) = g
+    @inbounds begin
+        fill!(view(F, :, 1), 0.0)
+        F[g.start_s, 1] = 1.0
+        deficit, acc = 0.0, 0.0
+        for i in 1:n
+            c = 0.0
+            for t in 1:M
+                a = 0.0
+                for e in in_ptr[t]:(in_ptr[t + 1] - 1)
+                    a += F[in_src[e], i] * ew[i, in_col[e]]
+                end
+                F[t, i + 1] = a
+                c += a
+            end
+            (c > SCALED_STEP_MIN) || return false
+            lc = log(c)
+            deficit -= min(0.0, lc)
+            (deficit ≤ SCALED_DEFICIT_MAX) || return false
+            acc += lrow[i] + lc
+            ic = inv(c)
+            for s in 1:M
+                F[s, i + 1] *= ic
+            end
+            f = F[g.start_s, i + 1]
+            f > 0 || return false # (an underflowed prefix: the log-space pass instead)
+            out[i] = acc + log(f)
+        end
+    end
+    return true
 end
 
 # plain Float64 value of a real or dual number, for the underflow bookkeeping

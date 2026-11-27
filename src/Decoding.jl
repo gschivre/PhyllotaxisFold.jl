@@ -165,7 +165,7 @@ function _joint_best(m, p, s::Int, ω::Real, lpω::Real, fws::StemWorkspace; Δ:
     st = _stem_state(m, p, s, ω, fws)
     (; n, grid) = st
     k = grid.k
-    best = (; score = -Inf, σ = collect(1:n), ω, ϕ = 0.0, o = 1, ψ = Golden_angle, κ = 0.0)
+    best = (; score = -Inf, σ = collect(1:n), ω, ϕ = 0.0, o = 1, ψ = grid.angles[1], κ = 0.0)
     top = maximum(st.P)
     for q in 1:grid.ngrid_κ, cb in axes(st.P, 1)
         (st.P[cb, q] < top - Δ) && continue
@@ -187,9 +187,9 @@ end
     spiral_posterior(fit)
     spiral_posterior(model, u; ω)
 
-Posterior of the spiral of each stem, summed over the order, ϕ, κ and the twist rate: one (; `p_lucas`, `p_ccw`) per
-stem, P(ψ = Lucas angle | angles) and P(o = +1 | angles) (o = +1: the site angles increase, a counter-clockwise
-spiral). Only forward passes (cheaper than `order_posterior`). Given parameters u, `ω` (one rate per stem, degrees per unit of the
+Posterior of the spiral of each stem, summed over the order, ϕ, κ and the twist rate: one (; `p_angle`, `p_ccw`) per
+stem, the posterior probability of each canonical angle of the prior (a tuple, in the order of its `angles`: by
+default (golden, Lucas)) and P(o = +1 | angles) (o = +1: the site angles increase, a counter-clockwise spiral). Only forward passes (cheaper than `order_posterior`). Given parameters u, `ω` (one rate per stem, degrees per unit of the
 coordinate) fixes each stem's twist instead of integrating it.
 """
 spiral_posterior(fit::PhyllotaxisFit) = _spiral_posterior(fit.model, fit.u, _nodes(fit))
@@ -199,17 +199,18 @@ function _spiral_posterior(m, u, nodes)
     p = stem_params(m, uf)
     return _per_stem(m, Float64) do s, fws
         ω, lpω = _twist_rule(m, uf, s, nodes)
-        L = fill(-Inf, 2, 2) # [ψ golden / Lucas, o = −1 / +1]
+        nψ = length(m.grid.angles)
+        L = fill(-Inf, nψ, 2) # [canonical angle, o = −1 / +1]
         for j in eachindex(ω)
             st = _stem_state(m, p, s, ω[j], fws)
             for q in 1:st.grid.ngrid_κ, cb in axes(st.P, 1)
                 cmb = _combo(st.grid, cb, p.α)
-                iψ, io = (cmb.ψ == Golden_angle ? 1 : 2), (cmb.o == -1 ? 1 : 2)
-                L[iψ, io] = logaddexp(L[iψ, io], lpω[j] + st.lc + st.P[cb, q])
+                io = (cmb.o == -1 ? 1 : 2)
+                L[cmb.j, io] = logaddexp(L[cmb.j, io], lpω[j] + st.lc + st.P[cb, q])
             end
         end
         P = exp.(L .- logsumexp(L))
-        (; p_lucas = P[2, 1] + P[2, 2], p_ccw = P[1, 2] + P[2, 2])
+        (; p_angle = ntuple(i -> P[i, 1] + P[i, 2], nψ), p_ccw = sum(view(P, :, 2)))
     end
 end
 

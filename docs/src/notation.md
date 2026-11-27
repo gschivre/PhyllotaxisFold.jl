@@ -8,7 +8,8 @@
 | ``s``, ``S``, ``n_s`` | stem, number of stems, number of organs of stem ``s``; the subscript ``s`` marks a quantity of stem ``s`` (``y_{sp}``, ``\kappa_s``) |
 | ``\sigma``, ``d_p = \sigma(p) - p``, ``N_d`` | order, displacement (``d < 0``: late organ), number of organs displaced by ``d`` |
 | ``y_p``, ``x_p`` | absolute azimuth, stem length below position ``p`` |
-| ``\phi``, ``o``, ``\psi``, ``\alpha`` | spiral offset, orientation, divergence (golden or Lucas), probability of golden |
+| ``\phi``, ``o``, ``\psi``, ``\alpha`` | spiral offset, orientation, divergence (golden or Lucas by default), probability of golden (with more canonical angles: ``\alpha_1, \dots, \alpha_M``, stick-breaking, [Canonical angles](canonical_angles.md)) |
+| ``\pi_b`` | probability that a gap between two organs is a break of the spiral ([Breaks of the spiral](breaks.md)) |
 | ``\kappa``, ``\mu_\kappa``, ``\sigma_\kappa`` | angular concentration of a stem, its log-normal population law |
 | ``\omega_s``, ``m_\omega``, ``s_\omega`` | twist rate of stem ``s``, its population mean and sd |
 | ``\pi_o``, ``z_{sp}`` | probability of an outlier angle, whether angle ``p`` of stem ``s`` is one ([§2.4](angles.md#2.4-Outlier-angles)) |

@@ -38,7 +38,7 @@ import StatsBase: coef, coefnames, vcov, stderror, coeftable, loglikelihood, dof
 
 include("Permanents.jl")
 using .Permanents: PermutationGraph, PermanentWorkspace, toeplitz_weights!, forward!, forward_linear!, backward!,
-    sample_permutation!, map_permutation, logprob_permutation, cycle_lengths, _isneginf, _fullvalue
+    sample_permutation!, map_permutation, logprob_permutation, cycle_lengths, prefix_logperms!, _isneginf, _fullvalue
 include("Common.jl")
 include("Torsion.jl")
 include("AngleLikelihood.jl")
@@ -46,6 +46,7 @@ include("PropensityPriors.jl")
 include("PropensityModel.jl")
 include("Fitting.jl")
 include("Decoding.jl")
+include("Breaks.jl")
 include("CommitmentTiming.jl")
 include("Simulation.jl")
 include("Plastochron.jl")
@@ -57,12 +58,12 @@ export PhyllotaxisModelAD, PhyllotaxisPrior, TorsionPrior, torsion_coordinate, f
 export constrained_parameters, unconstrained_parameters, prior_mean_parameters, prior_mean, rand_priorparameters,
     prior_CIs, full_eta, log_propensity, LogNormalSoftPlus, η_prior
 # decoding and post-processing
-export decode_orders, order_posterior, spiral_posterior, stem_loglik, angle_loglikelihood, corrected_angles,
+export decode_orders, order_posterior, spiral_posterior, spiral_breaks, SpiralBreaks, stem_loglik, angle_loglikelihood, corrected_angles,
     displacement_probability, estimate_displacement_frequencies, estimate_permutation_frequencies
 # LogDensityProblems
 export TransformedLogDensityProblem
 # simulation
-export simulate_stems, sample_prior, divergence_angles, Golden_angle, Lucas_angle
+export simulate_stems, sample_prior, divergence_angles, Golden_angle, Lucas_angle, noble_angle
 # commitment timing
 export DelayLaw, GaussianExpTails, delay_logpdf, free_parameters, with_free_parameters, reported_parameters,
     nshared_parameters, delay_grid, DELAY_GRID, delay_logdensity, tail_masses, overtaking, loglik_order_exact, order_diagnostics,

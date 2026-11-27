@@ -1,7 +1,7 @@
 # AngleLikelihood
 #
 # The angle likelihood of the propensity model: per stem, the banded permanent summed over the nuisance grid, with its
-# analytic gradient in (η, log μκ, σκ, α, `π_o`) from forward–backward (expected displacement counts and expected
+# analytic gradient in (η, log μκ, σκ, α_1..α_M, `π_o`) from forward–backward (expected displacement counts and expected
 # cosines). Optionally the emission is a mixture with outlier angles (probability `π_o`, uniform on the circle).
 #
 # The generic machinery, written against the model's fields and a few methods of `PropensityModel`: the log posterior
@@ -14,55 +14,61 @@
 #################################################################################################################
 
 """
-    StemWorkspace(T, g, n_max, ngrid_ϕ, ngrid_κ; logspace = false)
+    StemWorkspace(T, g, n_max, ngrid_ϕ, ngrid_κ, nangles = 2; logspace = false)
 
 Buffers of `stem_loglik!` for stems of at most `n_max` organs, the permutation graph g of band k and a nuisance grid of
-`ngrid_ϕ` offsets and `ngrid_κ` κ nodes, with element type T (Float64, or a ForwardDiff dual type for the Hessian
-pass): the banded-permanent workspace, the twist-corrected angles, the cosine table of the nuisance combinations, the
+`ngrid_ϕ` offsets, `ngrid_κ` κ nodes and `nangles` canonical angles, with element type T (Float64, or a ForwardDiff
+dual type for the Hessian pass): the banded-permanent workspace, the twist-corrected angles, the cosine table of the nuisance combinations, the
 per-combination log-permanents and the gradient accumulator `grad`. One per task; reused across stems and
 evaluations (`WorkspacePool`).
 """
 struct StemWorkspace{T}
     perm::PermanentWorkspace{T}
     y::Vector{Float64} # angles of the current stem, twist removed
-    C::Array{Float64, 3} # cos(y_i - ϕ - o (j - 1) ψ) - 1 per (ϕ, o, ψ) combination, n_max × (2k + 1) × 4 ngrid_ϕ
+    C::Array{Float64, 3} # cos(y_i - ϕ - o (j - 1) ψ) - 1 per (ϕ, o, ψ), n_max × (2k + 1) × 2 nangles ngrid_ϕ
     logp_c::Vector{T} # log p(ψ) per combination
-    galpha_c::Vector{T} # ∂ log p(ψ) / ∂α per combination
-    log_Z::Matrix{T} # log-permanent + n κ + log p(ψ), 4 ngrid_ϕ × ngrid_κ
+    angle_c::Vector{Int} # index of the canonical angle of each combination
+    angle_mass::Vector{T} # posterior mass of each canonical angle (gradient pass)
+    log_Z::Matrix{T} # log-permanent + n κ + log p(ψ), 2 nangles ngrid_ϕ × ngrid_κ
     log_Zq::Vector{T} # per κ node
-    grad::Vector{T} # gradient accumulator: ∂ℓ/∂η_d (2k + 1), then log μκ, σκ, α, π_o
+    grad::Vector{T} # gradient accumulator: ∂ℓ/∂η_d (2k + 1), then log μκ, σκ, α_1..α_M, π_o
     eη::Vector{T} # exp.(η) of the current stem
     active::Matrix{Bool} # the grid points of non-negligible weight, for the dual passes (`_mark_active!`)
 end
-function StemWorkspace(::Type{T}, g::PermutationGraph, n_max::Int, ngrid_ϕ::Int, ngrid_κ::Int; logspace::Bool = false) where {T}
-    Nc, K = 4 * ngrid_ϕ, 2 * g.k + 1
+function StemWorkspace(
+        ::Type{T}, g::PermutationGraph, n_max::Int, ngrid_ϕ::Int, ngrid_κ::Int, nangles::Int = 2; logspace::Bool = false
+    ) where {T}
+    Nc, K = 2 * nangles * ngrid_ϕ, 2 * g.k + 1
     return StemWorkspace{T}(
-        PermanentWorkspace(T, g, n_max; logspace), zeros(n_max), zeros(n_max, K, Nc), zeros(T, Nc), zeros(T, Nc),
-        zeros(T, Nc, ngrid_κ), zeros(T, ngrid_κ), zeros(T, K + 4), zeros(T, K), fill(true, Nc, ngrid_κ)
+        PermanentWorkspace(T, g, n_max; logspace), zeros(n_max), zeros(n_max, K, Nc), zeros(T, Nc), zeros(Int, Nc),
+        zeros(T, nangles), zeros(T, Nc, ngrid_κ), zeros(T, ngrid_κ), zeros(T, K + 2 + nangles), zeros(T, K),
+        fill(true, Nc, ngrid_κ)
     )
 end
 
-# nuisance combination c of the grid ↦ (o, ψ, log p(ψ), ϕ), in the order of `stem_loglik!` (ϕ fastest, then o, then ψ)
+# nuisance combination c of the grid ↦ (o, ψ, log p(ψ), ϕ, j the index of ψ), in the order of `stem_loglik!` (ϕ fastest,
+# then o, then ψ); α the stick-breaking probabilities of the canonical angles `grid.angles`
 function _combo(grid, c::Int, α)
     nϕ = grid.ngrid_ϕ
     j, iϕ = divrem(c - 1, nϕ)
     io, iψ = j % 2, j ÷ 2
-    ψ, lp = (iψ == 0 ? (Golden_angle, log(α)) : (Lucas_angle, log1p(-α)))
-    return (o = (io == 0 ? -1 : 1), ψ, lp, ϕ = grid.ϕ_grid[iϕ + 1])
+    return (o = (io == 0 ? -1 : 1), ψ = grid.angles[iψ + 1], lp = _angle_logprobs(α)[iψ + 1], ϕ = grid.ϕ_grid[iϕ + 1], j = iψ + 1)
 end
 
-# cosine table of the nuisance combinations (ϕ fastest, then o, then ψ) with log p(ψ) and ∂ log p(ψ) / ∂α of each: the
+# cosine table of the nuisance combinations (ϕ fastest, then o, then ψ) with log p(ψ) and the index of ψ of each: the
 # cosines depend on the angles (so on the twist rate), not on κ or η
 function _fill_cosines!(fws::StemWorkspace, grid, y::AbstractVector, α)
-    (; k, ϕ_grid) = grid
-    (; C, logp_c, galpha_c) = fws
+    (; k, ϕ_grid, angles) = grid
+    (; C, logp_c, angle_c) = fws
     n = length(y)
+    lps = _angle_logprobs(α)
     cidx = 0
-    for (o, (ψ, logp, galpha)) in Iterators.product((-1, 1), ((Golden_angle, log(α), 1 / α), (Lucas_angle, log1p(-α), -1 / (1 - α))))
+    for (o, j) in Iterators.product((-1, 1), eachindex(angles))
+        ψ, logp = angles[j], lps[j]
         for ϕ in ϕ_grid
             cidx += 1
             logp_c[cidx] = logp
-            galpha_c[cidx] = galpha
+            angle_c[cidx] = j
             @inbounds for d in -k:k, i in max(1, 1 - d):min(n, n - d)
                 C[i, d + k + 1, cidx] = cos(y[i] - ϕ - o * (i + d - 1) * ψ) - 1
             end
@@ -118,8 +124,9 @@ end
 
 Log-likelihood of one stem (angles y, already corrected for torsion) given the full log-propensity vector η (2k + 1,
 `η[d + k + 1] = η_d`), summed over the nuisance grid (o, ψ, ϕ) × κ nodes, and, with `with_grad`, its gradient accumulated
-into `fws.grad`: `[∂ℓ/∂η_d (2k + 1, = E_post[N_d] − E_η[N_d]); ∂ℓ/∂log μκ; ∂ℓ/∂σκ; ∂ℓ/∂α; ∂ℓ/∂π_o]`. `grid` has fields k,
-`ngrid_ϕ`, `ngrid_κ`, `ϕ_grid`, `κ_nodes`, `κ_logweights`. Generic in the number type T of the workspace.
+into `fws.grad`: `[∂ℓ/∂η_d (2k + 1, = E_post[N_d] − E_η[N_d]); ∂ℓ/∂log μκ; ∂ℓ/∂σκ; ∂ℓ/∂α_1..α_M; ∂ℓ/∂π_o]`. `grid` has
+fields k, `ngrid_ϕ`, `ngrid_κ`, `ϕ_grid`, `κ_nodes`, `κ_logweights` and the M + 1 canonical `angles`; α holds their M
+stick-breaking probabilities (a tuple). Generic in the number type T of the workspace.
 
 `outlier = π_o`: each angle is drawn from the von Mises of its site with probability `1 − π_o`, and uniformly on the circle
 otherwise (a gross measurement error, or an organ the site model does not describe). Without it (`nothing`), the
@@ -135,10 +142,11 @@ function stem_loglik!(
         prune::Real = 1.0e-14, outlier = nothing, active::Union{Nothing, AbstractMatrix{Bool}} = nothing
     ) where {T}
     (; k, ngrid_ϕ, ngrid_κ, κ_nodes, κ_logweights) = grid
-    (; perm, C, logp_c, galpha_c, log_Z, log_Zq, grad) = fws
+    (; perm, C, logp_c, angle_c, angle_mass, log_Z, log_Zq, grad) = fws
     n = length(y)
     K = 2 * k + 1
-    Nc = 4 * ngrid_ϕ
+    M = length(α)
+    Nc = 2 * (M + 1) * ngrid_ϕ
 
     # cosines do not depend on κ: compute them once per plant; the outlier terms depend on κ alone
     _fill_cosines!(fws, grid, y, α)
@@ -169,6 +177,7 @@ function stem_loglik!(
 
     # pass 2: posterior weights π_qc = v_q u_qc and expected sufficient statistics
     if with_grad
+        fill!(angle_mass, 0)
         logprune = log(prune)
         for q in 1:ngrid_κ
             κ = κs[q]
@@ -185,7 +194,7 @@ function stem_loglik!(
                 lu = log_Z[c, q] - lse_c
                 π_qc = v * exp(lu)
                 gκ += exp(lu) * n # from + n κ
-                grad[K + 3] += π_qc * galpha_c[c]
+                angle_mass[angle_c[c]] += π_qc
                 (log(v) + lu < logprune) && continue
                 forward_combo!(c, q)
                 rho = backward!(perm, n)
@@ -210,7 +219,11 @@ function stem_loglik!(
             end
             grad[K + 1] += v * κ * gκ
             grad[K + 2] += v * κ * κ_nodes[q] * gκ
-            grad[K + 4] += v * gπ
+            grad[K + 3 + M] += v * gπ
+        end
+        # α: the posterior mass of each angle times ∂ log p(ψ_j) / ∂α_i
+        for i in 1:M, j in 1:(M + 1)
+            grad[K + 2 + i] += angle_mass[j] * _dlogp_dalpha(α, i, j)
         end
     end
 
@@ -230,7 +243,8 @@ end
 # the model's side (methods in PropensityModel)
 #################################################################################################################
 
-"`stem_params(m, u)`: (; η, logμκ, σκ, α, outlier) at u (η the full 2k + 1 costs, outlier = `π_o` or `nothing`)"
+"`stem_params(m, u)`: (; η, logμκ, σκ, α, outlier) at u (η the full 2k + 1 costs, α the tuple of the M stick-breaking
+probabilities, outlier = `π_o` or `nothing`)"
 function stem_params end
 "`nmodel(m)`: the number of model parameters (those of the angle model, the twist hyperparameters excluded)"
 function nmodel end
@@ -272,7 +286,8 @@ struct WorkspacePool{T}
 end
 WorkspacePool{T}() where {T} = WorkspacePool{T}(ReentrantLock(), StemWorkspace{T}[])
 
-_workspace(m, ::Type{T}) where {T} = StemWorkspace(T, m.graph, m.n_max, m.ngrid_ϕ, m.ngrid_κ; logspace = m.logspace)
+_workspace(m, ::Type{T}) where {T} =
+    StemWorkspace(T, m.graph, m.n_max, m.ngrid_ϕ, m.ngrid_κ, length(m.grid.angles); logspace = m.logspace)
 function _acquire!(pool::WorkspacePool{T}, m) where {T}
     ws = lock(pool.lock) do
         isempty(pool.free) ? nothing : pop!(pool.free)
@@ -335,8 +350,8 @@ struct AngleHessianTag end
 
 # The dual (Hessian) passes cost ~ (number of parameters + 1) Float64 passes. A Float64 pass at the same point marks the
 # grid points within e^-40 of the heaviest one (`active`): the dual pass leaves out the others, whose total weight is
-# below (number of grid points) × e^-40 of the stem's likelihood: 4 ngrid_ϕ ngrid_κ = 2048 points with the default grid,
-# so below 1e-14.
+# below (number of grid points) × e^-40 of the stem's likelihood: 2 (M + 1) ngrid_ϕ ngrid_κ = 2048 points with the
+# default grid and two canonical angles, so below 1e-14.
 const ACTIVE_DROP = 40.0
 function _mark_active!(active, fws64::StemWorkspace{Float64}, m, pf, s::Int, ω::Real)
     _stem_ll!(m, pf, s, ω, fws64)

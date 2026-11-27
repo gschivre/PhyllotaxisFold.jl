@@ -57,6 +57,8 @@ makedocs(;
             "Defining and fitting a law" => "custom_laws.md",
             "Deriving a law: the fold switch" => "fold_law.md",
         ],
+        "Canonical angles" => "canonical_angles.md",
+        "Breaks of the spiral" => "breaks.md",
         "Simulating stems" => "simulation.md",
         "Method" => [
             "The problem" => "problem.md",

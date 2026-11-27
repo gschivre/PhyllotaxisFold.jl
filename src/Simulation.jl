@@ -14,16 +14,27 @@ the same angle and twist options, and `simulate_stems(fit)` (stems like the data
 """
 function simulate_stems end
 
-# the angles of one stem of order σ (twist coordinate x): κ ~ LogNormal(logμκ, σκ), the golden spiral with probability
-# α (else the Lucas one), uniform ϕ and orientation, twist ω ~ N(torsion_mean, torsion_sd²) degrees per unit of x, and
-# each angle replaced with probability `outlier` by a uniform one (shared by the `simulate_stems` methods)
+# the canonical angle of a stem, from the stick-breaking probabilities α (a number for M = 1)
+_draw_angle(rng::AbstractRNG, α::Real, angles) = _draw_angle(rng, (α,), angles)
+function _draw_angle(rng::AbstractRNG, α::Tuple, angles)
+    for j in eachindex(α)
+        rand(rng) < α[j] && return Float64(angles[j])
+    end
+    return Float64(angles[end])
+end
+_check_angles(α, angles) = (length(angles) == (α isa Real ? 1 : length(α)) + 1 ||
+    throw(ArgumentError("angles: one more canonical angle than stick-breaking probabilities α")))
+
+# the angles of one stem of order σ (twist coordinate x): κ ~ LogNormal(logμκ, σκ), the canonical angle from α and
+# `angles`, uniform ϕ and orientation, twist ω ~ N(torsion_mean, torsion_sd²) degrees per unit of x, and each angle
+# replaced with probability `outlier` by a uniform one (shared by the `simulate_stems` methods)
 function _simulate_angles(
-        rng::AbstractRNG, σ::AbstractVector{Int}, x::AbstractVector; logμκ, σκ, α, outlier, torsion_mean,
+        rng::AbstractRNG, σ::AbstractVector{Int}, x::AbstractVector; logμκ, σκ, α, angles, outlier, torsion_mean,
         torsion_sd
     )
     n = length(σ)
     κ = exp(logμκ + σκ * randn(rng))
-    ψ = (rand(rng) < α ? Golden_angle : Lucas_angle)
+    ψ = _draw_angle(rng, α, angles)
     ϕ = 2π * rand(rng)
     o = (rand(rng) < 0.5 ? 1 : -1)
     ω = torsion_mean + torsion_sd * randn(rng)
@@ -34,13 +45,15 @@ function _simulate_angles(
 end
 
 """
-    simulate_stems(η; plants = 100, organs = 50, x = nothing, logμκ = 1.5, σκ = 0.0, α = 0.95, outlier = 0.0,
-        torsion_mean = 0.0, torsion_sd = 0.0, rng)
+    simulate_stems(η; plants = 100, organs = 50, x = nothing, logμκ = 1.5, σκ = 0.0, α = 0.95,
+        angles = (Golden_angle, Lucas_angle), outlier = 0.0, torsion_mean = 0.0, torsion_sd = 0.0, rng)
 
 Simulate from the propensity model: the order of each stem is an exact draw from the banded permanent with
 log-propensities η (`η_1..η_k`, symmetric, or the full 2k + 1 vector, recognised by its middle entry `η_0 = 0`),
-`κ_s ~ LogNormal(logμκ, σκ)` per stem, and
-the angles are `y_p ~ vM(ϕ + o (σ[p] − 1) ψ + ω_s x_p, κ_s)`, replaced with probability `outlier` by a uniform angle.
+`κ_s ~ LogNormal(logμκ, σκ)` per stem, the canonical angle ψ of each stem one of `angles`, drawn with the stick-breaking
+probabilities α as in `PhyllotaxisPrior` (by default golden with probability α, else Lucas; α a number or a tuple, one
+fewer than the angles), and the angles are `y_p ~ vM(ϕ + o (σ[p] − 1) ψ + ω_s x_p, κ_s)`, replaced with probability
+`outlier` by a uniform angle.
 `organs`: one count, or one per stem; `x`: the twist coordinate of each stem (default: the positions 0, 1, …, or
 `torsion_coordinate(internodes)` for the stem length in mm); twist `ω_s ~ Normal(torsion_mean, torsion_sd)` degrees per
 unit of x. The precision of the angles: a von Mises of concentration κ has a circular sd of about `1 / √κ` radians
@@ -50,8 +63,10 @@ uniform; ψ, o, ϕ: the spiral of each stem, its canonical angle, orientation an
 """
 function simulate_stems(
         η::AbstractVector{<:Real}; plants::Int = 100, organs = 50, x = nothing, logμκ::Real = 1.5, σκ::Real = 0.0,
-        α::Real = 0.95, outlier::Real = 0.0, torsion_mean::Real = 0.0, torsion_sd::Real = 0.0, rng::AbstractRNG = Random.default_rng()
+        α = 0.95, angles = (Golden_angle, Lucas_angle), outlier::Real = 0.0, torsion_mean::Real = 0.0, torsion_sd::Real = 0.0,
+        rng::AbstractRNG = Random.default_rng()
     )
+    _check_angles(α, angles)
     # a cost η_d (d ≠ 0) is negative, never 0: an η_1..η_k of odd length is not taken for the full vector
     ηf = (isodd(length(η)) && iszero(η[(end + 1) ÷ 2]) ? collect(Float64, η) : vcat(reverse(η), 0.0, η))
     k = length(ηf) ÷ 2
@@ -63,7 +78,7 @@ function simulate_stems(
     toeplitz_weights!(ws, ηf, maximum(ns))
     out = map(1:plants) do s
         σ = sample_permutation!(rng, ws, ns[s])
-        (; σ, _simulate_angles(rng, σ, xs[s]; logμκ, σκ, α, outlier, torsion_mean, torsion_sd)...)
+        (; σ, _simulate_angles(rng, σ, xs[s]; logμκ, σκ, α, angles, outlier, torsion_mean, torsion_sd)...)
     end
     return (;
         angles = [z.y for z in out], orders = [z.σ for z in out], torsion = [z.ω for z in out], κ = [z.κ for z in out],
@@ -72,21 +87,22 @@ function simulate_stems(
 end
 
 """
-    simulate_stems(f::DelayLaw; plants = 100, organs = 50, x = nothing, logμκ = 1.5, σκ = 0, α = 0.95, outlier = 0,
-        torsion_mean = 0, torsion_sd = 0, rng)
+    simulate_stems(f::DelayLaw; plants = 100, organs = 50, x = nothing, logμκ = 1.5, σκ = 0, α = 0.95,
+        angles = (Golden_angle, Lucas_angle), outlier = 0, torsion_mean = 0, torsion_sd = 0, rng)
 
 Stems whose orders come from independent commitment delays: the order of each stem is σ = sortperm(i + eᵢ) with eᵢ ~ f, and
 the angles `y_p ~ vM(ϕ + o (σ[p] − 1) ψ + ω_s x_p, κ_s)` as in the propensity model's simulator
-(`κ_s ~ LogNormal(logμκ, σκ)`, golden with probability α, uniform ϕ and orientation, uniform outlier angles with
-probability `outlier`). `organs` is one count or
-one per stem; `x` the twist coordinate of each stem (e.g. mm of stem below each organ; default: the positions
+(`κ_s ~ LogNormal(logμκ, σκ)`, ψ one of `angles` drawn with the stick-breaking probabilities α, uniform ϕ and
+orientation, uniform outlier angles with probability `outlier`). `organs` is one count or one per stem; `x` the twist coordinate of each stem (e.g. mm of stem below each organ; default: the positions
 0, 1, …), and the twist `ω_s ~ N(torsion_mean, torsion_sd²)` is in degrees per unit of x. Returns (; angles, orders,
 delays, torsion, κ, outliers, ψ, o, ϕ).
 """
 function simulate_stems(
-        f::DelayLaw; plants::Int = 100, organs = 50, x = nothing, logμκ::Real = 1.5, σκ::Real = 0.0, α::Real = 0.95,
-        outlier::Real = 0.0, torsion_mean::Real = 0.0, torsion_sd::Real = 0.0, rng::AbstractRNG = Random.default_rng()
+        f::DelayLaw; plants::Int = 100, organs = 50, x = nothing, logμκ::Real = 1.5, σκ::Real = 0.0, α = 0.95,
+        angles = (Golden_angle, Lucas_angle), outlier::Real = 0.0, torsion_mean::Real = 0.0, torsion_sd::Real = 0.0,
+        rng::AbstractRNG = Random.default_rng()
     )
+    _check_angles(α, angles)
     ns = organs isa Integer ? fill(organs, plants) : collect(organs)
     xs = x === nothing ? [torsion_coordinate(n) for n in ns] : x
     (length(ns) == plants && length(xs) == plants && all(length.(xs) .== ns)) ||
@@ -95,7 +111,7 @@ function simulate_stems(
         n = ns[s]
         e = [rand(rng, f) for _ in 1:n]
         σ = sortperm((1:n) .+ e)
-        (; σ, e, _simulate_angles(rng, σ, xs[s]; logμκ, σκ, α, outlier, torsion_mean, torsion_sd)...)
+        (; σ, e, _simulate_angles(rng, σ, xs[s]; logμκ, σκ, α, angles, outlier, torsion_mean, torsion_sd)...)
     end
     return (;
         angles = [z.y for z in out], orders = [z.σ for z in out], delays = [z.e for z in out], torsion = [z.ω for z in out],
@@ -108,7 +124,8 @@ end
     simulate_stems(fit::PhyllotaxisFit; laplace = false, rng)
 
 Stems like the data of the fit, drawn from the fitted model: as many stems, with the same numbers of organs and the same
-twist coordinates, and the fitted costs, precision law, spiral probability, outlier probability and twist law. With
+twist coordinates, and the fitted costs, precision law, canonical angles and their probabilities, outlier probability
+and twist law. With
 `laplace = true`, the parameters are first drawn from the Laplace approximation of the posterior (one draw per call),
 so that replicates carry the uncertainty of the fit. Returns the result of `simulate_stems(η; ...)` with the parameters
 used, `θ` (`constrained_parameters`).
@@ -126,7 +143,7 @@ function simulate_stems(fit::PhyllotaxisFit; laplace::Bool = false, rng::Abstrac
     θ = constrained_parameters(m, u)
     mω, sω = (_has_twist(m) ? (θ.m_ω, θ.s_ω) : (0.0, 0.0))
     sim = simulate_stems(
-        θ.η; plants = length(m.data), organs = length.(m.data), x = m.torsion_x, θ.logμκ, θ.σκ, θ.α,
+        θ.η; plants = length(m.data), organs = length.(m.data), x = m.torsion_x, θ.logμκ, θ.σκ, θ.α, m.grid.angles,
         outlier = θ.outlier, torsion_mean = mω, torsion_sd = sω, rng
     )
     return (; sim..., θ)
